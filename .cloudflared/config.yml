@@ -1,0 +1,8 @@
+tunnel: nl2sql-backend
+credentials-file: /Users/fupeggy/.cloudflared/nl2sql-backend.json
+protocol: quic
+
+ingress:
+  - hostname: nl2sql-api.fupeggy.workers.dev
+    service: http://localhost:8000
+  - service: http_status:404

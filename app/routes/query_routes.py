@@ -1,0 +1,290 @@
+"""
+查询路由
+处理自然语言查询请求 - 支持 Supabase 和本地数据库
+"""
+from flask import Blueprint, request, jsonify
+from app.services.nl2sql import NL2SQLConverter
+from app.services.query_executor import QueryExecutor
+from app.services.supabase_client import get_supabase_client
+import logging
+
+bp = Blueprint('query', __name__, url_prefix='/api/query')
+logger = logging.getLogger(__name__)
+
+# 初始化服务
+converter = NL2SQLConverter()
+executor = QueryExecutor()
+supabase = get_supabase_client()
+
+@bp.route('/nl-to-sql', methods=['POST'])
+def convert_nl_to_sql():
+    """
+    将自然语言转换为 SQL
+    
+    请求体:
+        {
+            "natural_language": "查询所有用户"
+        }
+    
+    返回:
+        {
+            "success": true,
+            "sql": "SELECT * FROM users",
+            "message": "转换成功"
+        }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'natural_language' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required field: natural_language'
+            }), 400
+        
+        natural_language = data['natural_language']
+        
+        if not natural_language.strip():
+            return jsonify({
+                'success': False,
+                'error': 'natural_language cannot be empty'
+            }), 400
+        
+        # 转换为 SQL
+        sql = converter.convert(natural_language)
+        
+        if sql is None:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to convert natural language to SQL'
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'sql': sql,
+            'natural_language': natural_language,
+            'message': 'Conversion successful'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error in convert_nl_to_sql: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@bp.route('/execute', methods=['POST'])
+def execute_query():
+    """
+    执行 SQL 查询
+    
+    请求体:
+        {
+            "sql": "SELECT * FROM users LIMIT 10"
+        }
+    
+    返回:
+        {
+            "success": true,
+            "data": [...],
+            "count": 10,
+            "columns": ["id", "name", "email"]
+        }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'sql' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required field: sql'
+            }), 400
+        
+        sql = data['sql'].strip()
+        
+        if not sql:
+            return jsonify({
+                'success': False,
+                'error': 'SQL cannot be empty'
+            }), 400
+        
+        # 执行查询
+        result = executor.execute_query(sql)
+        
+        return jsonify(result), 200 if result['success'] else 500
+        
+    except Exception as e:
+        logger.error(f"Error in execute_query: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@bp.route('/nl-execute', methods=['POST'])
+def nl_execute():
+    """
+    从自然语言直接执行查询
+    
+    请求体:
+        {
+            "natural_language": "查询所有用户"
+        }
+    
+    返回:
+        {
+            "success": true,
+            "sql": "SELECT * FROM users",
+            "data": [...],
+            "count": 10
+        }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'natural_language' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required field: natural_language'
+            }), 400
+        
+        natural_language = data['natural_language'].strip()
+        
+        if not natural_language:
+            return jsonify({
+                'success': False,
+                'error': 'natural_language cannot be empty'
+            }), 400
+        
+        # 第一步：转换为 SQL
+        sql = converter.convert(natural_language)
+        
+        if sql is None:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to convert natural language to SQL'
+            }), 500
+        
+        # 第二步：执行查询
+        result = executor.execute_query(sql)
+        
+        # 添加生成的 SQL 信息
+        result['sql'] = sql
+        
+        return jsonify(result), 200 if result['success'] else 500
+        
+    except Exception as e:
+        logger.error(f"Error in nl_execute: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@bp.route('/health', methods=['GET'])
+def health_check():
+    """健康检查端点"""
+    supabase_connected = supabase.is_connected()
+    return jsonify({
+        'status': 'healthy',
+        'service': 'NL2SQL Report Backend',
+        'supabase': 'connected' if supabase_connected else 'disconnected'
+    }), 200
+
+@bp.route('/nl-execute-supabase', methods=['POST'])
+def nl_execute_supabase():
+    """
+    执行 Supabase 查询 - 自然语言转 SQL 并执行
+    
+    请求体:
+        {
+            "natural_language": "查询所有用户"
+        }
+    
+    返回:
+        {
+            "success": true,
+            "sql": "SELECT * FROM users",
+            "data": [...],
+            "message": "..."
+        }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'natural_language' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required field: natural_language'
+            }), 400
+        
+        natural_language = data['natural_language']
+        
+        if not natural_language.strip():
+            return jsonify({
+                'success': False,
+                'error': 'natural_language cannot be empty'
+            }), 400
+        
+        # 第一步：转换为 SQL
+        sql = converter.convert(natural_language)
+        
+        if sql is None:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to convert natural language to SQL'
+            }), 500
+        
+        # 第二步：检查 Supabase 连接
+        if not supabase.is_connected():
+            return jsonify({
+                'success': False,
+                'error': 'Supabase database connection failed. Please check your configuration.',
+                'sql': sql
+            }), 500
+        
+        # 第三步：执行查询
+        result = supabase.execute_query(sql)
+        result['sql'] = sql
+        
+        return jsonify(result), 200 if result['success'] else 400
+        
+    except Exception as e:
+        logger.error(f"Error in nl_execute_supabase: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@bp.route('/supabase/schema', methods=['GET'])
+def get_supabase_schema():
+    """获取 Supabase 数据库 schema 信息"""
+    try:
+        table_name = request.args.get('table')
+        result = supabase.get_schema_info(table_name)
+        return jsonify(result), 200 if result['success'] else 400
+    except Exception as e:
+        logger.error(f"Error getting schema: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@bp.route('/supabase/connection', methods=['GET'])
+def check_supabase_connection():
+    """检查 Supabase 连接状态"""
+    try:
+        is_connected = supabase.is_connected()
+        schema_info = supabase.get_schema_info() if is_connected else {}
+        
+        return jsonify({
+            'success': True,
+            'connected': is_connected,
+            'tables': schema_info.get('data', []) if is_connected else [],
+            'host': supabase.host,
+            'database': supabase.database
+        }), 200
+    except Exception as e:
+        logger.error(f"Error checking connection: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
