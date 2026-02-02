@@ -29,7 +29,9 @@ def create_app(config_name='development'):
                 "https://*.bolt.new",
                 "http://localhost:*",
                 "http://127.0.0.1:*",
-                "http://192.168.2.13:*"
+                "http://192.168.2.13:*",
+                "https://*.local-credentialless.webcontainer-api.io",  # Bolt.new WebContainer
+                "https://*.webcontainer-api.io",  # Bolt.new WebContainer fallback
             ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"]
