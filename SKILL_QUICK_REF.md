@@ -27,10 +27,13 @@ python setup_anon_key.py
 # 使用虚拟环境
 .venv/bin/python setup_anon_key.py
 
-# 验证配置
+# 验证本地配置
 .venv/bin/python setup_anon_key.py --verify
 
-# 测试连接
+# 验证 Render 上的配置（新增！）
+.venv/bin/python setup_anon_key.py --verify-render
+
+# 测试本地连接
 .venv/bin/python setup_anon_key.py --test
 
 # 生成 Render 配置
@@ -111,8 +114,9 @@ print(config)  # {'SUPABASE_URL': '...', 'SUPABASE_ANON_KEY': '...'}
 | 功能 | 命令 | 说明 |
 |------|------|------|
 | 交互式设置 | `python setup_anon_key.py` | 一步步配置 |
-| 验证配置 | `--verify` | 检查现有配置是否有效 |
-| 测试连接 | `--test` | 测试到 Supabase 的连接 |
+| 验证本地配置 | `--verify` | 检查本地 .env 中的配置 |
+| 验证 Render 配置 | `--verify-render` | 检查 Render 上部署的配置（新增！） |
+| 测试本地连接 | `--test` | 测试到 Supabase 的本地连接 |
 | Render 配置 | `--render-env` | 生成 Render 环境变量 |
 | 显示帮助 | `--help` | 显示所有选项 |
 

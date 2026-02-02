@@ -4,11 +4,13 @@ Supabase Anon Key 自动化配置脚本
 自动检查、验证和配置 SUPABASE_ANON_KEY 和 SUPABASE_URL
 
 使用方式：
-    python setup_anon_key.py                    # 交互模式
-    python setup_anon_key.py --verify           # 仅验证现有配置
-    python setup_anon_key.py --test             # 测试连接
-    python setup_anon_key.py --render-env       # 生成 Render 环境配置
-    python setup_anon_key.py --help             # 显示帮助
+    python setup_anon_key.py                              # 交互模式
+    python setup_anon_key.py --verify                     # 验证本地配置
+    python setup_anon_key.py --test                       # 测试本地连接
+    python setup_anon_key.py --render-env                 # 生成 Render 环境配置
+    python setup_anon_key.py --verify-render              # 验证 Render 上的配置
+    python setup_anon_key.py --verify-render https://... # 用自定义 URL 验证
+    python setup_anon_key.py --help                       # 显示帮助
 """
 
 import os
@@ -19,6 +21,7 @@ import argparse
 from typing import Dict, Tuple, Optional
 from pathlib import Path
 from dotenv import load_dotenv, set_key
+import requests
 
 # 颜色输出
 class Colors:
@@ -281,6 +284,60 @@ class SupabaseSetupSkill:
         print("5. 点击 Manual Deploy")
         print("6. 访问健康检查: https://nl2sql-backend-amok.onrender.com/api/query/health")
     
+    def verify_render_config(self, render_url: str) -> Dict[str, any]:
+        """验证 Render 上的配置"""
+        result = {
+            'connected': False,
+            'status': 'unknown',
+            'supabase': 'disconnected',
+            'error': None,
+            'response': None,
+            'backend_healthy': False
+        }
+        
+        # 规范化 URL
+        if not render_url.startswith('http'):
+            render_url = f'https://{render_url}'
+        if render_url.endswith('/'):
+            render_url = render_url.rstrip('/')
+        
+        health_url = f'{render_url}/api/query/health'
+        
+        try:
+            logger.info(f"检查 Render 配置: {health_url}")
+            response = requests.get(health_url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                result['response'] = data
+                result['status'] = data.get('status', 'unknown')
+                result['supabase'] = data.get('supabase', 'disconnected')
+                result['backend_healthy'] = data.get('status') == 'healthy'
+                result['connected'] = data.get('supabase') == 'connected'
+                
+                if result['connected']:
+                    logger.info("✅ Render 上的 Supabase 已连接")
+                else:
+                    logger.warning("⚠️  Render 上的 Supabase 未连接")
+            else:
+                result['error'] = f"HTTP {response.status_code}"
+                logger.error(f"后端返回错误: {response.status_code}")
+        
+        except requests.exceptions.Timeout:
+            result['error'] = "连接超时。检查 Render URL 是否正确"
+            logger.error("连接超时")
+        except requests.exceptions.ConnectionError:
+            result['error'] = "无法连接到 Render。检查网络和 URL"
+            logger.error("连接失败")
+        except ValueError:
+            result['error'] = "响应不是有效的 JSON"
+            logger.error("JSON 解析失败")
+        except Exception as e:
+            result['error'] = str(e)
+            logger.error(f"验证失败: {str(e)}")
+        
+        return result
+    
     @staticmethod
     def _mask_key(key: Optional[str], show_chars: int = 20) -> str:
         """隐藏密钥的大部分内容"""
@@ -298,15 +355,18 @@ def main():
         epilog="""
 示例:
   python setup_anon_key.py              # 交互模式
-  python setup_anon_key.py --verify     # 验证配置
-  python setup_anon_key.py --test       # 测试连接
+  python setup_anon_key.py --verify     # 验证本地配置
+  python setup_anon_key.py --test       # 测试本地连接
   python setup_anon_key.py --render-env # 生成 Render 配置
+  python setup_anon_key.py --verify-render  # 验证 Render 上的配置
         """
     )
     
     parser.add_argument('--verify', action='store_true', help='验证现有配置')
     parser.add_argument('--test', action='store_true', help='测试 Supabase 连接')
     parser.add_argument('--render-env', action='store_true', help='生成 Render 环境配置')
+    parser.add_argument('--verify-render', type=str, nargs='?', const='https://nl2sql-backend-amok.onrender.com', 
+                        help='验证 Render 上的配置（可选：提供 Render URL）')
     parser.add_argument('--env-file', default='.env', help='.env 文件路径 (默认: .env)')
     
     args = parser.parse_args()
@@ -324,6 +384,46 @@ def main():
                 print_error(f"Supabase 连接失败: {status['connection_message']}")
         elif args.render_env:
             skill.generate_render_env()
+        elif args.verify_render:
+            # 验证 Render 上的配置
+            print_header("验证 Render 上的配置")
+            result = skill.verify_render_config(args.verify_render)
+            
+            print(f"\n🌐 Render 后端: {args.verify_render}")
+            print(f"健康状态: {'✅' if result['backend_healthy'] else '❌'} {result['status']}")
+            print(f"Supabase: {'✅' if result['connected'] else '❌'} {result['supabase']}")
+            
+            if result['error']:
+                print_error(f"错误: {result['error']}")
+            
+            if result['response']:
+                print("\n详细信息:")
+                print(f"  service: {result['response'].get('service', 'N/A')}")
+                if 'diagnosis' in result['response']:
+                    diagnosis = result['response']['diagnosis']
+                    print(f"\n  诊断信息:")
+                    for key, value in diagnosis.items():
+                        print(f"    {key}: {value}")
+            
+            if result['connected']:
+                print_header("✅ Render 配置有效")
+                print("Supabase 已连接，可以正常使用")
+            else:
+                print_header("❌ Render 配置有问题")
+                if result['error']:
+                    print(f"错误: {result['error']}")
+                    print("\n可能的原因:")
+                    if "连接超时" in result['error']:
+                        print("1. Render URL 错误")
+                        print("2. Render 服务未启动")
+                        print("3. 网络连接问题")
+                    elif "无法连接" in result['error']:
+                        print("1. 检查网络连接")
+                        print("2. 确认 Render URL 正确")
+                    else:
+                        print("1. 检查 SUPABASE_URL 是否设置")
+                        print("2. 检查 SUPABASE_ANON_KEY 是否设置")
+                        print("3. 检查认证信息是否正确")
         else:
             # 默认交互模式
             skill.setup_interactive()

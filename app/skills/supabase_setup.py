@@ -15,6 +15,7 @@ from typing import Dict, Tuple, Optional
 from pathlib import Path
 from dotenv import load_dotenv, set_key
 import logging
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,68 @@ class SupabaseSetupSkill:
         except Exception as e:
             logger.error(f"❌ 保存失败: {str(e)}")
             return False
+    
+    def verify_render_config(self, render_url: str) -> Dict[str, any]:
+        """
+        验证 Render 上的配置
+        
+        Args:
+            render_url: Render 后端 URL（例：https://nl2sql-backend-amok.onrender.com）
+            
+        Returns:
+            验证结果字典
+        """
+        result = {
+            'connected': False,
+            'status': 'unknown',
+            'supabase': 'disconnected',
+            'error': None,
+            'response': None,
+            'backend_healthy': False
+        }
+        
+        # 规范化 URL
+        if not render_url.startswith('http'):
+            render_url = f'https://{render_url}'
+        if render_url.endswith('/'):
+            render_url = render_url.rstrip('/')
+        
+        health_url = f'{render_url}/api/query/health'
+        
+        try:
+            logger.info(f"检查 Render 配置: {health_url}")
+            response = requests.get(health_url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                result['response'] = data
+                result['status'] = data.get('status', 'unknown')
+                result['supabase'] = data.get('supabase', 'disconnected')
+                result['backend_healthy'] = data.get('status') == 'healthy'
+                result['connected'] = data.get('supabase') == 'connected'
+                
+                if result['connected']:
+                    logger.info("✅ Render 上的 Supabase 已连接")
+                else:
+                    logger.warning("⚠️  Render 上的 Supabase 未连接")
+            else:
+                result['error'] = f"HTTP {response.status_code}"
+                logger.error(f"后端返回错误: {response.status_code}")
+        
+        except requests.exceptions.Timeout:
+            result['error'] = "连接超时。检查 Render URL 是否正确"
+            logger.error("连接超时")
+        except requests.exceptions.ConnectionError:
+            result['error'] = "无法连接到 Render。检查网络和 URL"
+            logger.error("连接失败")
+        except ValueError:
+            result['error'] = "响应不是有效的 JSON"
+            logger.error("JSON 解析失败")
+        except Exception as e:
+            result['error'] = str(e)
+            logger.error(f"验证失败: {str(e)}")
+        
+        return result
     
     def get_config_dict(self) -> Dict[str, str]:
         """
