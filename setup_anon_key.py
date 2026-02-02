@@ -410,9 +410,17 @@ def main():
                     for key, value in diagnosis.items():
                         if key.startswith('supabase'):
                             # 突出显示 Supabase 相关的信息
+                            if value in ['YES', 'NO']:
+                                emoji = '✅' if value == 'YES' else '❌'
+                                print(f"  {emoji} {key}: {value}")
+                            else:
+                                print(f"  {key}: {value}")
+                        elif key.startswith('connection'):
                             print(f"  {key}: {value}")
                         elif key.startswith('db'):
                             print(f"  {key}: {value}")
+                        elif key == 'warning':
+                            print(f"  ⚠️  {value}")
                     
                     # 添加具体的问题指示
                     if diagnosis.get('supabase_url_set') == 'NO':

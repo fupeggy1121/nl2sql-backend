@@ -193,27 +193,48 @@ def health_check():
     """
     import os
     
-    try:
-        sb = get_supabase()
-        db_connected = sb is not None and sb.is_connected()
-        db_status = 'connected' if db_connected else 'disconnected'
-        db_error = None
-    except Exception as e:
-        logger.warning(f"Database health check failed: {str(e)}")
-        db_connected = False
-        db_status = 'disconnected'
-        db_error = str(e)
-    
-    # 诊断信息 - 显示 Supabase 配置
+    # 获取环境变量
     supabase_url = os.getenv('SUPABASE_URL', 'NOT SET')
     supabase_key = os.getenv('SUPABASE_ANON_KEY', 'NOT SET')
     
+    db_connected = False
+    db_status = 'disconnected'
+    db_error = None
+    
+    # 诊断信息 - 始终显示环境变量状态
     diagnosis = {
         'supabase_url_set': 'YES' if supabase_url != 'NOT SET' else 'NO',
         'supabase_key_set': 'YES' if supabase_key != 'NOT SET' else 'NO',
-        'supabase_url_value': supabase_url if supabase_url == 'NOT SET' else f"{supabase_url[:30]}..." if len(supabase_url) > 30 else supabase_url,
-        'supabase_key_length': len(supabase_key) if supabase_key != 'NOT SET' else 0,
     }
+    
+    # 如果两个都设置了，尝试连接并显示错误
+    if supabase_url != 'NOT SET' and supabase_key != 'NOT SET':
+        diagnosis.update({
+            'supabase_url_preview': f"{supabase_url[:30]}..." if len(supabase_url) > 30 else supabase_url,
+            'supabase_key_length': len(supabase_key),
+        })
+        
+        try:
+            sb = get_supabase()
+            if sb and sb.client:
+                db_connected = sb.is_connected()
+                db_status = 'connected' if db_connected else 'disconnected'
+                if db_connected:
+                    diagnosis['connection_status'] = 'Successfully connected to Supabase'
+                else:
+                    diagnosis['connection_status'] = 'Failed to connect (is_connected check failed)'
+            else:
+                db_status = 'disconnected'
+                diagnosis['connection_status'] = 'Client initialization failed'
+                if sb is None:
+                    db_error = 'SupabaseClient is None'
+        except Exception as e:
+            db_status = 'disconnected'
+            db_error = str(e)
+            diagnosis['connection_status'] = f'Error: {str(e)[:100]}'
+            logger.error(f"Health check connection error: {str(e)}")
+    else:
+        diagnosis['warning'] = 'SUPABASE_URL or SUPABASE_ANON_KEY not set'
     
     # 如果有数据库直接连接信息，也显示
     if os.getenv('DB_HOST'):
