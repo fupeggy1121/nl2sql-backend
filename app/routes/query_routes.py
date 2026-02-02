@@ -482,3 +482,45 @@ def recognize_intent():
             'success': False,
             'error': str(e)
         }), 500
+
+@bp.route('/cors-check', methods=['GET', 'OPTIONS'])
+def cors_check():
+    """
+    CORS 诊断端点 - 用于前端验证 CORS 配置是否正确
+    
+    返回:
+        {
+            "cors_enabled": true,
+            "method": "GET|OPTIONS",
+            "headers_info": {...},
+            "timestamp": "2026-02-03T..."
+        }
+    """
+    from flask import request
+    from datetime import datetime
+    
+    # 如果是 OPTIONS 请求，直接返回 200
+    if request.method == 'OPTIONS':
+        logger.info("CORS preflight request received")
+        return jsonify({
+            'cors_enabled': True,
+            'method': 'OPTIONS',
+            'message': 'CORS preflight successful',
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    
+    # GET 请求返回详细诊断信息
+    origin = request.headers.get('Origin', 'N/A')
+    
+    return jsonify({
+        'cors_enabled': True,
+        'method': 'GET',
+        'request_origin': origin,
+        'server_info': {
+            'host': request.host,
+            'remote_addr': request.remote_addr,
+            'user_agent': request.user_agent.string[:50] if request.user_agent else 'N/A'
+        },
+        'message': 'CORS is properly configured',
+        'timestamp': datetime.utcnow().isoformat()
+    }), 200

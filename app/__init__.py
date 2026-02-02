@@ -26,30 +26,25 @@ def create_app(config_name='development'):
     flask_env = os.getenv('FLASK_ENV', 'development')
     
     # 配置 CORS
-    # 在 Render 上，即使 FLASK_ENV=production，也需要允许跨域请求
-    cors_origins = "*"  # 默认允许所有
+    # 关键：在生产环境（Render）上，Bolt.new 前端来自 WebContainer
+    # 前端源: https://zp1v56uxy8rdx5ypatb0ockcb9tr6a-oci3--5173--31fc58ec.local-credentialless.webcontainer-api.io
     
-    if flask_env == 'production':
-        # 生产环境：允许特定域名（包括 Render 部署的前端和 Bolt.new）
-        cors_origins = [
-            "https://bolt.new",
-            "https://*.bolt.new",
-            "https://*.local-credentialless.webcontainer-api.io",
-            "https://*.webcontainer-api.io",
-            "https://*.netlify.app",
-            "https://*.vercel.app",
-            "http://localhost:5173",  # 本地开发
-            "http://127.0.0.1:5173",
-        ]
+    # 为了最大程度解决 CORS 问题，在生产环境上也允许 *（所有源）
+    # 注意：这会使 supports_credentials=True 不适用（浏览器安全限制）
+    # 但这是解决状态显示"❌ 未连接"问题的必要配置
+    cors_origins = "*"
     
     # 应用 CORS 中间件 - 必须在蓝图注册前
+    # 使用宽松的 CORS 配置确保前端能正确连接
     CORS(app, 
-         origins=cors_origins,
+         origins="*",  # 允许所有源
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
-         allow_headers=["Content-Type", "Authorization"],
-         expose_headers=["Content-Type"],
-         supports_credentials=True,
-         max_age=3600)
+         allow_headers=["*"],  # 允许所有请求头
+         expose_headers=["*"],  # 暴露所有响应头
+         supports_credentials=False,  # 与 origins="*" 配合使用
+         max_age=3600,  # 缓存预检结果 1 小时
+         send_wildcard=False,
+         always_send=True)  # 始终发送 CORS 头，即使请求不是跨域
     
     # 设置日志
     setup_logging()
