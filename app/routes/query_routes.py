@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # 初始化服务（延迟加载 Supabase，避免启动时连接失败）
 converter = NL2SQLConverter()
-executor = QueryExecutor()
+executor = None  # 延迟初始化 - 需要传入 Supabase 客户端
 supabase = None  # 延迟初始化
 
 def get_supabase():
@@ -115,8 +115,21 @@ def execute_query():
                 'error': 'SQL cannot be empty'
             }), 400
         
+        # 获取 Supabase 客户端
+        sb = get_supabase()
+        if not sb:
+            logger.error("Failed to initialize Supabase client")
+            return jsonify({
+                'success': False,
+                'error': 'Database connection failed',
+                'message': 'Could not initialize Supabase client'
+            }), 500
+        
+        # 创建或获取 QueryExecutor（需要传入 Supabase 客户端）
+        query_executor = QueryExecutor(sb)
+        
         # 执行查询
-        result = executor.execute_query(sql)
+        result = query_executor.execute_query(sql)
         
         return jsonify(result), 200 if result['success'] else 500
         
@@ -171,8 +184,18 @@ def nl_execute():
                 'error': 'Failed to convert natural language to SQL'
             }), 500
         
-        # 第二步：执行查询
-        result = executor.execute_query(sql)
+        # 获取 Supabase 客户端
+        sb = get_supabase()
+        if not sb:
+            logger.error("Failed to initialize Supabase client for nl-execute")
+            return jsonify({
+                'success': False,
+                'error': 'Database connection failed'
+            }), 500
+        
+        # 第二步：执行查询 - 创建 QueryExecutor 实例
+        query_executor = QueryExecutor(sb)
+        result = query_executor.execute_query(sql)
         
         # 添加生成的 SQL 信息
         result['sql'] = sql
