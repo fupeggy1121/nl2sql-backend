@@ -5,6 +5,7 @@
 from flask import Blueprint, request, jsonify
 from app.services.nl2sql import NL2SQLConverter
 from app.services.query_executor import QueryExecutor
+from app.services.intent_recognizer import get_intent_recognizer
 import logging
 
 bp = Blueprint('query', __name__, url_prefix='/api/query')
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 converter = NL2SQLConverter()
 executor = None  # 延迟初始化 - 需要传入 Supabase 客户端
 supabase = None  # 延迟初始化
+intent_recognizer = None  # 延迟初始化
 
 def get_supabase():
     """获取或初始化 Supabase 客户端"""
@@ -22,6 +24,14 @@ def get_supabase():
         from app.services.supabase_client import get_supabase_client
         supabase = get_supabase_client()
     return supabase
+
+def get_intent_recognizer_instance():
+    """获取或初始化意图识别器"""
+    global intent_recognizer
+    if intent_recognizer is None:
+        # 如果有 LLM 提供者，将其传入
+        intent_recognizer = get_intent_recognizer(llm_provider=converter.llm_provider)
+    return intent_recognizer
 
 @bp.route('/nl-to-sql', methods=['POST'])
 def convert_nl_to_sql():
@@ -382,4 +392,77 @@ def check_supabase_connection():
         return jsonify({
             'success': False,
             'error': str(e)
+        }), 500
+
+@bp.route('/recognize-intent', methods=['POST'])
+def recognize_intent():
+    """
+    识别用户查询意图 - 混合规则 + LLM 方式
+    
+    支持的意图类型:
+    - direct_query: 直接查询表数据
+    - query_production: 查询生产数据
+    - query_quality: 查询质量数据
+    - query_equipment: 查询设备数据
+    - generate_report: 生成报表
+    - compare_analysis: 对比分析
+    
+    请求体:
+        {
+            "query": "查询今天的产量"
+        }
+    
+    返回:
+        {
+            "success": true,
+            "intent": "query_production",
+            "confidence": 0.92,
+            "entities": {
+                "timeRange": "today"
+            },
+            "clarifications": ["请指定具体的产品线"],
+            "methodsUsed": ["rule", "llm"],
+            "reasoning": "用户查询今天的生产数据"
+        }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'query' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required field: query'
+            }), 400
+        
+        query = data['query'].strip()
+        
+        if not query:
+            return jsonify({
+                'success': False,
+                'error': 'Query cannot be empty'
+            }), 400
+        
+        # 获取意图识别器
+        recognizer = get_intent_recognizer_instance()
+        
+        # 识别意图
+        result = recognizer.recognize(query)
+        
+        if not result.get('success', False):
+            logger.error(f"Intent recognition failed: {result.get('error')}")
+            return jsonify(result), 500
+        
+        logger.info(f"Intent recognized: {result['intent']} "
+                   f"(confidence: {result['confidence']:.2f}, "
+                   f"methods: {result['methodsUsed']})")
+        
+        return jsonify(result), 200
+        
+    except Exception as e:
+        logger.error(f"Error in recognize_intent: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'intent': 'other',
+            'confidence': 0.0
         }), 500
