@@ -47,7 +47,8 @@ class SupabaseClient:
             logger.info(f"Initializing Supabase with URL: {self.url[:50]}...")
             logger.info(f"Key length: {len(self.key)}")
             
-            self.client = create_client(self.url, self.key)
+            # Supabase 2.3.4 使用命名参数
+            self.client = create_client(supabase_url=self.url, supabase_key=self.key)
             logger.info(f"✅ Supabase client initialized successfully")
             self.init_error = None
         except TypeError as e:
