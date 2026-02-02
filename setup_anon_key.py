@@ -401,32 +401,12 @@ def main():
             if result['error']:
                 print_error(f"错误: {result['error']}")
             
+            # 显示完整的诊断信息
             if result['response']:
-                print("\n📋 详细信息:")
-                print(f"  service: {result['response'].get('service', 'N/A')}")
-                if 'diagnosis' in result['response']:
-                    diagnosis = result['response']['diagnosis']
-                    print(f"\n🔍 诊断信息:")
-                    for key, value in diagnosis.items():
-                        if key.startswith('supabase'):
-                            # 突出显示 Supabase 相关的信息
-                            if value in ['YES', 'NO']:
-                                emoji = '✅' if value == 'YES' else '❌'
-                                print(f"  {emoji} {key}: {value}")
-                            else:
-                                print(f"  {key}: {value}")
-                        elif key.startswith('connection'):
-                            print(f"  {key}: {value}")
-                        elif key.startswith('db'):
-                            print(f"  {key}: {value}")
-                        elif key == 'warning':
-                            print(f"  ⚠️  {value}")
-                    
-                    # 添加具体的问题指示
-                    if diagnosis.get('supabase_url_set') == 'NO':
-                        print("\n  ⚠️  SUPABASE_URL 未设置")
-                    if diagnosis.get('supabase_key_set') == 'NO':
-                        print("  ⚠️  SUPABASE_ANON_KEY 未设置")
+                print("\n📋 完整响应:")
+                print(json.dumps(result['response'], indent=2, ensure_ascii=False))
+            
+            print("\n" + "="*60)
             
             if result['connected']:
                 print_header("✅ Render 配置有效")
@@ -434,43 +414,51 @@ def main():
             else:
                 print_header("❌ Render 配置有问题")
                 
-                # 根据不同的错误提供诊断
-                if result['error']:
-                    if "连接超时" in result['error']:
-                        print("\n⚠️  连接超时")
-                        print("可能的原因:")
-                        print("1. Render URL 错误")
-                        print("2. Render 服务未启动（冷启动需要时间）")
-                        print("3. 网络连接问题")
-                        print("\n💡 解决方案: 请等待 30 秒后重新尝试")
-                    elif "无法连接" in result['error']:
-                        print("\n⚠️  无法连接到 Render")
-                        print("可能的原因:")
-                        print("1. Render URL 不正确")
-                        print("2. 后端服务已停止")
+                # 从诊断信息中提取问题
+                if result['response'] and 'diagnosis' in result['response']:
+                    diagnosis = result['response']['diagnosis']
+                    
+                    # 检查具体的配置状态
+                    url_set = diagnosis.get('supabase_url_set', '?')
+                    key_set = diagnosis.get('supabase_key_set', '?')
+                    
+                    print(f"\n环境变量状态:")
+                    print(f"  SUPABASE_URL: {'✅ 已设置' if url_set == 'YES' else '❌ 未设置'}")
+                    print(f"  SUPABASE_ANON_KEY: {'✅ 已设置' if key_set == 'YES' else '❌ 未设置'}")
+                    
+                    # 显示连接状态
+                    conn_status = diagnosis.get('connection_status')
+                    if conn_status:
+                        print(f"\n连接状态:")
+                        print(f"  {conn_status}")
+                    
+                    # 显示错误信息
+                    if result['response'].get('error'):
+                        print(f"\n错误详情:")
+                        print(f"  {result['response']['error']}")
+                    
+                    # 提供解决方案
+                    if url_set == 'NO' or key_set == 'NO':
+                        print("\n⚠️  缺少必要的环境变量")
                         print("\n💡 解决方案:")
-                        print("1. 检查 Render URL 是否正确")
-                        print("2. 在 Render Dashboard 中检查服务状态")
+                        print("1. 运行: .venv/bin/python setup_anon_key.py --render-env")
+                        print("2. 在 Render Dashboard 添加缺失的环境变量")
+                        print("3. 点击 Manual Deploy 重新部署")
                     else:
-                        print(f"\n⚠️  错误: {result['error']}")
-                elif result['backend_healthy']:
-                    # 后端在线但 Supabase 未连接
-                    print("\n✅ 后端在线，但 Supabase 未连接")
-                    print("\n⚠️  可能的原因:")
-                    print("1. SUPABASE_URL 未设置或格式错误")
-                    print("2. SUPABASE_ANON_KEY 未设置或格式错误")
-                    print("3. Supabase 密钥已过期或被重新生成")
-                    print("\n💡 解决方案:")
-                    print("1. 运行: .venv/bin/python setup_anon_key.py --render-env")
-                    print("2. 在 Render Dashboard 更新环境变量:")
-                    print("   - SUPABASE_URL")
-                    print("   - SUPABASE_ANON_KEY")
-                    print("3. 点击 Manual Deploy 重新部署")
-                    print("4. 等待 1-2 分钟部署完成")
-                    print("5. 再次运行此命令验证")
-                else:
-                    print("\n⚠️  后端离线或不健康")
-                    print("在 Render Dashboard 检查服务日志")
+                        print("\n⚠️  环境变量已设置，但连接失败")
+                        print("\n💡 可能的原因:")
+                        print("1. 密钥格式不正确")
+                        print("2. Supabase 项目已删除或暂停")
+                        print("3. 密钥已被重新生成")
+                        print("\n解决方案:")
+                        print("1. 在 Supabase Dashboard 验证密钥是否仍有效")
+                        print("2. 如果需要，重新生成密钥")
+                        print("3. 更新 Render 环境变量")
+                        print("4. 点击 Manual Deploy 重新部署")
+                elif result['error']:
+                    print(f"\n连接错误: {result['error']}")
+                    if "连接超时" in result['error']:
+                        print("\n💡 可能是 Render 冷启动，请等待后重试")
         else:
             # 默认交互模式
             skill.setup_interactive()
