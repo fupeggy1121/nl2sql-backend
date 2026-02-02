@@ -18,10 +18,15 @@ import sys
 import json
 import re
 import argparse
+import logging
 from typing import Dict, Tuple, Optional
 from pathlib import Path
 from dotenv import load_dotenv, set_key
 import requests
+
+# 配置日志
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+logger = logging.getLogger(__name__)
 
 # 颜色输出
 class Colors:
@@ -397,33 +402,67 @@ def main():
                 print_error(f"错误: {result['error']}")
             
             if result['response']:
-                print("\n详细信息:")
+                print("\n📋 详细信息:")
                 print(f"  service: {result['response'].get('service', 'N/A')}")
                 if 'diagnosis' in result['response']:
                     diagnosis = result['response']['diagnosis']
-                    print(f"\n  诊断信息:")
+                    print(f"\n🔍 诊断信息:")
                     for key, value in diagnosis.items():
-                        print(f"    {key}: {value}")
+                        if key.startswith('supabase'):
+                            # 突出显示 Supabase 相关的信息
+                            print(f"  {key}: {value}")
+                        elif key.startswith('db'):
+                            print(f"  {key}: {value}")
+                    
+                    # 添加具体的问题指示
+                    if diagnosis.get('supabase_url_set') == 'NO':
+                        print("\n  ⚠️  SUPABASE_URL 未设置")
+                    if diagnosis.get('supabase_key_set') == 'NO':
+                        print("  ⚠️  SUPABASE_ANON_KEY 未设置")
             
             if result['connected']:
                 print_header("✅ Render 配置有效")
-                print("Supabase 已连接，可以正常使用")
+                print("Supabase 已连接，可以正常使用。")
             else:
                 print_header("❌ Render 配置有问题")
+                
+                # 根据不同的错误提供诊断
                 if result['error']:
-                    print(f"错误: {result['error']}")
-                    print("\n可能的原因:")
                     if "连接超时" in result['error']:
+                        print("\n⚠️  连接超时")
+                        print("可能的原因:")
                         print("1. Render URL 错误")
-                        print("2. Render 服务未启动")
+                        print("2. Render 服务未启动（冷启动需要时间）")
                         print("3. 网络连接问题")
+                        print("\n💡 解决方案: 请等待 30 秒后重新尝试")
                     elif "无法连接" in result['error']:
-                        print("1. 检查网络连接")
-                        print("2. 确认 Render URL 正确")
+                        print("\n⚠️  无法连接到 Render")
+                        print("可能的原因:")
+                        print("1. Render URL 不正确")
+                        print("2. 后端服务已停止")
+                        print("\n💡 解决方案:")
+                        print("1. 检查 Render URL 是否正确")
+                        print("2. 在 Render Dashboard 中检查服务状态")
                     else:
-                        print("1. 检查 SUPABASE_URL 是否设置")
-                        print("2. 检查 SUPABASE_ANON_KEY 是否设置")
-                        print("3. 检查认证信息是否正确")
+                        print(f"\n⚠️  错误: {result['error']}")
+                elif result['backend_healthy']:
+                    # 后端在线但 Supabase 未连接
+                    print("\n✅ 后端在线，但 Supabase 未连接")
+                    print("\n⚠️  可能的原因:")
+                    print("1. SUPABASE_URL 未设置或格式错误")
+                    print("2. SUPABASE_ANON_KEY 未设置或格式错误")
+                    print("3. Supabase 密钥已过期或被重新生成")
+                    print("\n💡 解决方案:")
+                    print("1. 运行: .venv/bin/python setup_anon_key.py --render-env")
+                    print("2. 在 Render Dashboard 更新环境变量:")
+                    print("   - SUPABASE_URL")
+                    print("   - SUPABASE_ANON_KEY")
+                    print("3. 点击 Manual Deploy 重新部署")
+                    print("4. 等待 1-2 分钟部署完成")
+                    print("5. 再次运行此命令验证")
+                else:
+                    print("\n⚠️  后端离线或不健康")
+                    print("在 Render Dashboard 检查服务日志")
         else:
             # 默认交互模式
             skill.setup_interactive()

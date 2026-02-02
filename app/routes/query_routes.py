@@ -204,16 +204,25 @@ def health_check():
         db_status = 'disconnected'
         db_error = str(e)
     
-    # 诊断信息
+    # 诊断信息 - 显示 Supabase 配置
+    supabase_url = os.getenv('SUPABASE_URL', 'NOT SET')
+    supabase_key = os.getenv('SUPABASE_ANON_KEY', 'NOT SET')
+    
     diagnosis = {
-        'db_host': os.getenv('DB_HOST', 'NOT SET'),
-        'db_port': os.getenv('DB_PORT', 'NOT SET'),
-        'db_user': os.getenv('DB_USER', 'NOT SET'),
-        'db_name': os.getenv('DB_NAME', 'NOT SET'),
+        'supabase_url_set': 'YES' if supabase_url != 'NOT SET' else 'NO',
+        'supabase_key_set': 'YES' if supabase_key != 'NOT SET' else 'NO',
+        'supabase_url_value': supabase_url if supabase_url == 'NOT SET' else f"{supabase_url[:30]}..." if len(supabase_url) > 30 else supabase_url,
+        'supabase_key_length': len(supabase_key) if supabase_key != 'NOT SET' else 0,
     }
     
-    # 隐藏敏感信息
-    diagnosis['db_password'] = '***' if os.getenv('DB_PASSWORD') else 'NOT SET'
+    # 如果有数据库直接连接信息，也显示
+    if os.getenv('DB_HOST'):
+        diagnosis.update({
+            'db_host': os.getenv('DB_HOST', 'NOT SET'),
+            'db_port': os.getenv('DB_PORT', 'NOT SET'),
+            'db_user': os.getenv('DB_USER', 'NOT SET'),
+            'db_name': os.getenv('DB_NAME', 'NOT SET'),
+        })
     
     return jsonify({
         'status': 'healthy',
