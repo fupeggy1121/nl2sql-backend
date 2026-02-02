@@ -27,36 +27,53 @@ class SupabaseClient:
         self.url = os.getenv('SUPABASE_URL')
         self.key = os.getenv('SUPABASE_ANON_KEY')
         self.client: Optional[Client] = None
+        self.init_error: Optional[str] = None  # 保存初始化错误
         self._connect()
     
     def _connect(self):
         """初始化 Supabase 连接"""
         if not SUPABASE_SDK_AVAILABLE:
-            logger.error("❌ supabase-py SDK not available")
+            self.init_error = "supabase-py SDK not available. Run: pip install supabase"
+            logger.error(f"❌ {self.init_error}")
             return
         
         if not self.url or not self.key:
-            logger.error("❌ Missing SUPABASE_URL or SUPABASE_ANON_KEY")
+            self.init_error = "Missing SUPABASE_URL or SUPABASE_ANON_KEY"
+            logger.error(f"❌ {self.init_error}")
             return
         
         try:
+            # 详细的初始化调试信息
+            logger.info(f"Initializing Supabase with URL: {self.url[:50]}...")
+            logger.info(f"Key length: {len(self.key)}")
+            
             self.client = create_client(self.url, self.key)
-            logger.info(f"✅ Supabase client initialized")
+            logger.info(f"✅ Supabase client initialized successfully")
+            self.init_error = None
+        except TypeError as e:
+            self.init_error = f"TypeError: {str(e)} - check URL and key format"
+            logger.error(f"❌ TypeError during Supabase init: {self.init_error}")
+            self.client = None
         except Exception as e:
-            logger.error(f"❌ Failed to initialize Supabase: {str(e)}")
+            self.init_error = f"{type(e).__name__}: {str(e)}"
+            logger.error(f"❌ Failed to initialize Supabase: {self.init_error}")
             self.client = None
     
     def is_connected(self) -> bool:
         """检查连接状态"""
         if not self.client:
+            logger.warning(f"Client is None. Init error: {self.init_error}")
             return False
         
         try:
-            # 通过查询系统表来验证连接
-            response = self.client.table('pg_tables').select('*').limit(1).execute()
+            # 通过查询 users 表来验证连接
+            response = self.client.table('users').select('id').limit(1).execute()
+            logger.info(f"✅ Connection test successful")
             return True
         except Exception as e:
-            logger.warning(f"Connection check failed: {str(e)}")
+            error_msg = str(e)
+            logger.warning(f"❌ Connection check failed: {error_msg}")
+            self.init_error = f"Connection test failed: {error_msg}"
             return False
     
     def execute_query(self, sql: str, table_name: str = None) -> Dict[str, Any]:
