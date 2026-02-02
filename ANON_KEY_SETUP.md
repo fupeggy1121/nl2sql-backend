@@ -1,4 +1,4 @@
-# 使用 SUPABASE_ANON_KEY 配置（推荐）
+.venv/bin/python setup_anon_key.py --verify-render nl2sql-backend-amok.onrender.com# 使用 SUPABASE_ANON_KEY 配置（推荐）
 
 ## 说明
 
