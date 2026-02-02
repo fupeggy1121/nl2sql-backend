@@ -21,22 +21,32 @@ def create_app(config_name='development'):
     # 加载配置
     app.config.from_object(config[config_name])
     
-    # 启用 CORS - 允许 Bolt.new WebContainer 和本地开发
-    CORS(app, resources={
-        r"/api/*": {
-            "origins": [
-                "https://bolt.new",
-                "https://*.bolt.new",
-                "http://localhost:*",
-                "http://127.0.0.1:*",
-                "http://192.168.2.13:*",
-                "https://*.local-credentialless.webcontainer-api.io",  # Bolt.new WebContainer
-                "https://*.webcontainer-api.io",  # Bolt.new WebContainer fallback
-            ],
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"]
-        }
-    })
+    # 启用 CORS - 允许所有来源（开发环境）
+    # 生产环境应该限制为特定域名
+    if app.config.get('ENV') == 'production':
+        # 生产环境：仅允许特定域名
+        CORS(app, resources={
+            r"/api/*": {
+                "origins": [
+                    "https://bolt.new",
+                    "https://*.bolt.new",
+                    "https://*.local-credentialless.webcontainer-api.io",
+                    "https://*.webcontainer-api.io",
+                ],
+                "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                "allow_headers": ["Content-Type", "Authorization"],
+                "supports_credentials": True
+            }
+        })
+    else:
+        # 开发环境：允许所有来源
+        CORS(app, resources={
+            r"/api/*": {
+                "origins": "*",
+                "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+                "allow_headers": ["Content-Type", "Authorization"]
+            }
+        })
     
     # 设置日志
     setup_logging()
