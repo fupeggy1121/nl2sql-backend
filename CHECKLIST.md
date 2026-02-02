@@ -208,3 +208,13 @@ curl -s https://nl2sql-backend-amok.onrender.com/api/query/health | python -m js
 ---
 
 **开始行动吧！** 祝你一切顺利 🎉
+
+---
+
+import os
+from supabase import create_client, Client
+
+supabase_url = os.getenv('SUPABASE_URL')
+supabase_key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_ANON_KEY')
+
+client = create_client(supabase_url, supabase_key)

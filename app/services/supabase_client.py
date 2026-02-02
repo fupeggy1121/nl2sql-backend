@@ -1,98 +1,104 @@
 """
-Supabase 数据库客户端
-支持通过 PostgreSQL 连接查询 Supabase
+Supabase 客户端
+使用 Supabase SDK + PostgREST API
+无需数据库密码，只需 SUPABASE_URL 和 SUPABASE_ANON_KEY
 """
 import os
 import logging
-from typing import List, Dict, Any, Optional
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+try:
+    from supabase import create_client, Client
+    SUPABASE_SDK_AVAILABLE = True
+except ImportError:
+    SUPABASE_SDK_AVAILABLE = False
+    logger.warning("⚠️  supabase-py not installed. Run: pip install supabase")
+
 
 class SupabaseClient:
-    """Supabase PostgreSQL 数据库客户端"""
+    """Supabase 客户端 - 使用官方 SDK"""
     
     def __init__(self):
-        """初始化 Supabase 连接"""
-        self.host = os.getenv('DB_HOST')
-        self.port = int(os.getenv('DB_PORT', 5432))
-        self.user = os.getenv('DB_USER')
-        self.password = os.getenv('DB_PASSWORD')
-        self.database = os.getenv('DB_NAME')
-        self.connection = None
+        """初始化 Supabase 客户端"""
+        self.url = os.getenv('SUPABASE_URL')
+        self.key = os.getenv('SUPABASE_ANON_KEY')
+        self.client: Optional[Client] = None
         self._connect()
     
     def _connect(self):
-        """建立数据库连接"""
+        """初始化 Supabase 连接"""
+        if not SUPABASE_SDK_AVAILABLE:
+            logger.error("❌ supabase-py SDK not available")
+            return
+        
+        if not self.url or not self.key:
+            logger.error("❌ Missing SUPABASE_URL or SUPABASE_ANON_KEY")
+            return
+        
         try:
-            self.connection = psycopg2.connect(
-                host=self.host,
-                port=self.port,
-                user=self.user,
-                password=self.password,
-                database=self.database,
-                connect_timeout=10
-            )
-            logger.info(f"✅ Supabase connected successfully")
-        except psycopg2.Error as e:
-            logger.error(f"❌ Failed to connect to Supabase: {str(e)}")
-            self.connection = None
+            self.client = create_client(self.url, self.key)
+            logger.info(f"✅ Supabase client initialized")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Supabase: {str(e)}")
+            self.client = None
     
     def is_connected(self) -> bool:
         """检查连接状态"""
-        if self.connection is None:
+        if not self.client:
             return False
+        
         try:
-            cursor = self.connection.cursor()
-            cursor.execute('SELECT 1')
-            cursor.close()
+            # 通过查询系统表来验证连接
+            response = self.client.table('pg_tables').select('*').limit(1).execute()
             return True
-        except:
+        except Exception as e:
+            logger.warning(f"Connection check failed: {str(e)}")
             return False
     
-    def execute_query(self, sql: str) -> Dict[str, Any]:
+    def execute_query(self, sql: str, table_name: str = None) -> Dict[str, Any]:
         """
-        执行 SELECT 查询
+        执行查询 - 使用 PostgREST API
         
         Args:
-            sql: SQL 查询语句
+            sql: SQL 查询语句（作为注释/参考）
+            table_name: 表名（必需）
             
         Returns:
-            查询结果和元数据
+            查询结果
         """
         try:
-            if not self.is_connected():
-                self._connect()
-            
-            if not self.connection:
+            if not self.client:
                 return {
                     'success': False,
-                    'error': 'Database connection failed',
+                    'error': 'Supabase not connected',
                     'data': []
                 }
             
-            cursor = self.connection.cursor(cursor_factory=RealDictCursor)
-            cursor.execute(sql)
-            rows = cursor.fetchall()
-            cursor.close()
+            # 对于简单查询，直接从表中读取
+            if table_name:
+                response = self.client.table(table_name).select('*').execute()
+                data = response.data
+                
+                logger.info(f"✅ Query executed: {len(data)} rows returned from {table_name}")
+                
+                return {
+                    'success': True,
+                    'data': data,
+                    'count': len(data),
+                    'message': f'成功返回 {len(data)} 条记录'
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': 'table_name is required for PostgREST queries',
+                    'data': []
+                }
             
-            # Convert psycopg2 RealDictRow to regular dict
-            data = [dict(row) for row in rows]
-            
-            logger.info(f"✅ Query executed: {len(data)} rows returned")
-            
-            return {
-                'success': True,
-                'data': data,
-                'count': len(data),
-                'message': f'成功返回 {len(data)} 条记录'
-            }
-            
-        except psycopg2.Error as e:
+        except Exception as e:
             error_msg = str(e)
             logger.error(f"❌ Query execution failed: {error_msg}")
             return {
@@ -100,104 +106,82 @@ class SupabaseClient:
                 'error': error_msg,
                 'data': []
             }
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"❌ Unexpected error: {error_msg}")
-            return {
-                'success': False,
-                'error': error_msg,
-                'data': []
-            }
     
-    def execute_write(self, sql: str) -> Dict[str, Any]:
+    def execute_write(self, table_name: str, data: Dict[str, Any], operation: str = 'insert') -> Dict[str, Any]:
         """
         执行写操作（INSERT, UPDATE, DELETE）
         
         Args:
-            sql: SQL 写入语句
+            table_name: 表名
+            data: 数据字典
+            operation: 操作类型 (insert, update, delete)
             
         Returns:
             操作结果
         """
         try:
-            if not self.is_connected():
-                self._connect()
-            
-            if not self.connection:
+            if not self.client:
                 return {
                     'success': False,
-                    'error': 'Database connection failed'
+                    'error': 'Supabase not connected'
                 }
             
-            cursor = self.connection.cursor()
-            cursor.execute(sql)
-            affected_rows = cursor.rowcount
-            self.connection.commit()
-            cursor.close()
+            table = self.client.table(table_name)
             
-            logger.info(f"✅ Write operation successful: {affected_rows} rows affected")
+            if operation == 'insert':
+                response = table.insert(data).execute()
+            elif operation == 'update':
+                response = table.update(data).execute()
+            elif operation == 'delete':
+                response = table.delete().execute()
+            else:
+                return {
+                    'success': False,
+                    'error': f'Unknown operation: {operation}'
+                }
+            
+            logger.info(f"✅ {operation} operation successful")
             
             return {
                 'success': True,
-                'affected_rows': affected_rows,
-                'message': f'成功影响 {affected_rows} 条记录'
+                'data': response.data,
+                'message': f'{operation} 操作成功'
             }
             
-        except psycopg2.Error as e:
+        except Exception as e:
             error_msg = str(e)
             logger.error(f"❌ Write operation failed: {error_msg}")
-            self.connection.rollback() if self.connection else None
             return {
                 'success': False,
                 'error': error_msg
             }
     
-    def get_schema_info(self, table_name: Optional[str] = None) -> Dict[str, Any]:
+    def get_tables(self) -> Dict[str, Any]:
         """
-        获取数据库表的 schema 信息
+        获取所有表的列表
         
-        Args:
-            table_name: 表名（可选，不指定则返回所有表）
-            
         Returns:
-            表信息
+            表信息列表
         """
         try:
-            if not self.is_connected():
-                self._connect()
+            if not self.client:
+                return {
+                    'success': False,
+                    'error': 'Supabase not connected',
+                    'data': []
+                }
             
-            cursor = self.connection.cursor(cursor_factory=RealDictCursor)
-            
-            if table_name:
-                # 获取特定表的列信息
-                sql = f"""
-                    SELECT column_name, data_type, is_nullable
-                    FROM information_schema.columns
-                    WHERE table_name = %s
-                    ORDER BY ordinal_position
-                """
-                cursor.execute(sql, (table_name,))
-            else:
-                # 获取所有用户表
-                sql = """
-                    SELECT table_name
-                    FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                    AND table_type = 'BASE TABLE'
-                    ORDER BY table_name
-                """
-                cursor.execute(sql)
-            
-            rows = cursor.fetchall()
-            cursor.close()
+            # 查询 information_schema.tables
+            response = self.client.table('information_schema.tables').select('*').execute()
+            tables = [row['table_name'] for row in response.data if row.get('table_schema') == 'public']
             
             return {
                 'success': True,
-                'data': [dict(row) for row in rows]
+                'data': tables
             }
             
         except Exception as e:
-            logger.error(f"Failed to get schema info: {str(e)}")
+            logger.error(f"Failed to get tables: {str(e)}")
             return {
                 'success': False,
                 'error': str(e),
@@ -205,10 +189,8 @@ class SupabaseClient:
             }
     
     def close(self):
-        """关闭数据库连接"""
-        if self.connection:
-            self.connection.close()
-            logger.info("Database connection closed")
+        """关闭连接"""
+        logger.info("Supabase connection closed")
 
 
 # 全局 Supabase 客户端实例

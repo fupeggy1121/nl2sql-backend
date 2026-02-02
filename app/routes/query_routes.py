@@ -188,17 +188,39 @@ def nl_execute():
 
 @bp.route('/health', methods=['GET'])
 def health_check():
-    """健康检查端点"""
+    """
+    健康检查端点 - 返回详细诊断信息
+    """
+    import os
+    
     try:
         sb = get_supabase()
-        supabase_connected = sb.is_connected()
+        db_connected = sb is not None and sb.is_connected()
+        db_status = 'connected' if db_connected else 'disconnected'
+        db_error = None
     except Exception as e:
-        logger.warning(f"Supabase health check failed: {str(e)}")
-        supabase_connected = False
+        logger.warning(f"Database health check failed: {str(e)}")
+        db_connected = False
+        db_status = 'disconnected'
+        db_error = str(e)
+    
+    # 诊断信息
+    diagnosis = {
+        'db_host': os.getenv('DB_HOST', 'NOT SET'),
+        'db_port': os.getenv('DB_PORT', 'NOT SET'),
+        'db_user': os.getenv('DB_USER', 'NOT SET'),
+        'db_name': os.getenv('DB_NAME', 'NOT SET'),
+    }
+    
+    # 隐藏敏感信息
+    diagnosis['db_password'] = '***' if os.getenv('DB_PASSWORD') else 'NOT SET'
+    
     return jsonify({
         'status': 'healthy',
         'service': 'NL2SQL Report Backend',
-        'supabase': 'connected' if supabase_connected else 'disconnected'
+        'supabase': db_status,
+        'error': db_error,
+        'diagnosis': diagnosis
     }), 200
 
 @bp.route('/nl-execute-supabase', methods=['POST'])
