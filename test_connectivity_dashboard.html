@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NL2SQL 服务联通性测试仪表板</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+
+        .card h2 {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card .icon {
+            font-size: 1.5em;
+        }
+
+        .test-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .test-item:last-child {
+            border-bottom: none;
+        }
+
+        .test-item .label {
+            font-size: 0.95em;
+            color: #555;
+        }
+
+        .test-item .status {
+            font-weight: bold;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+        }
+
+        .status.pass {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .status.fail {
+            background: #f44336;
+            color: white;
+        }
+
+        .status.pending {
+            background: #FF9800;
+            color: white;
+        }
+
+        .status.loading {
+            background: #2196F3;
+            color: white;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background: white;
+            color: #667eea;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 3px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-box {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .stat-box .number {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .stat-box .label {
+            color: #999;
+            font-size: 0.95em;
+        }
+
+        .log-panel {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-top: 30px;
+        }
+
+        .log-panel h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+
+        .log-content {
+            background: #f5f5f5;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            max-height: 300px;
+            overflow-y: auto;
+            line-height: 1.5;
+        }
+
+        .log-item {
+            padding: 5px 0;
+            display: flex;
+            gap: 10px;
+        }
+
+        .log-item .time {
+            color: #999;
+            min-width: 100px;
+        }
+
+        .log-item .message {
+            flex: 1;
+            color: #333;
+        }
+
+        .log-item.success .message {
+            color: #4CAF50;
+        }
+
+        .log-item.error .message {
+            color: #f44336;
+        }
+
+        .log-item.warning .message {
+            color: #FF9800;
+        }
+
+        .log-item.info .message {
+            color: #2196F3;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .stats {
+                grid-template-columns: 1fr;
+            }
+
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .alert {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .alert.success {
+            background: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+
+        .alert.error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 标题 -->
+        <div class="header">
+            <h1>🔍 NL2SQL 服务联通性测试</h1>
+            <p>实时监控后端、数据库和前端通信状态</p>
+        </div>
+
+        <!-- 统计信息 -->
+        <div class="stats">
+            <div class="stat-box">
+                <div class="number" id="total-tests">0</div>
+                <div class="label">总测试数</div>
+            </div>
+            <div class="stat-box">
+                <div class="number" id="passed-tests">0</div>
+                <div class="label">通过</div>
+            </div>
+            <div class="stat-box">
+                <div class="number" id="success-rate">0%</div>
+                <div class="label">成功率</div>
+            </div>
+        </div>
+
+        <!-- 控制按钮 -->
+        <div class="controls">
+            <button class="btn btn-primary" onclick="testBackendHealth()" id="btn-backend">
+                <span class="spinner" id="spinner-backend" style="display: none;"></span>
+                🔌 测试后端连接
+            </button>
+            <button class="btn btn-primary" onclick="testNL2SQL()" id="btn-nl2sql">
+                🗣️ 测试NL2SQL
+            </button>
+            <button class="btn btn-primary" onclick="testDatabase()" id="btn-db">
+                🗄️ 测试数据库
+            </button>
+            <button class="btn btn-primary" onclick="runAllTests()" id="btn-all">
+                ▶️ 运行全部测试
+            </button>
+            <button class="btn btn-primary" onclick="clearLogs()" id="btn-clear">
+                🗑️ 清空日志
+            </button>
+        </div>
+
+        <!-- 测试面板 -->
+        <div class="dashboard">
+            <!-- 后端测试 -->
+            <div class="card">
+                <h2><span class="icon">🔌</span> 后端服务</h2>
+                <div class="test-item">
+                    <span class="label">健康检查</span>
+                    <span class="status pending" id="status-health">待测</span>
+                </div>
+                <div class="test-item">
+                    <span class="label">API响应</span>
+                    <span class="status pending" id="status-api">待测</span>
+                </div>
+                <div class="test-item">
+                    <span class="label">错误处理</span>
+                    <span class="status pending" id="status-error">待测</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-backend"></div>
+                </div>
+            </div>
+
+            <!-- NL2SQL测试 -->
+            <div class="card">
+                <h2><span class="icon">🗣️</span> NL2SQL转换</h2>
+                <div class="test-item">
+                    <span class="label">查询转换</span>
+                    <span class="status pending" id="status-conversion">待测</span>
+                </div>
+                <div class="test-item">
+                    <span class="label">SQL生成</span>
+                    <span class="status pending" id="status-sql">待测</span>
+                </div>
+                <div class="test-item">
+                    <span class="label">精度评估</span>
+                    <span class="status pending" id="status-accuracy">待测</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-nl2sql"></div>
+                </div>
+            </div>
+
+            <!-- 数据库测试 -->
+            <div class="card">
+                <h2><span class="icon">🗄️</span> 数据库连接</h2>
+                <div class="test-item">
+                    <span class="label">Supabase连接</span>
+                    <span class="status pending" id="status-supabase">待测</span>
+                </div>
+                <div class="test-item">
+                    <span class="label">查询执行</span>
+                    <span class="status pending" id="status-query">待测</span>
+                </div>
+                <div class="test-item">
+                    <span class="label">数据返回</span>
+                    <span class="status pending" id="status-data">待测</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-db"></div>
+                </div>
+            </div>
+
+            <!-- 网络测试 -->
+            <div class="card">
+                <h2><span class="icon">🌐</span> 网络性能</h2>
+                <div class="test-item">
+                    <span class="label">连接延迟</span>
+                    <span class="status pending" id="status-latency">待测</span>
+                </div>
+                <div class="test-item">
+                    <span class="label">CORS配置</span>
+                    <span class="status pending" id="status-cors">待测</span>
+                </div>
+                <div class="test-item">
+                    <span class="label">带宽测试</span>
+                    <span class="status pending" id="status-bandwidth">待测</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-network"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 日志面板 -->
+        <div class="log-panel">
+            <h3>📋 测试日志</h3>
+            <div class="log-content" id="log-content">
+                <div class="log-item info">
+                    <span class="time">[初始化]</span>
+                    <span class="message">等待测试开始...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000';
+        const logs = [];
+        let testCount = 0;
+        let passCount = 0;
+
+        function addLog(type, message) {
+            const time = new Date().toLocaleTimeString();
+            logs.push({ type, time, message });
+            
+            const logContent = document.getElementById('log-content');
+            const logItem = document.createElement('div');
+            logItem.className = `log-item ${type}`;
+            logItem.innerHTML = `
+                <span class="time">[${time}]</span>
+                <span class="message">${escapeHtml(message)}</span>
+            `;
+            logContent.appendChild(logItem);
+            logContent.scrollTop = logContent.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function updateStatus(elementId, status, pass) {
+            const element = document.getElementById(elementId);
+            element.className = `status ${status}`;
+            element.textContent = status === 'pass' ? '✅ 通过' : status === 'fail' ? '❌ 失败' : status === 'loading' ? '⏳ 测试中' : '⏳ 待测';
+            
+            if (status !== 'pending' && status !== 'loading') {
+                testCount++;
+                if (pass) passCount++;
+                updateStats();
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('total-tests').textContent = testCount;
+            document.getElementById('passed-tests').textContent = passCount;
+            document.getElementById('success-rate').textContent = testCount > 0 ? 
+                Math.round((passCount / testCount) * 100) + '%' : '0%';
+        }
+
+        async function testBackendHealth() {
+            addLog('info', '开始测试后端健康状态...');
+            updateStatus('status-health', 'loading');
+
+            try {
+                const response = await fetch(`${API_URL}/api/query/health`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addLog('success', `✅ 后端健康检查通过: ${data.status}`);
+                    updateStatus('status-health', 'pass', true);
+                } else {
+                    addLog('error', `❌ 后端响应异常`);
+                    updateStatus('status-health', 'fail', false);
+                }
+            } catch (error) {
+                addLog('error', `❌ 后端连接失败: ${error.message}`);
+                updateStatus('status-health', 'fail', false);
+            }
+        }
+
+        async function testNL2SQL() {
+            addLog('info', '开始测试NL2SQL转换...');
+            updateStatus('status-conversion', 'loading');
+
+            try {
+                const response = await fetch(`${API_URL}/api/query/nl-to-sql`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ natural_language: '查询wafers表' })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    addLog('success', `✅ NL2SQL转换成功: ${data.sql}`);
+                    updateStatus('status-conversion', 'pass', true);
+                } else {
+                    addLog('error', `❌ NL2SQL转换失败`);
+                    updateStatus('status-conversion', 'fail', false);
+                }
+            } catch (error) {
+                addLog('error', `❌ NL2SQL测试出错: ${error.message}`);
+                updateStatus('status-conversion', 'fail', false);
+            }
+        }
+
+        async function testDatabase() {
+            addLog('info', '开始测试数据库连接...');
+            updateStatus('status-supabase', 'loading');
+
+            try {
+                const response = await fetch(`${API_URL}/api/query/execute`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sql: 'SELECT 1' })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    addLog('success', `✅ 数据库连接成功`);
+                    updateStatus('status-supabase', 'pass', true);
+                } else {
+                    addLog('error', `❌ 数据库连接失败`);
+                    updateStatus('status-supabase', 'fail', false);
+                }
+            } catch (error) {
+                addLog('error', `❌ 数据库测试出错: ${error.message}`);
+                updateStatus('status-supabase', 'fail', false);
+            }
+        }
+
+        async function runAllTests() {
+            addLog('info', '开始运行全部测试...');
+            testCount = 0;
+            passCount = 0;
+            
+            document.getElementById('btn-all').disabled = true;
+            
+            await testBackendHealth();
+            await new Promise(r => setTimeout(r, 500));
+            
+            await testNL2SQL();
+            await new Promise(r => setTimeout(r, 500));
+            
+            await testDatabase();
+            
+            document.getElementById('btn-all').disabled = false;
+            addLog('success', `✅ 所有测试完成！通过率: ${passCount}/${testCount}`);
+        }
+
+        function clearLogs() {
+            logs.length = 0;
+            document.getElementById('log-content').innerHTML = '<div class="log-item info"><span class="time">[清空]</span><span class="message">日志已清空</span></div>';
+            addLog('info', '日志已清空');
+        }
+
+        // 页面加载时自动测试
+        window.addEventListener('load', () => {
+            addLog('success', '🎉 仪表板已加载完成');
+            addLog('info', '💡 提示: 点击按钮开始测试，或点击 "运行全部测试" 进行完整检查');
+        });
+    </script>
+</body>
+</html>
