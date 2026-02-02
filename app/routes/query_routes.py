@@ -456,13 +456,21 @@ def recognize_intent():
                    f"(confidence: {result['confidence']:.2f}, "
                    f"methods: {result['methodsUsed']})")
         
-        return jsonify(result), 200
+        # 转换为前端兼容的 UserIntent 格式
+        user_intent = recognizer.to_frontend_format(result)
+        
+        # 添加后端信息（用于调试）
+        user_intent['_backend'] = {
+            'recognizedIntent': result['intent'],
+            'methodsUsed': result.get('methodsUsed', []),
+            'reasoning': result.get('reasoning', '')
+        }
+        
+        return jsonify(user_intent), 200
         
     except Exception as e:
         logger.error(f"Error in recognize_intent: {str(e)}")
         return jsonify({
             'success': False,
-            'error': str(e),
-            'intent': 'other',
-            'confidence': 0.0
+            'error': str(e)
         }), 500

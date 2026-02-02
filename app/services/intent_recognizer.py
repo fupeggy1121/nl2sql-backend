@@ -403,6 +403,77 @@ class IntentRecognizer:
         return clarifications
 
 
+    def to_frontend_format(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        将后端识别结果转换为前端 UserIntent 接口格式
+        
+        前端 UserIntent 接口要求:
+        {
+            "type": "query" | "report" | "analysis" | "comparison" | "direct_table_query",
+            "entities": {
+                "metric": string,
+                "timeRange": string,
+                "equipment": string[],
+                "shift": string[],
+                "comparison": boolean,
+                "tableName"?: string,
+                "limit"?: number
+            },
+            "confidence": number,
+            "clarifications": string[]
+        }
+        
+        Args:
+            result: 后端 recognize() 方法的返回结果
+            
+        Returns:
+            符合前端 UserIntent 接口的对象
+        """
+        intent = result.get('intent', 'other')
+        entities = result.get('entities', {})
+        
+        # 映射后端意图类型到前端类型
+        intent_type_mapping = {
+            'direct_query': 'direct_table_query',
+            'query_production': 'query',
+            'query_quality': 'query',
+            'query_equipment': 'query',
+            'generate_report': 'report',
+            'compare_analysis': 'analysis'
+        }
+        
+        frontend_type = intent_type_mapping.get(intent, 'query')
+        
+        # 自动检测是否是对比分析
+        if entities.get('comparison') or 'comparison' in result.get('methodsUsed', []):
+            frontend_type = 'comparison'
+        
+        # 构建前端格式的实体对象
+        frontend_entities = {
+            'metric': entities.get('metric', 'general'),
+            'timeRange': entities.get('timeRange', ''),
+            'equipment': entities.get('equipment', []) or entities.get('equipmentId', []),
+            'shift': entities.get('shift', []),
+            'comparison': entities.get('comparison', False)
+        }
+        
+        # 如果是直接查询，添加 tableName 和 limit
+        if intent == 'direct_query':
+            frontend_entities['tableName'] = entities.get('tableName', '')
+            frontend_entities['limit'] = entities.get('limit')
+        
+        # 如果 equipment 不是列表，转换为列表
+        if frontend_entities['equipment'] and not isinstance(frontend_entities['equipment'], list):
+            frontend_entities['equipment'] = [frontend_entities['equipment']]
+        
+        return {
+            'type': frontend_type,
+            'entities': frontend_entities,
+            'confidence': result.get('confidence', 0.0),
+            'clarifications': result.get('clarifications', [])
+        }
+
+
 def get_intent_recognizer(llm_provider=None) -> IntentRecognizer:
     """获取意图识别器实例"""
     return IntentRecognizer(llm_provider=llm_provider)
