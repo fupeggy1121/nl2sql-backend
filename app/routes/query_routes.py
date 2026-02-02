@@ -415,9 +415,13 @@ def recognize_intent():
     - generate_report: 生成报表
     - compare_analysis: 对比分析
     
-    请求体:
+    请求体（支持多种格式）:
         {
             "query": "查询今天的产量"
+        }
+        或
+        {
+            "natural_language": "查询今天的产量"
         }
     
     返回:
@@ -434,21 +438,54 @@ def recognize_intent():
         }
     """
     try:
+        # 获取请求体并记录详细信息用于调试
         data = request.get_json()
         
-        if not data or 'query' not in data:
+        # 详细诊断日志
+        logger.info(f"=== recognize-intent 请求诊断 ===")
+        logger.info(f"Content-Type: {request.content_type}")
+        logger.info(f"完整请求体: {data}")
+        logger.info(f"请求体类型: {type(data)}")
+        logger.info(f"请求体键: {list(data.keys()) if data else 'None'}")
+        
+        if not data:
+            logger.error("请求体为空或无效 JSON")
             return jsonify({
                 'success': False,
-                'error': 'Missing required field: query'
+                'error': 'Request body is empty or invalid JSON',
+                'diagnostic': {
+                    'content_type': request.content_type,
+                    'raw_data': request.data.decode('utf-8', errors='replace')[:200]
+                }
             }), 400
         
-        query = data['query'].strip()
+        # 支持多种字段名称（兼容前端不同的实现）
+        query = data.get('query') or data.get('natural_language')
+        
+        # 如果两个字段都不存在，返回详细错误
+        if not query:
+            logger.error(f"缺少查询字段。接收到的键: {list(data.keys())}")
+            return jsonify({
+                'success': False,
+                'error': 'Missing required field: query or natural_language',
+                'received_keys': list(data.keys()) if data else [],
+                'expected_format': {
+                    'option1': {'query': 'your query here'},
+                    'option2': {'natural_language': 'your query here'}
+                }
+            }), 400
+        
+        # 处理字符串
+        query = str(query).strip()
         
         if not query:
+            logger.error("查询字符串为空")
             return jsonify({
                 'success': False,
-                'error': 'Query cannot be empty'
+                'error': 'Query cannot be empty or whitespace only'
             }), 400
+        
+        logger.info(f"处理查询: {query[:50]}...")
         
         # 获取意图识别器
         recognizer = get_intent_recognizer_instance()
@@ -477,10 +514,20 @@ def recognize_intent():
         return jsonify(user_intent), 200
         
     except Exception as e:
-        logger.error(f"Error in recognize_intent: {str(e)}")
+        logger.error(f"=== Error in recognize_intent ===")
+        logger.error(f"异常类型: {type(e).__name__}")
+        logger.error(f"异常信息: {str(e)}")
+        logger.error(f"完整堆栈:", exc_info=True)
+        
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': str(e),
+            'error_type': type(e).__name__,
+            'diagnostic': {
+                'endpoint': '/api/query/recognize-intent',
+                'method': request.method,
+                'content_type': request.content_type
+            }
         }), 500
 
 @bp.route('/cors-check', methods=['GET', 'OPTIONS'])
