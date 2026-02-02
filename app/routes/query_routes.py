@@ -394,6 +394,14 @@ def check_supabase_connection():
             'error': str(e)
         }), 500
 
+@bp.route('/check-connection', methods=['GET'])
+def check_connection():
+    """
+    检查后端连接状态（别名端点，用于前端兼容性）
+    这是 /supabase/connection 的别名
+    """
+    return check_supabase_connection()
+
 @bp.route('/recognize-intent', methods=['POST'])
 def recognize_intent():
     """

@@ -4,6 +4,7 @@
 from flask import Flask
 from flask_cors import CORS
 import logging
+import os
 from config.config import config
 
 def create_app(config_name='development'):
@@ -21,38 +22,42 @@ def create_app(config_name='development'):
     # 加载配置
     app.config.from_object(config[config_name])
     
-    # 启用 CORS - 允许所有来源（开发环境）
-    # 生产环境应该限制为特定域名
-    if app.config.get('ENV') == 'production':
-        # 生产环境：仅允许特定域名
-        CORS(app, resources={
-            r"/api/*": {
-                "origins": [
-                    "https://bolt.new",
-                    "https://*.bolt.new",
-                    "https://*.local-credentialless.webcontainer-api.io",
-                    "https://*.webcontainer-api.io",
-                ],
-                "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-                "allow_headers": ["Content-Type", "Authorization"],
-                "supports_credentials": True
-            }
-        })
-    else:
-        # 开发环境：允许所有来源
-        CORS(app, resources={
-            r"/api/*": {
-                "origins": "*",
-                "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-                "allow_headers": ["Content-Type", "Authorization"]
-            }
-        })
+    # 获取环境变量
+    flask_env = os.getenv('FLASK_ENV', 'development')
+    
+    # 配置 CORS
+    # 在 Render 上，即使 FLASK_ENV=production，也需要允许跨域请求
+    cors_origins = "*"  # 默认允许所有
+    
+    if flask_env == 'production':
+        # 生产环境：允许特定域名（包括 Render 部署的前端和 Bolt.new）
+        cors_origins = [
+            "https://bolt.new",
+            "https://*.bolt.new",
+            "https://*.local-credentialless.webcontainer-api.io",
+            "https://*.webcontainer-api.io",
+            "https://*.netlify.app",
+            "https://*.vercel.app",
+            "http://localhost:5173",  # 本地开发
+            "http://127.0.0.1:5173",
+        ]
+    
+    # 应用 CORS 中间件 - 必须在蓝图注册前
+    CORS(app, 
+         origins=cors_origins,
+         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
+         allow_headers=["Content-Type", "Authorization"],
+         expose_headers=["Content-Type"],
+         supports_credentials=True,
+         max_age=3600)
     
     # 设置日志
     setup_logging()
     
     # 注册蓝图
     register_blueprints(app)
+    
+    return app
     
     return app
 
