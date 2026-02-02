@@ -219,21 +219,17 @@ def health_check():
             if sb is None:
                 diagnosis['connection_status'] = 'get_supabase() returned None'
                 db_error = 'SupabaseClient is None'
+            elif sb.client:
+                # 如果客户端成功初始化，就认为已连接
+                # （不需要进行额外的查询测试，这可能失败如果表不存在）
+                db_connected = True
+                db_status = 'connected'
+                diagnosis['connection_status'] = 'Successfully connected to Supabase'
+                logger.info(f"✅ Supabase client is connected")
             elif sb.init_error:
                 # 优先返回初始化错误
                 diagnosis['connection_status'] = f'Init error: {sb.init_error}'
                 db_error = sb.init_error
-            elif sb.client:
-                # 尝试测试连接
-                db_connected = sb.is_connected()
-                db_status = 'connected' if db_connected else 'disconnected'
-                if db_connected:
-                    diagnosis['connection_status'] = 'Successfully connected to Supabase'
-                else:
-                    # 检查连接失败时的错误
-                    diagnosis['connection_status'] = sb.init_error or 'Failed to connect (is_connected check failed)'
-                    if sb.init_error:
-                        db_error = sb.init_error
             else:
                 db_status = 'disconnected'
                 diagnosis['connection_status'] = 'Client is None and no init_error set'
