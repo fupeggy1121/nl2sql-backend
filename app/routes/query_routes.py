@@ -368,14 +368,14 @@ def check_supabase_connection():
     try:
         sb = get_supabase()
         is_connected = sb.is_connected()
-        schema_info = sb.get_schema_info() if is_connected else {}
+        schema_info = sb.get_schema_info() if is_connected else {'data': []}
         
         return jsonify({
             'success': True,
             'connected': is_connected,
             'tables': schema_info.get('data', []) if is_connected else [],
-            'host': sb.host,
-            'database': sb.database
+            'url': sb.url[:50] + '...' if sb.url else 'Not configured',
+            'key_configured': bool(sb.key)
         }), 200
     except Exception as e:
         logger.error(f"Error checking connection: {str(e)}")

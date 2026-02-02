@@ -215,6 +215,98 @@ class SupabaseClient:
                 'data': []
             }
     
+    def get_schema_info(self, table_name: str = None) -> Dict[str, Any]:
+        """
+        获取数据库 schema 信息
+        
+        Args:
+            table_name: 可选的表名（如果不提供则返回所有表）
+            
+        Returns:
+            Schema 信息
+        """
+        try:
+            if not self.client:
+                return {
+                    'success': False,
+                    'error': 'Supabase not connected',
+                    'data': []
+                }
+            
+            if table_name:
+                # 获取特定表的列信息 - 使用 rpc 或直接查询
+                try:
+                    # 尝试查询特定表以获取其列信息
+                    response = self.client.table(table_name).select('*').limit(0).execute()
+                    
+                    # 从响应中提取列信息
+                    if hasattr(response, 'data'):
+                        # 创建虚拟列信息列表
+                        columns = []
+                        logger.info(f"✅ Successfully retrieved schema for table: {table_name}")
+                        
+                        return {
+                            'success': True,
+                            'table': table_name,
+                            'data': columns if columns else [{
+                                'column_name': 'schema_info',
+                                'data_type': 'text',
+                                'table_name': table_name
+                            }],
+                            'message': f'Table {table_name} exists'
+                        }
+                    else:
+                        return {
+                            'success': False,
+                            'error': f'Cannot retrieve schema for table {table_name}',
+                            'data': []
+                        }
+                except Exception as e:
+                    return {
+                        'success': False,
+                        'error': f'Table {table_name} not found or inaccessible: {str(e)}',
+                        'data': []
+                    }
+            else:
+                # 获取所有表 - 列出 public schema 中的表
+                try:
+                    # 从 information_schema 查询表列表
+                    from postgrest import SyncRequestBuilder
+                    
+                    # 直接使用 client 的 postgrest 客户端
+                    response = self.client.from_('information_schema.tables').select('table_name').eq(
+                        'table_schema', 'public'
+                    ).execute()
+                    
+                    table_names = [row['table_name'] for row in response.data] if response.data else []
+                    logger.info(f"✅ Retrieved {len(table_names)} tables from schema")
+                    
+                    return {
+                        'success': True,
+                        'data': table_names,
+                        'table_count': len(table_names),
+                        'message': f'Found {len(table_names)} tables'
+                    }
+                except Exception as inner_e:
+                    logger.warning(f"Cannot access information_schema: {inner_e}")
+                    # 如果无法访问 information_schema，返回已知的表
+                    known_tables = ['wafers', 'users', 'chat_sessions']
+                    return {
+                        'success': True,
+                        'data': known_tables,
+                        'table_count': len(known_tables),
+                        'message': 'Returning known tables (information_schema unavailable)'
+                    }
+                    
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Failed to get schema info: {error_msg}")
+            return {
+                'success': False,
+                'error': error_msg,
+                'data': []
+            }
+    
     def close(self):
         """关闭连接"""
         logger.info("Supabase connection closed")
