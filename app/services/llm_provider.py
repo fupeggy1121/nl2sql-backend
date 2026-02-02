@@ -28,6 +28,60 @@ class LLMProvider:
 
 
 class DeepSeekProvider(LLMProvider):
+    def generate(self, prompt: str) -> str:
+        """
+        通用 LLM 生成接口，用于意图识别等任务
+        Args:
+            prompt: 输入的 prompt（如意图识别 JSON 指令）
+        Returns:
+            LLM 生成的字符串内容
+        """
+        if not self.api_key:
+            logger.error("DeepSeek API key not configured")
+            raise RuntimeError("DeepSeek API key not configured")
+        try:
+            headers = {
+                'Authorization': f'Bearer {self.api_key}',
+                'Content-Type': 'application/json'
+            }
+            payload = {
+                'model': self.model,
+                'messages': [
+                    {'role': 'system', 'content': 'You are an expert assistant for intent recognition.'},
+                    {'role': 'user', 'content': prompt}
+                ],
+                'temperature': 0.2,
+                'max_tokens': 1000
+            }
+            logger.info(f"Calling DeepSeek API (generate) with model: {self.model}")
+            response = requests.post(
+                f"{self.base_url}/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            if response.status_code == 200:
+                result = response.json()
+                if 'choices' in result and len(result['choices']) > 0:
+                    content = result['choices'][0]['message']['content'].strip()
+                    logger.info(f"DeepSeek generate successful: {content[:80]}...")
+                    return content
+                else:
+                    logger.error("Invalid response from DeepSeek API (generate)")
+                    raise RuntimeError("Invalid response from DeepSeek API (generate)")
+            else:
+                logger.error(f"DeepSeek API error (generate): {response.status_code} - {response.text}")
+                raise RuntimeError(f"DeepSeek API error (generate): {response.status_code}")
+        except requests.exceptions.Timeout:
+            logger.error("DeepSeek API request timeout (generate)")
+            raise RuntimeError("DeepSeek API request timeout (generate)")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"DeepSeek API request error (generate): {str(e)}")
+            raise RuntimeError(f"DeepSeek API request error (generate): {str(e)}")
+        except Exception as e:
+            logger.error(f"Error calling DeepSeek API (generate): {str(e)}")
+            raise
+
     """DeepSeek LLM 提供者"""
     
     def __init__(self):
