@@ -5,16 +5,23 @@
 from flask import Blueprint, request, jsonify
 from app.services.nl2sql import NL2SQLConverter
 from app.services.query_executor import QueryExecutor
-from app.services.supabase_client import get_supabase_client
 import logging
 
 bp = Blueprint('query', __name__, url_prefix='/api/query')
 logger = logging.getLogger(__name__)
 
-# 初始化服务
+# 初始化服务（延迟加载 Supabase，避免启动时连接失败）
 converter = NL2SQLConverter()
 executor = QueryExecutor()
-supabase = get_supabase_client()
+supabase = None  # 延迟初始化
+
+def get_supabase():
+    """获取或初始化 Supabase 客户端"""
+    global supabase
+    if supabase is None:
+        from app.services.supabase_client import get_supabase_client
+        supabase = get_supabase_client()
+    return supabase
 
 @bp.route('/nl-to-sql', methods=['POST'])
 def convert_nl_to_sql():
@@ -182,7 +189,12 @@ def nl_execute():
 @bp.route('/health', methods=['GET'])
 def health_check():
     """健康检查端点"""
-    supabase_connected = supabase.is_connected()
+    try:
+        sb = get_supabase()
+        supabase_connected = sb.is_connected()
+    except Exception as e:
+        logger.warning(f"Supabase health check failed: {str(e)}")
+        supabase_connected = False
     return jsonify({
         'status': 'healthy',
         'service': 'NL2SQL Report Backend',
@@ -234,7 +246,8 @@ def nl_execute_supabase():
             }), 500
         
         # 第二步：检查 Supabase 连接
-        if not supabase.is_connected():
+        sb = get_supabase()
+        if not sb.is_connected():
             return jsonify({
                 'success': False,
                 'error': 'Supabase database connection failed. Please check your configuration.',
@@ -242,7 +255,7 @@ def nl_execute_supabase():
             }), 500
         
         # 第三步：执行查询
-        result = supabase.execute_query(sql)
+        result = sb.execute_query(sql)
         result['sql'] = sql
         
         return jsonify(result), 200 if result['success'] else 400
@@ -258,8 +271,9 @@ def nl_execute_supabase():
 def get_supabase_schema():
     """获取 Supabase 数据库 schema 信息"""
     try:
+        sb = get_supabase()
         table_name = request.args.get('table')
-        result = supabase.get_schema_info(table_name)
+        result = sb.get_schema_info(table_name)
         return jsonify(result), 200 if result['success'] else 400
     except Exception as e:
         logger.error(f"Error getting schema: {str(e)}")
@@ -272,15 +286,16 @@ def get_supabase_schema():
 def check_supabase_connection():
     """检查 Supabase 连接状态"""
     try:
-        is_connected = supabase.is_connected()
-        schema_info = supabase.get_schema_info() if is_connected else {}
+        sb = get_supabase()
+        is_connected = sb.is_connected()
+        schema_info = sb.get_schema_info() if is_connected else {}
         
         return jsonify({
             'success': True,
             'connected': is_connected,
             'tables': schema_info.get('data', []) if is_connected else [],
-            'host': supabase.host,
-            'database': supabase.database
+            'host': sb.host,
+            'database': sb.database
         }), 200
     except Exception as e:
         logger.error(f"Error checking connection: {str(e)}")
