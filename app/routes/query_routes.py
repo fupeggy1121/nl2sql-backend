@@ -1,9 +1,11 @@
 """
 查询路由
 处理自然语言查询请求 - 支持 Supabase 和本地数据库
+集成 Schema Annotation 元数据以改进 SQL 生成质量
 """
 from flask import Blueprint, request, jsonify
 from app.services.nl2sql import NL2SQLConverter
+from app.services.nl2sql_enhanced import get_enhanced_nl2sql_converter
 from app.services.query_executor import QueryExecutor
 from app.services.intent_recognizer import get_intent_recognizer
 import logging
@@ -13,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 # 初始化服务（延迟加载 Supabase，避免启动时连接失败）
 converter = NL2SQLConverter()
+# 获取增强的转换器（支持 Schema Annotation）
+enhanced_converter = get_enhanced_nl2sql_converter()
 executor = None  # 延迟初始化 - 需要传入 Supabase 客户端
 supabase = None  # 延迟初始化
 intent_recognizer = None  # 延迟初始化
@@ -40,7 +44,8 @@ def convert_nl_to_sql():
     
     请求体:
         {
-            "natural_language": "查询所有用户"
+            "natural_language": "查询所有用户",
+            "use_enhanced": false  # 可选，是否使用增强模式（集成 Schema Annotation）
         }
     
     返回:
@@ -60,6 +65,7 @@ def convert_nl_to_sql():
             }), 400
         
         natural_language = data['natural_language']
+        use_enhanced = data.get('use_enhanced', True)  # 默认使用增强模式
         
         if not natural_language.strip():
             return jsonify({
@@ -67,8 +73,13 @@ def convert_nl_to_sql():
                 'error': 'natural_language cannot be empty'
             }), 400
         
-        # 转换为 SQL
-        sql = converter.convert(natural_language)
+        # 选择转换器
+        if use_enhanced:
+            sql = enhanced_converter.convert(natural_language)
+            logger.info("Using enhanced converter with schema annotation metadata")
+        else:
+            sql = converter.convert(natural_language)
+            logger.info("Using basic converter")
         
         if sql is None:
             return jsonify({
@@ -80,6 +91,7 @@ def convert_nl_to_sql():
             'success': True,
             'sql': sql,
             'natural_language': natural_language,
+            'mode': 'enhanced' if use_enhanced else 'basic',
             'message': 'Conversion successful'
         }), 200
         
@@ -89,6 +101,113 @@ def convert_nl_to_sql():
             'success': False,
             'error': str(e)
         }), 500
+
+
+@bp.route('/nl-to-sql/enhanced', methods=['POST'])
+def convert_nl_to_sql_enhanced():
+    """
+    将自然语言转换为 SQL（增强模式）
+    
+    使用 Schema Annotation 元数据改进转换质量
+    
+    请求体:
+        {
+            "natural_language": "查询所有生产订单"
+        }
+    
+    返回:
+        {
+            "success": true,
+            "sql": "SELECT * FROM production_orders",
+            "metadata_summary": {...},
+            "message": "转换成功"
+        }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'natural_language' not in data:
+            return jsonify({
+                'success': False,
+                'error': 'Missing required field: natural_language'
+            }), 400
+        
+        natural_language = data['natural_language'].strip()
+        
+        if not natural_language:
+            return jsonify({
+                'success': False,
+                'error': 'natural_language cannot be empty'
+            }), 400
+        
+        # 使用增强转换器
+        sql = enhanced_converter.convert(natural_language)
+        
+        if sql is None:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to convert natural language to SQL'
+            }), 500
+        
+        # 获取元数据摘要
+        metadata_summary = enhanced_converter.get_metadata_summary()
+        
+        return jsonify({
+            'success': True,
+            'sql': sql,
+            'natural_language': natural_language,
+            'metadata_summary': metadata_summary,
+            'message': 'Conversion successful (enhanced with schema annotation)'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Error in convert_nl_to_sql_enhanced: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@bp.route('/schema-metadata', methods=['GET'])
+def get_schema_metadata():
+    """获取当前加载的 Schema 元数据"""
+    try:
+        metadata_summary = enhanced_converter.get_metadata_summary()
+        
+        return jsonify({
+            'success': True,
+            'metadata': enhanced_converter.annotation_metadata,
+            'summary': metadata_summary,
+            'message': 'Schema metadata retrieved'
+        }), 200
+    except Exception as e:
+        logger.error(f"Error in get_schema_metadata: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@bp.route('/schema-metadata/refresh', methods=['POST'])
+def refresh_schema_metadata():
+    """刷新 Schema 元数据（从 Schema Annotation API 重新加载）"""
+    try:
+        enhanced_converter.refresh_metadata()
+        metadata_summary = enhanced_converter.get_metadata_summary()
+        
+        return jsonify({
+            'success': True,
+            'metadata': enhanced_converter.annotation_metadata,
+            'summary': metadata_summary,
+            'message': 'Schema metadata refreshed successfully'
+        }), 200
+    except Exception as e:
+        logger.error(f"Error in refresh_schema_metadata: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 
 @bp.route('/execute', methods=['POST'])
 def execute_query():
