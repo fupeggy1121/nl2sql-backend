@@ -249,19 +249,23 @@ class IntentRecognizer:
         
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse LLM response: {str(e)}")
+            logger.error(f"LLM 原始响应: {response}")
             return {
                 'intent': 'other',
                 'confidence': 0.0,
                 'entities': {},
-                'reasoning': 'Failed to parse LLM response'
+                'reasoning': 'Failed to parse LLM response',
+                'llm_raw_response': response
             }
         except Exception as e:
             logger.error(f"LLM matching error: {str(e)}")
+            logger.error(f"LLM 原始响应: {response}")
             return {
                 'intent': 'other',
                 'confidence': 0.0,
                 'entities': {},
-                'reasoning': f'LLM error: {str(e)}'
+                'reasoning': f'LLM error: {str(e)}',
+                'llm_raw_response': response
             }
     
     def _extract_entities(self, text: str, intent: str) -> Dict[str, Any]:
