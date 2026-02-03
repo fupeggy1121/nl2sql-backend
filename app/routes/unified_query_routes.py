@@ -17,7 +17,7 @@ bp = Blueprint('unified_query', __name__, url_prefix='/api/query/unified')
 
 
 @bp.route('/process', methods=['POST'])
-async def process_query():
+def process_query():
     """
     处理自然语言查询
     
@@ -36,6 +36,7 @@ async def process_query():
     }
     """
     try:
+        import asyncio
         data = request.get_json()
         natural_language = data.get('natural_language', '').strip()
         execution_mode = data.get('execution_mode', 'explain')
@@ -52,11 +53,11 @@ async def process_query():
             execution_mode = 'explain'
 
         service = get_unified_query_service()
-        query_plan, query_result = await service.process_natural_language_query(
+        query_plan, query_result = asyncio.run(service.process_natural_language_query(
             natural_language,
             user_context,
             execution_mode
-        )
+        ))
 
         response = {
             "success": True,
@@ -75,7 +76,7 @@ async def process_query():
 
 
 @bp.route('/explain', methods=['POST'])
-async def explain_query():
+def explain_query():
     """
     只获取SQL解释（不执行）
     
@@ -90,6 +91,7 @@ async def explain_query():
     - suggested_variants: 建议的SQL变体
     """
     try:
+        import asyncio
         data = request.get_json()
         natural_language = data.get('natural_language', '').strip()
 
@@ -100,10 +102,10 @@ async def explain_query():
             }), 400
 
         service = get_unified_query_service()
-        query_plan, _ = await service.process_natural_language_query(
+        query_plan, _ = asyncio.run(service.process_natural_language_query(
             natural_language,
             execution_mode='explain'
-        )
+        ))
 
         return jsonify({
             "success": True,
@@ -119,7 +121,7 @@ async def explain_query():
 
 
 @bp.route('/execute', methods=['POST'])
-async def execute_query():
+def execute_query():
     """
     执行已批准的SQL查询
     
@@ -139,6 +141,7 @@ async def execute_query():
     }
     """
     try:
+        import asyncio
         data = request.get_json()
         sql_query = data.get('sql', '').strip()
         query_intent_data = data.get('query_intent')
@@ -168,7 +171,7 @@ async def execute_query():
                 logger.warning(f"Could not rebuild query intent: {e}")
 
         service = get_unified_query_service()
-        query_result = await service.execute_approved_query(sql_query, query_intent)
+        query_result = asyncio.run(service.execute_approved_query(sql_query, query_intent))
 
         return jsonify({
             "success": query_result.success,
