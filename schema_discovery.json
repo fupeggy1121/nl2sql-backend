@@ -1,0 +1,87 @@
+{
+  "timestamp": "2026-02-03T05:09:19.231686",
+  "tables": [
+    {
+      "name": "production_orders",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "order_number",
+          "type": "varchar"
+        },
+        {
+          "name": "product_id",
+          "type": "uuid"
+        },
+        {
+          "name": "quantity",
+          "type": "integer"
+        },
+        {
+          "name": "start_date",
+          "type": "timestamp"
+        },
+        {
+          "name": "end_date",
+          "type": "timestamp"
+        },
+        {
+          "name": "status",
+          "type": "varchar"
+        }
+      ]
+    },
+    {
+      "name": "production_batches",
+      "columns": []
+    },
+    {
+      "name": "equipment",
+      "columns": [
+        {
+          "name": "id",
+          "type": "uuid"
+        },
+        {
+          "name": "equipment_code",
+          "type": "varchar"
+        },
+        {
+          "name": "equipment_name",
+          "type": "varchar"
+        },
+        {
+          "name": "equipment_type",
+          "type": "varchar"
+        },
+        {
+          "name": "status",
+          "type": "varchar"
+        },
+        {
+          "name": "last_maintenance",
+          "type": "timestamp"
+        }
+      ]
+    },
+    {
+      "name": "quality_records",
+      "columns": []
+    },
+    {
+      "name": "shift_records",
+      "columns": []
+    },
+    {
+      "name": "material_inventory",
+      "columns": []
+    },
+    {
+      "name": "product_definitions",
+      "columns": []
+    }
+  ]
+}
