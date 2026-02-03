@@ -239,6 +239,84 @@ class SchemaAnnotator:
             logger.error(f"Failed to save column annotations: {str(e)}")
             raise
     
+    def _log_audit(self, annotation_type: str, annotation_id: str, action: str,
+                   old_value: dict = None, new_value: dict = None, actor: str = "system"):
+        """写入审计日志"""
+        try:
+            self.supabase.table("annotation_audit_log").insert({
+                "annotation_type": annotation_type,
+                "annotation_id": annotation_id,
+                "action": action,
+                "old_value": json.dumps(old_value) if old_value else None,
+                "new_value": json.dumps(new_value) if new_value else None,
+                "actor": actor
+            }).execute()
+        except Exception as e:
+            logger.error(f"Failed to write audit log: {str(e)}")
+
+    def get_all_annotations(self, annotation_type: str = "table",
+                            status_filter: str = None,
+                            table_name_filter: str = None) -> List[Dict]:
+        """
+        获取所有标注（支持按状态和表名过滤）
+
+        Args:
+            annotation_type: 标注类型 (table, column, relation)
+            status_filter: 状态过滤 (pending, approved, rejected) 或 None 表示全部
+            table_name_filter: 按表名过滤（仅对 column 类型有效）
+
+        Returns:
+            标注列表
+        """
+        try:
+            table_map = {
+                "table": self.SCHEMA_TABLES_TABLE,
+                "column": self.SCHEMA_COLUMNS_TABLE,
+                "relation": self.SCHEMA_RELATIONS_TABLE
+            }
+            table_name = table_map.get(annotation_type, self.SCHEMA_TABLES_TABLE)
+
+            query = self.supabase.table(table_name).select("*")
+            if status_filter:
+                query = query.eq("status", status_filter)
+            if table_name_filter and annotation_type == "column":
+                query = query.eq("table_name", table_name_filter)
+            result = query.order("updated_at", desc=True).execute()
+
+            return result.data if result.data else []
+        except Exception as e:
+            logger.error(f"Failed to get all {annotation_type} annotations: {str(e)}")
+            return []
+
+    def get_annotation_counts(self) -> Dict[str, Any]:
+        """获取各状态的标注数量统计"""
+        try:
+            def count_by_status(data):
+                counts = {"pending": 0, "approved": 0, "rejected": 0, "total": 0}
+                for item in (data or []):
+                    status = item.get("status", "pending")
+                    if status in counts:
+                        counts[status] += 1
+                    counts["total"] += 1
+                return counts
+
+            all_tables = self.supabase.table(self.SCHEMA_TABLES_TABLE).select("status").execute()
+            all_columns = self.supabase.table(self.SCHEMA_COLUMNS_TABLE).select("status").execute()
+
+            table_counts = count_by_status(all_tables.data)
+            column_counts = count_by_status(all_columns.data)
+
+            return {
+                "tables": table_counts,
+                "columns": column_counts,
+                "total_pending": table_counts["pending"] + column_counts["pending"],
+                "total_approved": table_counts["approved"] + column_counts["approved"],
+                "total_rejected": table_counts["rejected"] + column_counts["rejected"],
+            }
+        except Exception as e:
+            logger.error(f"Failed to get annotation counts: {str(e)}")
+            return {}
+
     def get_pending_annotations(self, annotation_type: str = "table") -> List[Dict]:
         """
         获取待审核的标注
@@ -299,9 +377,12 @@ class SchemaAnnotator:
                 "reviewed_by": reviewer,
                 "updated_at": datetime.utcnow().isoformat()
             }).eq("id", annotation_id).execute()
-            
+
+            updated = result.data[0] if result.data else {}
+            self._log_audit(annotation_type, annotation_id, "approve",
+                            new_value={"status": "approved"}, actor=reviewer)
             logger.info(f"✅ Annotation {annotation_id} approved by {reviewer}")
-            return result.data[0] if result.data else {}
+            return updated
         except Exception as e:
             logger.error(f"Failed to approve annotation: {str(e)}")
             raise
@@ -340,9 +421,12 @@ class SchemaAnnotator:
                 "rejection_reason": reason,
                 "updated_at": datetime.utcnow().isoformat()
             }).eq("id", annotation_id).execute()
-            
+
+            updated = result.data[0] if result.data else {}
+            self._log_audit(annotation_type, annotation_id, "reject",
+                            new_value={"status": "rejected", "reason": reason}, actor=reviewer)
             logger.info(f"✅ Annotation {annotation_id} rejected by {reviewer}")
-            return result.data[0] if result.data else {}
+            return updated
         except Exception as e:
             logger.error(f"Failed to reject annotation: {str(e)}")
             raise
@@ -374,13 +458,15 @@ class SchemaAnnotator:
             table_name = table_map.get(annotation_type, self.SCHEMA_TABLES_TABLE)
             
             updates["updated_at"] = datetime.utcnow().isoformat()
-            
+
             result = self.supabase.table(table_name).update(updates).eq(
                 "id", annotation_id
             ).execute()
-            
+
+            updated = result.data[0] if result.data else {}
+            self._log_audit(annotation_type, annotation_id, "update", new_value=updates)
             logger.info(f"✅ Annotation {annotation_id} updated")
-            return result.data[0] if result.data else {}
+            return updated
         except Exception as e:
             logger.error(f"Failed to update annotation: {str(e)}")
             raise
