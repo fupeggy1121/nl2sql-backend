@@ -1,0 +1,155 @@
+📋 Schema 标注系统 - 部署完成✅
+
+═══════════════════════════════════════════════════════════════
+
+🎉 第 1-3 步已完成：
+
+[✅] 步骤 1: 环境验证 
+      ✓ SUPABASE_URL 已配置
+      ✓ SUPABASE_ANON_KEY 已配置
+      ✓ DEEPSEEK_API_KEY 已配置
+      
+[✅] 步骤 2: 部署工具已生成
+      ✓ verify_schema_annotation_setup.py - 环境检查
+      ✓ app/services/schema_annotator.py - 核心服务
+      ✓ app/routes/schema_routes.py - API 路由
+      ✓ app/tools/scan_schema.py - Schema 扫描工具
+      ✓ app/tools/auto_annotate_schema.py - LLM 标注工具
+      
+[✅] 步骤 3: SQL 迁移脚本已生成
+      ✓ migration.sql (5.4 KB) - 包含 4 个表和完整 DDL
+      ✓ run_migration.py - SQL 导出工具
+      ✓ execute_psql_migration.py - psql 执行脚本
+
+═══════════════════════════════════════════════════════════════
+
+⏭️  【立即执行】第 4 步：在 Supabase 中创建数据库表
+
+您有两种方式：
+
+【方式 A - GUI 方式】(推荐，最简单)
+
+1️⃣  打开: https://supabase.com
+2️⃣  登录您的项目  
+3️⃣  进入左侧菜单 "SQL Editor"
+4️⃣  点击 "New query" 或 "+"
+5️⃣  将以下 SQL 复制粘贴到编辑器:
+
+【SQL 脚本】(复制全部内容):
+""")
+
+# 读取 migration.sql 文件
+import os
+migration_file = os.path.join(os.path.dirname(__file__), 'migration.sql')
+if os.path.exists(migration_file):
+    with open(migration_file, 'r') as f:
+        sql_content = f.read()
+        # 只显示前 2000 个字符和提示
+        if len(sql_content) > 2000:
+            print(sql_content[:2000])
+            print("\n... (SQL 脚本内容太长，已截断)\n")
+            print(f"📌 完整的 SQL 脚本位置: {migration_file}\n")
+        else:
+            print(sql_content)
+
+print("""
+6️⃣  点击 "Run" 或按 Ctrl+Enter 执行
+7️⃣  检查结果是否为绿色 ✅
+
+【方式 B - 命令行方式】(需要数据库密码)
+
+如果您有 Supabase PostgreSQL 数据库密码，可以运行:
+
+    python execute_psql_migration.py
+
+═══════════════════════════════════════════════════════════════
+
+✅【完成数据库表创建后】运行以下命令：
+
+第 5 步：扫描数据库 Schema
+─────────────────────────────────
+    .venv/bin/python app/tools/scan_schema.py
+    
+这会生成 schema_discovery.json 文件，包含所有数据库表和列的信息。
+
+第 6 步：使用 LLM 生成标注
+─────────────────────────────────
+    .venv/bin/python app/tools/auto_annotate_schema.py
+    
+这会:
+  • 读取 schema_discovery.json
+  • 调用 DeepSeek LLM 为每个表和列生成中英文标注
+  • 生成标注保存到数据库（状态：pending）
+  • 显示预览和统计信息
+  
+⏱️  耗时：1-5 分钟（取决于表数量和 API 速度）
+
+第 7 步：启动后端应用
+─────────────────────────────────
+    .venv/bin/python run.py
+    
+应用会在 http://localhost:5000 启动
+
+第 8 步：审核和批准标注（通过 API）
+─────────────────────────────────
+
+【查看待审核的表标注】
+    curl http://localhost:5000/api/schema/tables/pending
+    
+【批准标注】
+    curl -X POST http://localhost:5000/api/schema/tables/{id}/approve \
+         -H "Content-Type: application/json" \
+         -d '{"reviewer": "your_name", "notes": "approved"}'
+    
+【查看所有已批准的标注】
+    curl http://localhost:5000/api/schema/metadata
+    
+【查看进度统计】
+    curl http://localhost:5000/api/schema/status
+
+═══════════════════════════════════════════════════════════════
+
+📚 完整文档
+
+快速开始 (3 分钟):      SCHEMA_ANNOTATION_QUICK_REF.md
+用户指南 (完整):        SCHEMA_ANNOTATION_GUIDE.md
+实现细节 (技术):        SCHEMA_ANNOTATION_IMPLEMENTATION.md
+交付总结 (全面):        SCHEMA_ANNOTATION_DELIVERY.md
+
+═══════════════════════════════════════════════════════════════
+
+💡 常见问题
+
+Q: 如何修改 LLM 生成的标注?
+A: 使用 PUT /api/schema/tables/{id} 端点编辑，然后重新审核
+
+Q: 如何跳过某些表的标注?
+A: 编辑 app/tools/auto_annotate_schema.py 的 SKIP_TABLES 列表
+
+Q: 标注数据会用在哪里?
+A: app/services/nl2sql.py 会使用批准的标注元数据来改进 SQL 生成准确度
+
+Q: 如何重新生成标注?
+A: 设置为 pending 状态再次调用 LLM: POST /api/schema/tables/auto-annotate
+
+═══════════════════════════════════════════════════════════════
+
+✨ 部署状态：准备就绪！
+
+✅ 环境配置完成
+✅ 服务代码已实现  
+✅ API 路由已配置
+✅ 工具脚本已创建
+✅ SQL 迁移脚本已生成
+⏳ 数据库表创建（下一步）
+
+═══════════════════════════════════════════════════════════════
+
+【下一个行动】
+
+1. 打开 Supabase SQL Editor
+2. 复制并执行 migration.sql 文件中的 SQL
+3. 表创建后，运行上面的步骤 5-8
+
+任何问题，请查阅相关文档！🚀
+""")
