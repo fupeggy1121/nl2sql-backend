@@ -1,6 +1,6 @@
 """
-意图识别服务 - Python 实现
-支持规则引擎 + LLM 混合方式
+Intent recognition service - Python implementation
+Supports hybrid rule-based and LLM approach
 """
 
 from typing import Dict, List, Optional, Any
@@ -12,93 +12,69 @@ logger = logging.getLogger(__name__)
 
 
 class IntentRecognizer:
-    """
-    MES 系统意图识别服务
-    采用轻量级规则 + LLM 混合方式
-    """
+    """MES system intent recognition service with hybrid rule and LLM approach"""
     
     def __init__(self, llm_provider=None):
-        """
-        初始化意图识别器
+        """Initialize intent recognizer with optional LLM provider"""
+        self.llm_provider = llm_provider
         
-        try:
-            response = self.llm_provider.generate(prompt)
-            # 自动去除 markdown 代码块包裹（如 ```json ... ``` 或 ``` ... ```）
-            if response.strip().startswith('```'):
-                # 去除开头的 ```json 或 ```
-                lines = response.strip().splitlines()
-                # 跳过第一行（```json 或 ```）
-                json_str = '\n'.join(line for line in lines[1:] if not line.strip().startswith('```'))
-            else:
-                json_str = response
-            # 解析 JSON 结果
-            result = json.loads(json_str)
-            return {
-                'intent': result.get('intent', 'other'),
-                'confidence': float(result.get('confidence', 0.0)),
-                'entities': result.get('entities', {}),
-                'reasoning': result.get('reasoning', '')
-            }
-                'description': '直接查询表数据'
+        # Intent configuration
+        self.intents = {
+            'direct_query': {
+                'keywords': ['返回', '查询', '显示', '获取', '列出', '表', 'select', 'from'],
+                'entities': ['table', 'limit', 'filters'],
+                'description': 'Direct table data query'
             },
             'query_production': {
                 'keywords': ['产量', '生产', '产出', '完成', '输出'],
                 'entities': ['timeRange', 'productLine', 'productType'],
-                'description': '查询生产数据'
+                'description': 'Query production data'
             },
             'query_quality': {
                 'keywords': ['良品率', '合格率', '质量', '不良', '缺陷', '良率'],
                 'entities': ['timeRange', 'productType', 'defectType', 'metrics'],
-                'description': '查询质量数据'
+                'description': 'Query quality data'
             },
             'query_equipment': {
                 'keywords': ['设备', '稼动率', 'OEE', '故障', '停机', '效率'],
                 'entities': ['timeRange', 'equipmentId', 'workshop', 'metrics'],
-                'description': '查询设备数据'
+                'description': 'Query equipment data'
             },
             'generate_report': {
                 'keywords': ['报表', '生成', '导出', '汇总', '统计', '汇报'],
                 'entities': ['reportType', 'timeRange'],
-                'description': '生成报表'
+                'description': 'Generate report'
             },
             'compare_analysis': {
                 'keywords': ['对比', '比较', '同比', '环比', '分析', '趋势'],
                 'entities': ['timeRange', 'metrics'],
-                'description': '对比分析'
+                'description': 'Comparative analysis'
             }
         }
     
     def recognize(self, user_input: str) -> Dict[str, Any]:
         """
-        识别用户查询意图 - 混合方式
-        
-        策略:
-        1. 先用规则快速匹配（低延迟）
-        2. 规则不确定时调用 LLM（高准确）
-        3. 合并两种方法的结果
-        
+        Recognize user query intent using hybrid rule-based and LLM methods.
+
+        Strategy:
+          1. Fast rule-based matching with low latency
+          2. LLM matching for uncertain cases (high accuracy)
+          3. Merge results from both methods
+
         Args:
-            user_input: 用户输入的自然语言查询
-            
+            user_input: Natural language query from user
+
         Returns:
-            {
-                'success': bool,
-                'intent': str,
-                'confidence': float (0-1),
-                'entities': dict,
-                'clarifications': list[str],
-                'methodsUsed': list[str],
-                'reasoning': str (optional)
-            }
+            dict: Recognition result with keys: success, intent, confidence, entities, clarifications, methodsUsed
         """
         try:
-            # 第一步：规则匹配
+            # Step 1: Rule-based matching
             rule_result = self._rule_based_match(user_input)
             
             logger.info(f"Rule match result: intent={rule_result['intent']}, "
                        f"confidence={rule_result['confidence']:.2f}")
             
-            # 第二步：如果规则置信度高，直接返回
+            # Step 2: Return if rule confidence is high
             if rule_result['confidence'] > 0.8:
                 return {
                     'success': True,
@@ -113,13 +89,13 @@ class IntentRecognizer:
                     'methodsUsed': ['rule']
                 }
             
-            # 第三步：LLM 确认
+            # Step 3: LLM confirmation
             llm_result = self._llm_based_match(user_input)
             
             logger.info(f"LLM match result: intent={llm_result['intent']}, "
                        f"confidence={llm_result['confidence']:.2f}")
             
-            # 第四步：合并结果
+            # Step 4: Merge results
             merged = self._merge_results(rule_result, llm_result)
             
             return {
@@ -150,33 +126,29 @@ class IntentRecognizer:
     
     def _rule_based_match(self, text: str) -> Dict[str, Any]:
         """
-        基于关键词的快速匹配
-        
+        Keyword-based fast intent matching.
+
         Returns:
-            {
-                'intent': str,
-                'confidence': float,
-                'entities': dict
-            }
+            dict: Intent matching result with keys: intent, confidence, entities
         """
         normalized_input = text.lower()
         scores = {}
         
-        # 计算每个意图的匹配分数
+        # Calculate match scores for each intent
         for intent_name, config in self.intents.items():
             score = 0
             keywords = config['keywords']
             
-            # 统计关键词匹配数
+            # Count keyword matches
             for keyword in keywords:
                 if keyword.lower() in normalized_input:
                     score += 1
             
             if score > 0:
-                # 归一化分数（0-1）
+                # Normalize score to 0-1
                 scores[intent_name] = score / len(keywords)
         
-        # 没有匹配
+        # No match found
         if not scores:
             return {
                 'intent': 'other',
@@ -184,7 +156,7 @@ class IntentRecognizer:
                 'entities': {}
             }
         
-        # 获取最佳匹配意图
+        # Get best matching intent
         best_intent = max(scores, key=scores.get)
         
         return {
@@ -195,15 +167,10 @@ class IntentRecognizer:
     
     def _llm_based_match(self, text: str) -> Dict[str, Any]:
         """
-        使用 DeepSeek LLM 进行意图识别
-        
+        Intent recognition using DeepSeek LLM.
+
         Returns:
-            {
-                'intent': str,
-                'confidence': float,
-                'entities': dict,
-                'reasoning': str (optional)
-            }
+            dict: LLM matching result with keys: intent, confidence, entities, reasoning
         """
         if not self.llm_provider:
             logger.warning("LLM provider not available, returning empty LLM result")
@@ -216,29 +183,36 @@ class IntentRecognizer:
         
         intent_list = ', '.join(self.intents.keys())
         
-        prompt = f"""分析用户在 MES 系统中的查询意图。
+        prompt = f"""Analyze the user query intent in MES system.
 
-可能的意图类型及描述:
+Possible intent types and descriptions:
 {chr(10).join(f"- {k}: {v['description']}" for k, v in self.intents.items())}
 
-用户输入: "{text}"
+User input: "{text}"
 
-请返回 JSON 格式的分析结果（必须是有效的 JSON）:
+Return analysis result in JSON format (must be valid JSON):
 {{
-    "intent": "意图类型",
+    "intent": "intent_type",
     "confidence": 0.95,
     "entities": {{
-        "timeRange": "时间范围",
-        "metric": "指标"
+        "timeRange": "time_range",
+        "metric": "metric"
     }},
-    "reasoning": "判断理由"
+    "reasoning": "reason_for_judgment"
 }}"""
         
         try:
             response = self.llm_provider.generate(prompt)
             
-            # 解析 JSON 结果
-            result = json.loads(response)
+            # Auto-remove markdown code block wrapper (e.g. ```json ... ```)
+            if response.strip().startswith('```'):
+                lines = response.strip().splitlines()
+                json_str = '\n'.join(line for line in lines[1:] if not line.strip().startswith('```'))
+            else:
+                json_str = response
+            
+            # Parse JSON result
+            result = json.loads(json_str)
             
             return {
                 'intent': result.get('intent', 'other'),
@@ -249,7 +223,7 @@ class IntentRecognizer:
         
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse LLM response: {str(e)}")
-            logger.error(f"LLM 原始响应: {response}")
+            logger.error(f"LLM raw response: {response}")
             return {
                 'intent': 'other',
                 'confidence': 0.0,
@@ -259,7 +233,7 @@ class IntentRecognizer:
             }
         except Exception as e:
             logger.error(f"LLM matching error: {str(e)}")
-            logger.error(f"LLM 原始响应: {response}")
+            logger.error(f"LLM raw response: {response}")
             return {
                 'intent': 'other',
                 'confidence': 0.0,
@@ -270,19 +244,19 @@ class IntentRecognizer:
     
     def _extract_entities(self, text: str, intent: str) -> Dict[str, Any]:
         """
-        从用户输入中提取实体信息
-        
-        支持的实体类型:
-        - timeRange: 时间范围
-        - table: 表名
-        - limit: 记录数限制
-        - metrics: 指标
-        - equipment: 设备ID
-        - productLine: 产品线
+        Extract entity information from user input.
+
+        Supported entity types:
+          - timeRange: time range
+          - table: table name
+          - limit: record limit
+          - metrics: metrics to query
+          - equipment: equipment IDs
+          - productLine: product line
         """
         entities = {}
         
-        # 时间范围提取
+        # Time range extraction
         time_patterns = {
             r'今天|今日': 'today',
             r'昨天|昨日': 'yesterday',
@@ -297,24 +271,24 @@ class IntentRecognizer:
                 entities['timeRange'] = value
                 break
         
-        # 数字时间范围提取
+        # Numeric time range extraction
         num_time_match = re.search(r'(?:最近|过去|最)?\s*(\d+)\s*(?:天|周|月)', text)
         if num_time_match and 'timeRange' not in entities:
             number = num_time_match.group(1)
             unit = re.search(r'天|周|月', num_time_match.group(0)).group(0)
             entities['timeRange'] = f"{number}{unit}"
         
-        # 表名提取
+        # Table name extraction
         table_match = re.search(r'(?:查询|返回|显示|获取)?\s*(\w+)\s*表', text)
         if table_match:
             entities['table'] = table_match.group(1)
         
-        # LIMIT 提取
+        # LIMIT extraction
         limit_match = re.search(r'(?:前\s*)?(\d+)\s*(?:条|条数|行|rows)', text)
         if limit_match:
             entities['limit'] = int(limit_match.group(1))
         
-        # 指标提取
+        # Metric extraction
         metric_mapping = {
             '产量': 'output_qty',
             '良品率': 'yield_rate',
@@ -331,14 +305,14 @@ class IntentRecognizer:
                 metrics.append(metric)
         
         if metrics:
-            entities['metrics'] = list(set(metrics))  # 去重
+            entities['metrics'] = list(set(metrics))
         
-        # 设备提取
+        # Equipment extraction
         equipment_match = re.search(r'(?:设备|设备号|设备ID)\s*[:：]?\s*(\w+)', text)
         if equipment_match:
             entities['equipment'] = equipment_match.group(1)
         
-        # 产品线提取
+        # Product line extraction
         product_line_match = re.search(r'(?:产品线|产线)\s*[:：]?\s*(\w+)', text)
         if product_line_match:
             entities['productLine'] = product_line_match.group(1)
@@ -347,12 +321,12 @@ class IntentRecognizer:
     
     def _merge_results(self, rule_result: Dict, llm_result: Dict) -> Dict[str, Any]:
         """
-        合并规则引擎和 LLM 的结果
-        
-        策略:
-        1. 优先使用 LLM 的意图判断（更准确）
-        2. 合并两种方法的实体提取结果
-        3. 取较高的置信度
+        Merge results from rule-based and LLM methods.
+
+        Strategy:
+          1. Prioritize LLM intent judgment (more accurate)
+          2. Merge entity extraction results from both methods
+          3. Use higher confidence score
         """
         return {
             'intent': llm_result.get('intent', rule_result['intent']),
@@ -369,82 +343,71 @@ class IntentRecognizer:
     
     def _generate_clarifications(self, intent: str, entities: Dict, confidence: float) -> List[str]:
         """
-        根据识别结果生成澄清问题
-        
+        Generate clarification questions based on recognition result.
+
         Returns:
-            澄清问题列表
+            list: List of clarification questions for user
         """
         clarifications = []
         
-        # 置信度过低
+        # Low confidence
         if confidence < 0.5:
-            clarifications.append('您的意图不够清晰，请提供更多信息。')
+            clarifications.append('Your intent is not clear enough. Please provide more information.')
             return clarifications
         
-        # 根据意图类型生成澄清
+        # Generate clarifications based on intent type
         if intent == 'query_production':
             if not entities.get('timeRange'):
-                clarifications.append('请指定您想查询的时间范围（如：今天、本周、上月）')
+                clarifications.append('Please specify the time range you want to query.')
             if not entities.get('productLine') and not entities.get('productType'):
-                clarifications.append('请指定具体的产品线或产品类型')
+                clarifications.append('Please specify the product line or product type.')
         
         elif intent == 'query_quality':
             if not entities.get('timeRange'):
-                clarifications.append('请指定查询的时间范围')
+                clarifications.append('Please specify the time range.')
             if not entities.get('metrics'):
-                clarifications.append('您想了解哪个质量指标？• 良品率 • 合格率 • 缺陷率')
+                clarifications.append('Which quality metrics are you interested in?')
         
         elif intent == 'query_equipment':
             if not entities.get('metrics'):
-                clarifications.append('您想了解哪个设备指标？• OEE • 稼动率 • 故障时间')
+                clarifications.append('Which equipment metric do you want to know?')
             if not entities.get('timeRange'):
-                clarifications.append('请指定查询的时间范围')
+                clarifications.append('Please specify the time range.')
         
         elif intent == 'generate_report':
             if not entities.get('reportType'):
-                clarifications.append('请指定报表类型（如：日报、周报、月报、生产报表、质量报表）')
+                clarifications.append('Please specify the report type.')
             if not entities.get('timeRange'):
-                clarifications.append('请指定报表的时间范围')
+                clarifications.append('Please specify the time range for the report.')
         
         elif intent == 'compare_analysis':
             if not entities.get('metrics'):
-                clarifications.append('请指定要对比的指标')
+                clarifications.append('Please specify which metrics to compare.')
             if not entities.get('timeRange'):
-                clarifications.append('请指定对比的时间范围（如：同比上月、环比上周）')
+                clarifications.append('Please specify the time range for comparison.')
         
         return clarifications
 
-
     def to_frontend_format(self, result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        将后端识别结果转换为前端 UserIntent 接口格式
-        
-        前端 UserIntent 接口要求:
-        {
-            "type": "query" | "report" | "analysis" | "comparison" | "direct_table_query",
-            "entities": {
-                "metric": string,
-                "timeRange": string,
-                "equipment": string[],
-                "shift": string[],
-                "comparison": boolean,
-                "tableName"?: string,
-                "limit"?: number
-            },
-            "confidence": number,
-            "clarifications": string[]
-        }
-        
+        Convert backend recognition result to frontend UserIntent interface format.
+
+        Frontend UserIntent interface specification:
+          type: 'query' | 'report' | 'analysis' | 'comparison' | 'direct_table_query'
+          entities: dict with keys metric, timeRange, equipment, shift, comparison, tableName, limit
+          confidence: float between 0 and 1
+          clarifications: list of strings
+
         Args:
-            result: 后端 recognize() 方法的返回结果
-            
+            result: Output from recognize() method
+
         Returns:
-            符合前端 UserIntent 接口的对象
+            dict: UserIntent object compatible with frontend interface
         """
         intent = result.get('intent', 'other')
         entities = result.get('entities', {})
         
-        # 映射后端意图类型到前端类型
+        # Map backend intent types to frontend types
         intent_type_mapping = {
             'direct_query': 'direct_table_query',
             'query_production': 'query',
@@ -456,11 +419,11 @@ class IntentRecognizer:
         
         frontend_type = intent_type_mapping.get(intent, 'query')
         
-        # 自动检测是否是对比分析
+        # Auto-detect if comparison analysis
         if entities.get('comparison') or 'comparison' in result.get('methodsUsed', []):
             frontend_type = 'comparison'
         
-        # 构建前端格式的实体对象
+        # Build frontend-format entities object
         frontend_entities = {
             'metric': entities.get('metric', 'general'),
             'timeRange': entities.get('timeRange', ''),
@@ -469,12 +432,12 @@ class IntentRecognizer:
             'comparison': entities.get('comparison', False)
         }
         
-        # 如果是直接查询，添加 tableName 和 limit
+        # Add tableName and limit for direct query
         if intent == 'direct_query':
             frontend_entities['tableName'] = entities.get('tableName', '')
             frontend_entities['limit'] = entities.get('limit')
         
-        # 如果 equipment 不是列表，转换为列表
+        # Convert equipment to list if not already
         if frontend_entities['equipment'] and not isinstance(frontend_entities['equipment'], list):
             frontend_entities['equipment'] = [frontend_entities['equipment']]
         
@@ -487,5 +450,5 @@ class IntentRecognizer:
 
 
 def get_intent_recognizer(llm_provider=None) -> IntentRecognizer:
-    """获取意图识别器实例"""
+    """Get intent recognizer instance"""
     return IntentRecognizer(llm_provider=llm_provider)
