@@ -21,16 +21,24 @@ class IntentRecognizer:
         """
         初始化意图识别器
         
-        Args:
-            llm_provider: LLM 提供者（用于 DeepSeek API 调用）
-        """
-        self.llm_provider = llm_provider
-        
-        # 意图配置
-        self.intents = {
-            'direct_query': {
-                'keywords': ['返回', '查询', '显示', '获取', '列出', '表', 'select', 'from'],
-                'entities': ['table', 'limit', 'filters'],
+        try:
+            response = self.llm_provider.generate(prompt)
+            # 自动去除 markdown 代码块包裹（如 ```json ... ``` 或 ``` ... ```）
+            if response.strip().startswith('```'):
+                # 去除开头的 ```json 或 ```
+                lines = response.strip().splitlines()
+                # 跳过第一行（```json 或 ```）
+                json_str = '\n'.join(line for line in lines[1:] if not line.strip().startswith('```'))
+            else:
+                json_str = response
+            # 解析 JSON 结果
+            result = json.loads(json_str)
+            return {
+                'intent': result.get('intent', 'other'),
+                'confidence': float(result.get('confidence', 0.0)),
+                'entities': result.get('entities', {}),
+                'reasoning': result.get('reasoning', '')
+            }
                 'description': '直接查询表数据'
             },
             'query_production': {
