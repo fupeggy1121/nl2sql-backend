@@ -11,8 +11,21 @@
  * 6. 后端执行并返回结果
  */
 
-const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-const UNIFIED_API_URL = `${BASE_URL}/api/query/unified`;
+// 支持 Vite 的 VITE_API_BASE_URL 和 React 的 REACT_APP_API_URL 两种方式
+const getApiBaseUrl = () => {
+  // Vite 环境变量优先（import.meta.env.VITE_API_BASE_URL）
+  if (typeof import !== 'undefined' && import.meta?.env?.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  // React 环境变量降级
+  if (typeof process !== 'undefined' && process.env?.REACT_APP_API_URL) {
+    return `${process.env.REACT_APP_API_URL}/api/query/unified`;
+  }
+  // 本地开发默认值
+  return 'http://localhost:8000/api/query/unified';
+};
+
+const UNIFIED_API_URL = getApiBaseUrl();
 
 export interface QueryIntent {
   query_type: string;
