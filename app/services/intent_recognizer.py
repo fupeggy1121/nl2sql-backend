@@ -442,6 +442,8 @@ Return analysis result in JSON format (must be valid JSON):
             frontend_entities['equipment'] = [frontend_entities['equipment']]
         
         return {
+            'success': True,
+            'intent': intent,
             'type': frontend_type,
             'entities': frontend_entities,
             'confidence': result.get('confidence', 0.0),
