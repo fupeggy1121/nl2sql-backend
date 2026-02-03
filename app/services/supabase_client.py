@@ -307,6 +307,20 @@ class SupabaseClient:
                 'data': []
             }
     
+    def table(self, table_name: str):
+        """
+        访问 Supabase 表
+        
+        Args:
+            table_name: 表名
+            
+        Returns:
+            Supabase 表对象
+        """
+        if not self.client:
+            raise RuntimeError(f"Supabase client not initialized: {self.init_error}")
+        return self.client.table(table_name)
+    
     def close(self):
         """关闭连接"""
         logger.info("Supabase connection closed")
