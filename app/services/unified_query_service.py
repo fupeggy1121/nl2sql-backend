@@ -13,6 +13,7 @@ from app.services.intent_recognizer import IntentRecognizer
 from app.services.nl2sql_enhanced import get_enhanced_nl2sql_converter
 from app.services.query_executor import QueryExecutor
 from app.services.llm_provider import get_llm_provider
+from app.services.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
@@ -120,13 +121,16 @@ class UnifiedQueryService:
 
     def __init__(self):
         """初始化服务"""
+        # 初始化 Supabase 客户端
+        supabase_client = get_supabase_client()
+        
         # 初始化 LLM 提供商
         self.llm_provider = get_llm_provider()
         
         # 初始化意图识别器，并传递 LLM 提供商
         self.intent_recognizer = IntentRecognizer(llm_provider=self.llm_provider)
         self.nl2sql_converter = get_enhanced_nl2sql_converter()
-        self.query_executor = QueryExecutor()
+        self.query_executor = QueryExecutor(supabase_client=supabase_client)
         logger.info("UnifiedQueryService initialized")
 
     async def process_natural_language_query(
