@@ -1,0 +1,685 @@
+================================================================================
+Supabase 数据库 - 所有表详细结构
+================================================================================
+
+================================================================================
+表: quality_records
+================================================================================
+行数: 6200
+列数: 12
+
+列名 (12 个):
+--------------------------------------------------------------------------------
+   1. id
+   2. equipment_id
+   3. product_id
+   4. measurement_type
+   5. measurement_value
+   6. unit
+   7. upper_limit
+   8. lower_limit
+   9. status
+  10. shift
+  11. timestamp
+  12. created_at
+
+样本数据 (第1行):
+--------------------------------------------------------------------------------
+  id                             : de363ad7-2a1b-48e7-afa9-33518f696939
+  equipment_id                   : E-001
+  product_id                     : P-005
+  measurement_type               : diameter
+  measurement_value              : 9.86
+  unit                           : mm
+  upper_limit                    : 10.2
+  lower_limit                    : 9.8
+  status                         : PASS
+  shift                          : A
+  timestamp                      : 2025-12-30T15:31:29.783+00:00
+  created_at                     : 2026-01-29T01:39:30.266218+00:00
+
+================================================================================
+表: oee_records
+================================================================================
+行数: 465
+列数: 13
+
+列名 (13 个):
+--------------------------------------------------------------------------------
+   1. id
+   2. equipment_id
+   3. date
+   4. shift
+   5. availability
+   6. performance
+   7. quality
+   8. oee
+   9. planned_time
+  10. actual_time
+  11. total_output
+  12. good_output
+  13. created_at
+
+样本数据 (第1行):
+--------------------------------------------------------------------------------
+  id                             : 1a00ca06-bf61-42e0-8c96-59c16d651ad4
+  equipment_id                   : E-001
+  date                           : 2025-12-30
+  shift                          : A
+  availability                   : 86.91
+  performance                    : 92.52
+  quality                        : 95.74
+  oee                            : 76.98
+  planned_time                   : 480
+  actual_time                    : 417
+  total_output                   : 176
+  good_output                    : 168
+  created_at                     : 2026-01-29T01:39:28.248048+00:00
+
+================================================================================
+表: sub_batches
+================================================================================
+行数: 102
+列数: 11
+
+列名 (11 个):
+--------------------------------------------------------------------------------
+   1. id
+   2. batch_id
+   3. sub_batch_code
+   4. current_carrier_id
+   5. current_station_id
+   6. total_qty
+   7. good_qty
+   8. defect_qty
+   9. status
+  10. created_at
+  11. updated_at
+
+样本数据 (第1行):
+--------------------------------------------------------------------------------
+  id                             : 59046524-64af-47be-848e-91f2e7538f2b
+  batch_id                       : 207b7612-7e5a-4b47-914a-979fd946c52a
+  sub_batch_code                 : BATCHHDDTFP-SUB-01
+  current_carrier_id             : e3329d0d-8664-4153-9cfc-b3ff40759140
+  current_station_id             : fca17cd2-e8a4-43c9-893a-6313c9b20584
+  total_qty                      : 25
+  good_qty                       : 25
+  defect_qty                     : 0
+  status                         : 待进站
+  created_at                     : 2025-12-31T03:41:49.221+00:00
+  updated_at                     : 2025-12-31T03:41:49.221+00:00
+
+================================================================================
+表: parameters
+================================================================================
+行数: 89
+列数: 12
+
+列名 (12 个):
+--------------------------------------------------------------------------------
+   1. id
+   2. name
+   3. code
+   4. unit
+   5. description
+   6. type
+   7. created_at
+   8. updated_at
+   9. parameter_type
+  10. lower_limit
+  11. upper_limit
+  12. target_value
+
+样本数据 (第1行):
+--------------------------------------------------------------------------------
+  id                             : 18ddff77-7e8d-4ff6-cc4e-4bb7bb168c99
+  name                           : 压力
+  code                           : PRESSURE
+  unit                           : Torr
+  description                    : 工艺过程中的压力
+  type                           : process
+  created_at                     : 2026-01-05T05:32:38.02684+00:00
+  updated_at                     : 2026-01-05T05:32:38.02684+00:00
+  parameter_type                 : process
+  lower_limit                    : None
+  upper_limit                    : None
+  target_value                   : None
+
+================================================================================
+表: stations
+================================================================================
+行数: 64
+列数: 27
+
+列名 (27 个):
+--------------------------------------------------------------------------------
+   1. id
+   2. code
+   3. name
+   4. description
+   5. workshop
+   6. station_type
+   7. linked_processing_station_id
+   8. equipment_group
+   9. tool_group
+  10. personnel_group
+  11. work_standards
+  12. auto_entry
+  13. auto_exit
+  14. entry_form_config
+  15. exit_form_config
+  16. process_rules
+  17. status
+  18. created_at
+  19. updated_at
+  20. processing_unit
+  21. sub_path_configs
+  22. entry_basket_group
+  23. exit_basket_group
+  24. basket_change_mode
+  25. parameter_group_ids
+  26. recipe_id
+  27. equipment_group_ids
+
+样本数据 (第1行):
+--------------------------------------------------------------------------------
+  id                             : 29e27d65-a29d-46ad-94db-37360e242fe9
+  code                           : 8602
+  name                           : 体金属检测
+  description                    : 体金属检测
+  workshop                       : Lot C
+  station_type                   : measurement
+  linked_processing_station_id   : [None]
+  equipment_group                : ['MET01']
+  tool_group                     : 
+  personnel_group                : 
+  work_standards                 : 
+  auto_entry                     : None
+  auto_exit                      : None
+  entry_form_config              : []
+  exit_form_config               : []
+  process_rules                  : {}
+  status                         : active
+  created_at                     : 2025-12-22T04:56:45.76814+00:00
+  updated_at                     : 2025-12-22T04:56:45.76814+00:00
+  processing_unit                : Lot
+  sub_path_configs               : []
+  entry_basket_group             : 
+  exit_basket_group              : 
+  basket_change_mode             : 
+  parameter_group_ids            : ['b7c2d660-23a1-4e9f-aa9a-f5d23caac175']
+  recipe_id                      : None
+  equipment_group_ids            : []
+
+================================================================================
+表: products
+================================================================================
+行数: 31
+列数: 19
+
+列名 (19 个):
+--------------------------------------------------------------------------------
+   1. supabase_id
+   2. id
+   3. product_code
+   4. product_name
+   5. product_category
+   6. product_category_version
+   7. product_type
+   8. customer_name
+   9. description
+  10. status
+  11. specifications
+  12. process_stations
+  13. station_sub_path_overrides
+  14. revision_history
+  15. experimental_deviation_config
+  16. sub_process_configs
+  17. created_at
+  18. updated_at
+  19. main_process_route_id
+
+样本数据 (第1行):
+--------------------------------------------------------------------------------
+  supabase_id                    : c2ddec11-1e2d-4ff0-bb8f-8dd1df502c33
+  id                             : 53
+  product_code                   : 9999-0003
+  product_name                   : SPCZDF06BA-A625BENNN-SPECIAL
+  product_category               : Wafer
+  product_category_version       : V3
+  product_type                   : Silicon
+  customer_name                  : Customer C
+  description                    : 6寸抛光片
+  status                         : ACTIVE
+  specifications                 : {}
+  process_stations               : []
+  station_sub_path_overrides     : []
+  revision_history               : []
+  experimental_deviation_config  : {}
+  sub_process_configs            : []
+  created_at                     : 2025-12-30T03:00:13.98413+00:00
+  updated_at                     : 2025-12-30T03:00:13.98413+00:00
+  main_process_route_id          : None
+
+================================================================================
+表: batches
+================================================================================
+行数: 20
+列数: 22
+
+列名 (22 个):
+--------------------------------------------------------------------------------
+   1. id
+   2. batch_code
+   3. product_code
+   4. product_name
+   5. total_qty
+   6. good_qty
+   7. defect_qty
+   8. status
+   9. current_station_code
+  10. current_station_name
+  11. equipment_code
+  12. equipment_name
+  13. equipment_chamber
+  14. next_station_code
+  15. next_station_name
+  16. product_version
+  17. recipe_code
+  18. ingot_id
+  19. is_small_batch
+  20. is_hold
+  21. created_at
+  22. updated_at
+
+样本数据 (第1行):
+--------------------------------------------------------------------------------
+  id                             : aba03c67-3bf4-417c-b013-43f8f4d83c8e
+  batch_code                     : BATCHQO20O3
+  product_code                   : P001
+  product_name                   : Product Alpha
+  total_qty                      : 311
+  good_qty                       : 258
+  defect_qty                     : 53
+  status                         : 待进站
+  current_station_code           : station13
+  current_station_name           : None
+  equipment_code                 : EQ003
+  equipment_name                 : Equipment B
+  equipment_chamber              : Chamber 2
+  next_station_code              : station11
+  next_station_name              : Unknown Next Station
+  product_version                : 1
+  recipe_code                    : REC002
+  ingot_id                       : ING005
+  is_small_batch                 : False
+  is_hold                        : True
+  created_at                     : 2025-12-31T02:34:30.306+00:00
+  updated_at                     : 2025-12-31T02:34:30.306+00:00
+
+================================================================================
+表: production_orders
+================================================================================
+行数: 6
+列数: 19
+
+列名 (19 个):
+--------------------------------------------------------------------------------
+   1. id
+   2. order_type
+   3. order_number
+   4. plan_name
+   5. product_ref_id
+   6. product_name
+   7. target_quantity
+   8. current_progress
+   9. start_process_station_code
+  10. end_process_station_code
+  11. start_date
+  12. end_date
+  13. status
+  14. priority
+  15. assigned_operator
+  16. notes
+  17. created_at
+  18. updated_at
+  19. bom_items
+
+样本数据 (第1行):
+--------------------------------------------------------------------------------
+  id                             : 99ce16a6-7600-4caf-95c8-4eadf521dbfb
+  order_type                     : 标准工单
+  order_number                   : WO-2024-1001
+  plan_name                      : 氮化镓外延片生产计划1
+  product_ref_id                 : 5e25ff87-b797-47bf-a040-aeed13767a34
+  product_name                   : 氮化镓外延片
+  target_quantity                : 2500
+  current_progress               : 1200
+  start_process_station_code     : None
+  end_process_station_code       : None
+  start_date                     : 2025-01-10T08:00:00+00:00
+  end_date                       : 2025-01-25T17:00:00+00:00
+  status                         : partially scheduled
+  priority                       : high
+  assigned_operator              : 张三
+  notes                          : 需要特殊工艺处理
+  created_at                     : 2025-12-31T01:46:03.034085+00:00
+  updated_at                     : 2025-12-31T01:46:03.034085+00:00
+  bom_items                      : [{'id': 'BOM-ITEM-STATION-GAN-001', 'unit': '件', 'notes': '用于衬底准备工序', 'supplier': '供应商X', 'unitPrice...
+
+================================================================================
+表: equipment
+================================================================================
+行数: 5
+列数: 8
+
+列名 (8 个):
+--------------------------------------------------------------------------------
+   1. id
+   2. name
+   3. code
+   4. equipment_group_id
+   5. description
+   6. created_at
+   7. updated_at
+   8. recipe_id
+
+样本数据 (第1行):
+--------------------------------------------------------------------------------
+  id                             : 33cccc22-2d3c-4aa1-ee9d-9ee2ee613a44
+  name                           : 清洗机A
+  code                           : CLEANER_A
+  equipment_group_id             : a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+  description                    : 第一道清洗设备
+  created_at                     : 2026-01-05T05:32:38.02684+00:00
+  updated_at                     : 2026-01-05T05:32:38.02684+00:00
+  recipe_id                      : None
+
+================================================================================
+表: equipment_groups
+================================================================================
+行数: 3
+列数: 5
+
+列名 (5 个):
+--------------------------------------------------------------------------------
+   1. id
+   2. name
+   3. description
+   4. created_at
+   5. updated_at
+
+样本数据 (第1行):
+--------------------------------------------------------------------------------
+  id                             : a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+  name                           : 清洗设备组
+  description                    : 用于硅片清洗的设备集合
+  created_at                     : 2026-01-05T05:32:38.02684+00:00
+  updated_at                     : 2026-01-05T05:32:38.02684+00:00
+
+================================================================================
+表: annotation_audit_log
+================================================================================
+行数: 0
+列数: 0
+
+列名 (0 个):
+--------------------------------------------------------------------------------
+
+================================================================================
+数据库总结
+================================================================================
+总表数: 11
+总行数: 6,985
+总列数: 148
+
+表的行数分布:
+--------------------------------------------------------------------------------
+  quality_records                     :    6,200 行 (12 列)
+  oee_records                         :      465 行 (13 列)
+  sub_batches                         :      102 行 (11 列)
+  parameters                          :       89 行 (12 列)
+  stations                            :       64 行 (27 列)
+  products                            :       31 行 (19 列)
+  batches                             :       20 行 (22 列)
+  production_orders                   :        6 行 (19 列)
+  equipment                           :        5 行 (8 列)
+  equipment_groups                    :        3 行 (5 列)
+  annotation_audit_log                :        0 行 (0 列)
+
+================================================================================
+详细信息 (JSON格式)
+================================================================================
+
+{
+  "database": "Supabase PostgreSQL",
+  "scan_date": "2026-02-09T16:21:50.167609",
+  "total_tables": 11,
+  "tables": [
+    {
+      "name": "quality_records",
+      "row_count": 6200,
+      "column_count": 12,
+      "columns": [
+        "id",
+        "equipment_id",
+        "product_id",
+        "measurement_type",
+        "measurement_value",
+        "unit",
+        "upper_limit",
+        "lower_limit",
+        "status",
+        "shift",
+        "timestamp",
+        "created_at"
+      ]
+    },
+    {
+      "name": "oee_records",
+      "row_count": 465,
+      "column_count": 13,
+      "columns": [
+        "id",
+        "equipment_id",
+        "date",
+        "shift",
+        "availability",
+        "performance",
+        "quality",
+        "oee",
+        "planned_time",
+        "actual_time",
+        "total_output",
+        "good_output",
+        "created_at"
+      ]
+    },
+    {
+      "name": "sub_batches",
+      "row_count": 102,
+      "column_count": 11,
+      "columns": [
+        "id",
+        "batch_id",
+        "sub_batch_code",
+        "current_carrier_id",
+        "current_station_id",
+        "total_qty",
+        "good_qty",
+        "defect_qty",
+        "status",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "parameters",
+      "row_count": 89,
+      "column_count": 12,
+      "columns": [
+        "id",
+        "name",
+        "code",
+        "unit",
+        "description",
+        "type",
+        "created_at",
+        "updated_at",
+        "parameter_type",
+        "lower_limit",
+        "upper_limit",
+        "target_value"
+      ]
+    },
+    {
+      "name": "stations",
+      "row_count": 64,
+      "column_count": 27,
+      "columns": [
+        "id",
+        "code",
+        "name",
+        "description",
+        "workshop",
+        "station_type",
+        "linked_processing_station_id",
+        "equipment_group",
+        "tool_group",
+        "personnel_group",
+        "work_standards",
+        "auto_entry",
+        "auto_exit",
+        "entry_form_config",
+        "exit_form_config",
+        "process_rules",
+        "status",
+        "created_at",
+        "updated_at",
+        "processing_unit",
+        "sub_path_configs",
+        "entry_basket_group",
+        "exit_basket_group",
+        "basket_change_mode",
+        "parameter_group_ids",
+        "recipe_id",
+        "equipment_group_ids"
+      ]
+    },
+    {
+      "name": "products",
+      "row_count": 31,
+      "column_count": 19,
+      "columns": [
+        "supabase_id",
+        "id",
+        "product_code",
+        "product_name",
+        "product_category",
+        "product_category_version",
+        "product_type",
+        "customer_name",
+        "description",
+        "status",
+        "specifications",
+        "process_stations",
+        "station_sub_path_overrides",
+        "revision_history",
+        "experimental_deviation_config",
+        "sub_process_configs",
+        "created_at",
+        "updated_at",
+        "main_process_route_id"
+      ]
+    },
+    {
+      "name": "batches",
+      "row_count": 20,
+      "column_count": 22,
+      "columns": [
+        "id",
+        "batch_code",
+        "product_code",
+        "product_name",
+        "total_qty",
+        "good_qty",
+        "defect_qty",
+        "status",
+        "current_station_code",
+        "current_station_name",
+        "equipment_code",
+        "equipment_name",
+        "equipment_chamber",
+        "next_station_code",
+        "next_station_name",
+        "product_version",
+        "recipe_code",
+        "ingot_id",
+        "is_small_batch",
+        "is_hold",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "production_orders",
+      "row_count": 6,
+      "column_count": 19,
+      "columns": [
+        "id",
+        "order_type",
+        "order_number",
+        "plan_name",
+        "product_ref_id",
+        "product_name",
+        "target_quantity",
+        "current_progress",
+        "start_process_station_code",
+        "end_process_station_code",
+        "start_date",
+        "end_date",
+        "status",
+        "priority",
+        "assigned_operator",
+        "notes",
+        "created_at",
+        "updated_at",
+        "bom_items"
+      ]
+    },
+    {
+      "name": "equipment",
+      "row_count": 5,
+      "column_count": 8,
+      "columns": [
+        "id",
+        "name",
+        "code",
+        "equipment_group_id",
+        "description",
+        "created_at",
+        "updated_at",
+        "recipe_id"
+      ]
+    },
+    {
+      "name": "equipment_groups",
+      "row_count": 3,
+      "column_count": 5,
+      "columns": [
+        "id",
+        "name",
+        "description",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    {
+      "name": "annotation_audit_log",
+      "row_count": 0,
+      "column_count": 0,
+      "columns": []
+    }
+  ]
+}
