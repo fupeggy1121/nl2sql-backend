@@ -1,0 +1,143 @@
+{
+  "database": "Supabase PostgreSQL",
+  "total_tables": 34,
+  "total_rows": 20322,
+  "tables": [
+    {
+      "name": "wafer_inspection_results",
+      "rows": 7113
+    },
+    {
+      "name": "quality_records",
+      "rows": 6200
+    },
+    {
+      "name": "wafers",
+      "rows": 2180
+    },
+    {
+      "name": "wafer_carrier_contents",
+      "rows": 2180
+    },
+    {
+      "name": "production_events",
+      "rows": 930
+    },
+    {
+      "name": "oee_records",
+      "rows": 465
+    },
+    {
+      "name": "chat_messages",
+      "rows": 329
+    },
+    {
+      "name": "carriers",
+      "rows": 276
+    },
+    {
+      "name": "parameter_group_parameters",
+      "rows": 120
+    },
+    {
+      "name": "sub_batches",
+      "rows": 102
+    },
+    {
+      "name": "parameters",
+      "rows": 89
+    },
+    {
+      "name": "stations",
+      "rows": 64
+    },
+    {
+      "name": "process_route_stations",
+      "rows": 60
+    },
+    {
+      "name": "parameter_groups",
+      "rows": 55
+    },
+    {
+      "name": "process_routes",
+      "rows": 43
+    },
+    {
+      "name": "products",
+      "rows": 31
+    },
+    {
+      "name": "batches",
+      "rows": 20
+    },
+    {
+      "name": "parameter_equipment",
+      "rows": 18
+    },
+    {
+      "name": "product_boms",
+      "rows": 12
+    },
+    {
+      "name": "chat_sessions",
+      "rows": 8
+    },
+    {
+      "name": "production_orders",
+      "rows": 6
+    },
+    {
+      "name": "schema_column_annotations",
+      "rows": 5
+    },
+    {
+      "name": "equipment",
+      "rows": 5
+    },
+    {
+      "name": "custom_process_rules",
+      "rows": 5
+    },
+    {
+      "name": "equipment_groups",
+      "rows": 3
+    },
+    {
+      "name": "schema_table_annotations",
+      "rows": 2
+    },
+    {
+      "name": "feedback",
+      "rows": 1
+    },
+    {
+      "name": "sub_batch_process_log",
+      "rows": 0
+    },
+    {
+      "name": "intent_feedback",
+      "rows": 0
+    },
+    {
+      "name": "schema_relation_annotations",
+      "rows": 0
+    },
+    {
+      "name": "query_result_feedback",
+      "rows": 0
+    },
+    {
+      "name": "annotation_audit_log",
+      "rows": 0
+    },
+    {
+      "name": "saved_reports",
+      "rows": 0
+    },
+    {
+      "name": "batch_remarks",
+      "rows": 0
+    }
+  ]
+}
