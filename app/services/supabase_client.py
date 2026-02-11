@@ -87,9 +87,29 @@ class SupabaseClient:
                 self.init_error = f"Connection test failed: {error_msg}"
                 return False
     
+    def _detect_aggregate_query(self, sql: str) -> Optional[Dict[str, Any]]:
+        """
+        检测SQL是否为聚合查询 (COUNT, SUM, AVG, MIN, MAX)
+        
+        Returns:
+            聚合信息字典 {'function': 'count', 'column': '*', 'alias': 'count'} 或 None
+        """
+        sql_clean = re.sub(r'\s+', ' ', sql).strip()
+        # 匹配 SELECT COUNT(*), SELECT COUNT(col), SELECT SUM(col) AS alias 等
+        agg_pattern = r'SELECT\s+(COUNT|SUM|AVG|MIN|MAX)\s*\(\s*(\*|\w+)\s*\)(?:\s+AS\s+(\w+))?'
+        match = re.search(agg_pattern, sql_clean, re.IGNORECASE)
+        if match:
+            func_name = match.group(1).lower()
+            column = match.group(2)
+            alias = match.group(3) or func_name
+            return {'function': func_name, 'column': column, 'alias': alias}
+        return None
+
     def execute_query(self, sql: str, table_name: str = None) -> Dict[str, Any]:
         """
         执行查询 - 使用 PostgREST API + WHERE 条件支持
+        
+        支持聚合查询 (COUNT/SUM/AVG/MIN/MAX) 和普通 SELECT 查询。
         
         Args:
             sql: SQL 查询语句（包含WHERE条件）
@@ -97,10 +117,6 @@ class SupabaseClient:
             
         Returns:
             查询结果
-            
-        改进说明：
-        - 支持解析SQL中的WHERE条件
-        - 通过PostgREST的过滤参数应用这些条件
         """
         try:
             if not self.client:
@@ -120,14 +136,34 @@ class SupabaseClient:
             # 解析SQL中的WHERE条件
             where_conditions = self._parse_where_conditions(sql)
             
+            # 检测是否为聚合查询
+            agg_info = self._detect_aggregate_query(sql)
+            
+            if agg_info:
+                return self._execute_aggregate_query(
+                    table_name, agg_info, where_conditions, sql
+                )
+            
             logger.info(f"Executing query on {table_name} with WHERE conditions: {where_conditions}")
             
-            # 构建查询
-            query = self.client.table(table_name).select('*')
+            # 普通 SELECT 查询
+            # 解析 SELECT 列（支持 SELECT col1, col2 而不仅是 SELECT *）
+            select_columns = self._parse_select_columns(sql)
+            query = self.client.table(table_name).select(select_columns)
             
             # 应用WHERE条件
             if where_conditions:
                 query = self._apply_where_conditions(query, where_conditions)
+            
+            # 解析 LIMIT
+            limit = self._parse_limit(sql)
+            if limit:
+                query = query.limit(limit)
+            
+            # 解析 ORDER BY
+            order_info = self._parse_order_by(sql)
+            if order_info:
+                query = query.order(order_info['column'], desc=order_info['desc'])
             
             # 执行查询
             response = query.execute()
@@ -150,6 +186,137 @@ class SupabaseClient:
                 'error': error_msg,
                 'data': []
             }
+    
+    def _execute_aggregate_query(
+        self, table_name: str, agg_info: Dict[str, Any],
+        where_conditions: Dict[str, Any], original_sql: str
+    ) -> Dict[str, Any]:
+        """
+        执行聚合查询 (COUNT/SUM/AVG/MIN/MAX)
+        
+        对于 COUNT 使用 PostgREST 的 count='exact' 参数；
+        对于 SUM/AVG/MIN/MAX 先拉取目标列数据再在 Python 端计算。
+        """
+        func = agg_info['function']
+        column = agg_info['column']
+        alias = agg_info['alias']
+        
+        logger.info(f"Executing aggregate query: {func}({column}) on {table_name}, WHERE={where_conditions}")
+        
+        try:
+            if func == 'count':
+                # 使用 PostgREST 的 count 功能，只获取 count 不拉取数据
+                query = self.client.table(table_name).select('*', count='exact')
+                if where_conditions:
+                    query = self._apply_where_conditions(query, where_conditions)
+                query = query.limit(0)  # 不需要实际数据行
+                response = query.execute()
+                count_value = response.count if hasattr(response, 'count') and response.count is not None else len(response.data)
+                
+                logger.info(f"✅ COUNT query result: {count_value}")
+                return {
+                    'success': True,
+                    'data': [{alias: count_value}],
+                    'count': 1,
+                    'message': f'{func.upper()}({column}) = {count_value}'
+                }
+            
+            else:
+                # SUM / AVG / MIN / MAX — 拉取目标列数据后在 Python 端计算
+                select_col = column if column != '*' else '*'
+                query = self.client.table(table_name).select(select_col)
+                if where_conditions:
+                    query = self._apply_where_conditions(query, where_conditions)
+                response = query.execute()
+                rows = response.data
+                
+                if not rows or column == '*':
+                    return {
+                        'success': True,
+                        'data': [{alias: None}],
+                        'count': 1,
+                        'message': f'无数据可计算 {func.upper()}'
+                    }
+                
+                values = []
+                for row in rows:
+                    val = row.get(column)
+                    if val is not None:
+                        try:
+                            values.append(float(val))
+                        except (ValueError, TypeError):
+                            pass
+                
+                if not values:
+                    result_value = None
+                elif func == 'sum':
+                    result_value = sum(values)
+                elif func == 'avg':
+                    result_value = sum(values) / len(values)
+                elif func == 'min':
+                    result_value = min(values)
+                elif func == 'max':
+                    result_value = max(values)
+                else:
+                    result_value = None
+                
+                # 保留合理精度
+                if result_value is not None and isinstance(result_value, float):
+                    result_value = round(result_value, 4)
+                
+                logger.info(f"✅ {func.upper()} query result: {result_value}")
+                return {
+                    'success': True,
+                    'data': [{alias: result_value}],
+                    'count': 1,
+                    'message': f'{func.upper()}({column}) = {result_value}'
+                }
+        
+        except Exception as e:
+            logger.error(f"❌ Aggregate query failed: {str(e)}")
+            return {
+                'success': False,
+                'error': f'聚合查询失败: {str(e)}',
+                'data': []
+            }
+    
+    def _parse_select_columns(self, sql: str) -> str:
+        """解析 SELECT 列，返回 PostgREST 兼容的 select 字符串"""
+        match = re.search(r'SELECT\s+(.+?)\s+FROM', sql, re.IGNORECASE)
+        if match:
+            cols = match.group(1).strip()
+            # 如果是聚合函数就返回 *（由 _execute_aggregate_query 处理）
+            if re.search(r'(COUNT|SUM|AVG|MIN|MAX)\s*\(', cols, re.IGNORECASE):
+                return '*'
+            # 如果已经是 *，直接返回
+            if cols.strip() == '*':
+                return '*'
+            # 清理别名 (col AS alias → col)
+            cleaned = []
+            for col in cols.split(','):
+                col = col.strip()
+                col = re.sub(r'\s+AS\s+\w+', '', col, flags=re.IGNORECASE).strip()
+                if col:
+                    cleaned.append(col)
+            return ','.join(cleaned) if cleaned else '*'
+        return '*'
+    
+    def _parse_limit(self, sql: str) -> Optional[int]:
+        """解析 LIMIT 子句"""
+        match = re.search(r'LIMIT\s+(\d+)', sql, re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+        return None
+    
+    def _parse_order_by(self, sql: str) -> Optional[Dict[str, Any]]:
+        """解析 ORDER BY 子句"""
+        match = re.search(r'ORDER\s+BY\s+(\w+)(?:\s+(ASC|DESC))?', sql, re.IGNORECASE)
+        if match:
+            return {
+                'column': match.group(1),
+                'desc': match.group(2) and match.group(2).upper() == 'DESC'
+            }
+        return None
     
     def _parse_where_conditions(self, sql: str) -> Dict[str, Any]:
         """

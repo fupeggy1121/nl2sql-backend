@@ -349,8 +349,22 @@ class UnifiedQueryService:
         import time
 
         try:
-            # 执行查询
-            data = self.query_executor.execute_query(sql_query)
+            # 执行查询 — query_executor 返回 {'success': bool, 'data': list, 'count': int, ...}
+            result = self.query_executor.execute_query(sql_query)
+
+            # 正确解包 executor 返回的字典
+            if isinstance(result, dict):
+                if not result.get('success', False):
+                    return QueryResult(
+                        success=False,
+                        sql=sql_query,
+                        error_message=result.get('error', '查询执行失败'),
+                        query_time_ms=(time.time() - start_time) * 1000,
+                        generated_at=datetime.now().isoformat()
+                    )
+                data = result.get('data', [])
+            else:
+                data = result
 
             if not data:
                 return QueryResult(
@@ -362,6 +376,10 @@ class UnifiedQueryService:
                     query_time_ms=(time.time() - start_time) * 1000,
                     generated_at=datetime.now().isoformat()
                 )
+
+            # 确保 data 是列表
+            if not isinstance(data, list):
+                data = [data]
 
             # 确定可视化类型
             viz_type = self._determine_visualization_type(query_intent, data)
