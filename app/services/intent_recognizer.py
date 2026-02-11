@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Any
 import re
 import logging
 import json
+from app.config.table_synonyms import map_table_name
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,8 @@ class IntentRecognizer:
         # Intent configuration
         self.intents = {
             'direct_query': {
-                'keywords': ['返回', '查询', '显示', '获取', '列出', '表', 'select', 'from'],
+                'keywords': ['返回', '查询', '显示', '获取', '列出', '表', '片篮', '载具', '载体', 
+                            '晶圆', '检测', '批次', '设备', '质量', '缺陷', 'select', 'from'],
                 'entities': ['table', 'limit', 'filters'],
                 'description': 'Direct table data query'
             },
@@ -131,22 +133,36 @@ class IntentRecognizer:
         Returns:
             dict: Intent matching result with keys: intent, confidence, entities
         """
+        from app.config.table_synonyms import is_valid_table_name
+        
         normalized_input = text.lower()
         scores = {}
         
-        # Calculate match scores for each intent
-        for intent_name, config in self.intents.items():
-            score = 0
-            keywords = config['keywords']
-            
-            # Count keyword matches
-            for keyword in keywords:
-                if keyword.lower() in normalized_input:
-                    score += 1
-            
-            if score > 0:
-                # Normalize score to 0-1
-                scores[intent_name] = score / len(keywords)
+        # Check if it's a direct query to a table (highest priority)
+        # Look for keywords followed by table synonyms
+        if any(kw in normalized_input for kw in ['查询', '返回', '显示', '获取', '列出']):
+            # Extract words and check if they are table names
+            words = re.findall(r'[a-zA-Z_]+|[\u4e00-\u9fff]+', text)
+            for word in words:
+                if is_valid_table_name(word):
+                    # High confidence for direct table queries
+                    scores['direct_query'] = 0.95
+                    break
+        
+        # If no direct query found, calculate match scores for each intent
+        if not scores:
+            for intent_name, config in self.intents.items():
+                score = 0
+                keywords = config['keywords']
+                
+                # Count keyword matches
+                for keyword in keywords:
+                    if keyword.lower() in normalized_input:
+                        score += 1
+                
+                if score > 0:
+                    # Normalize score to 0-1
+                    scores[intent_name] = score / len(keywords)
         
         # No match found
         if not scores:
@@ -278,10 +294,60 @@ Return analysis result in JSON format (must be valid JSON):
             unit = re.search(r'天|周|月', num_time_match.group(0)).group(0)
             entities['timeRange'] = f"{number}{unit}"
         
-        # Table name extraction
+        # Table name extraction - Pattern 1: "表名表" format
         table_match = re.search(r'(?:查询|返回|显示|获取)?\s*(\w+)\s*表', text)
         if table_match:
-            entities['table'] = table_match.group(1)
+            raw_table_name = table_match.group(1)
+            # Apply synonym mapping to convert user input to actual table name
+            entities['table'] = map_table_name(raw_table_name)
+            # Also store the raw table name for reference
+            entities['raw_table_name'] = raw_table_name
+        
+        # Pattern 2: Direct table name/synonym after query keyword (without "表")
+        # This handles cases like "查询片篮", "显示载具", "查询晶圆的信息", "显示所有晶圆载体"
+        if 'table' not in entities:
+            from app.config.table_synonyms import is_valid_table_name
+            
+            # Look for query keywords followed by table names
+            # Extract content after query keywords
+            keyword_pattern = r'(?:查询|返回|显示|获取)\s*(.+?)$'
+            keyword_match = re.search(keyword_pattern, text)
+            
+            if keyword_match:
+                candidate_text = keyword_match.group(1).strip()
+                
+                # First remove common function words and suffixes
+                # This helps identify the core table name
+                cleaned_text = re.sub(r'^(?:所有|所有的|当前|各种|全部)', '', candidate_text)
+                cleaned_text = re.sub(r'(?:的信息|的数据|的|表|数据|信息|状态)$', '', cleaned_text).strip()
+                
+                # Strategy: try to extract table names with multiple approaches
+                candidates_to_try = []
+                
+                # Approach 1: Try the cleaned text as continuous block
+                candidates_to_try.append(cleaned_text)
+                
+                # Approach 2: Try individual two-character sequences (common in Chinese)
+                if len(cleaned_text) >= 2:
+                    for i in range(len(cleaned_text) - 1):
+                        candidates_to_try.append(cleaned_text[i:i+2])
+                
+                # Approach 3: Try individual three-character sequences
+                if len(cleaned_text) >= 3:
+                    for i in range(len(cleaned_text) - 2):
+                        candidates_to_try.append(cleaned_text[i:i+3])
+                
+                # Approach 4: Try individual characters (as a last resort)
+                for char in cleaned_text:
+                    candidates_to_try.append(char)
+                
+                # Try each candidate (longest first)
+                for candidate in sorted(set(candidates_to_try), key=len, reverse=True):
+                    if is_valid_table_name(candidate):
+                        mapped_name = map_table_name(candidate)
+                        entities['table'] = mapped_name
+                        entities['raw_table_name'] = candidate
+                        break
         
         # LIMIT extraction
         limit_match = re.search(r'(?:前\s*)?(\d+)\s*(?:条|条数|行|rows)', text)
