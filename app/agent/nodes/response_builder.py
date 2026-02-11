@@ -1,0 +1,94 @@
+"""
+response_builder — 响应构建节点
+
+所有分支的汇聚点。组装完整的 API 响应。
+"""
+
+import logging
+import time
+from datetime import datetime
+from app.agent.state import AgentState
+
+logger = logging.getLogger(__name__)
+
+
+def response_builder_node(state: AgentState) -> dict:
+    """
+    响应构建节点。
+    输入: 所有 state 字段
+    输出: response (最终 API 响应)
+    """
+    intent = state.get("intent", "query")
+    error = state.get("error", "")
+    query_result = state.get("query_result", {})
+    visualization = state.get("visualization")
+    sql = state.get("sql", "")
+    user_input = state.get("user_input", "")
+    intent_data = state.get("intent_data", {})
+    start_time = state.get("start_time", time.time())
+
+    # 计算耗时
+    elapsed_ms = (time.time() - start_time) * 1000
+
+    # 构建响应
+    if error and not query_result.get("success"):
+        # ── 全局错误 ──
+        response = {
+            "success": False,
+            "error": error,
+            "query_time_ms": round(elapsed_ms, 1),
+        }
+    elif intent == "query":
+        # ── 数据查询响应 ──
+        data = query_result.get("data", [])
+        rows_count = query_result.get("rows_count", len(data) if isinstance(data, list) else 0)
+
+        # 生成摘要
+        summary = _generate_summary(user_input, data, rows_count)
+
+        response = {
+            "success": True,
+            "query_plan": {
+                "query_intent": intent_data,
+                "generated_sql": sql,
+                "sql_confidence": state.get("sql_confidence", 0.0),
+                "explanation": f"根据您的查询生成了 SQL 并执行",
+            },
+            "query_result": {
+                "success": True,
+                "data": data,
+                "rows_count": rows_count,
+                "sql": sql,
+                "summary": summary,
+                "visualization_type": state.get("chart_type", "table"),
+                "actions": ["export", "refresh"],
+                "query_time_ms": round(elapsed_ms, 1),
+                "generated_at": datetime.now().isoformat(),
+            },
+            "visualization": visualization,
+        }
+    else:
+        # ── 其他意图（chat/alert/schedule）暂返回占位 ──
+        response = {
+            "success": True,
+            "message": "该功能正在开发中",
+            "intent": intent,
+        }
+
+    logger.info(
+        f"[response_builder] Built response: success={response.get('success')}, "
+        f"elapsed={elapsed_ms:.0f}ms"
+    )
+
+    return {"response": response}
+
+
+def _generate_summary(user_input: str, data: list, rows_count: int) -> str:
+    """生成简短的查询结果摘要"""
+    if not data:
+        return "查询未返回数据"
+    if rows_count == 1 and len(data[0]) == 1:
+        # 单值结果
+        val = list(data[0].values())[0]
+        return f"查询结果: {val}"
+    return f"查询返回 {rows_count} 条记录"
