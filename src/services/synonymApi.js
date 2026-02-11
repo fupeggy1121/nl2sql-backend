@@ -6,7 +6,25 @@
  *   const all = await synonymApi.getSynonyms({ table_name: 'carriers' });
  */
 
-const BASE = (import.meta.env?.VITE_API_BASE_URL || 'http://localhost:8000') + '/api/synonyms';
+// API 基础地址 — 与 nl2sqlApi_v2.js / FRONTEND_API_CONFIG.js 保持一致
+const getBase = () => {
+  // 1. Vite env (推荐)
+  if (typeof import !== 'undefined' && import.meta?.env?.VITE_API_BASE_URL) {
+    // VITE_API_BASE_URL 可能包含 /api/query/unified 后缀，需要剥离
+    return import.meta.env.VITE_API_BASE_URL.replace(/\/api\/query.*$/, '') + '/api/synonyms';
+  }
+  if (typeof import !== 'undefined' && import.meta?.env?.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace(/\/api\/query.*$/, '') + '/api/synonyms';
+  }
+  // 2. React CRA env
+  if (typeof process !== 'undefined' && process.env?.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL.replace(/\/api\/query.*$/, '') + '/api/synonyms';
+  }
+  // 3. 本地开发默认
+  return 'http://localhost:8000/api/synonyms';
+};
+
+const BASE = getBase();
 
 async function request(path, options = {}) {
   const res = await fetch(BASE + path, {
