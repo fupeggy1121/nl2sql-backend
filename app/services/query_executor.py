@@ -6,7 +6,6 @@
 from typing import List, Dict, Any, Optional
 import logging
 import re
-from app.services.postgresql_executor import PostgreSQLExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -82,46 +81,58 @@ class QueryExecutor:
         try:
             # 首先尝试使用 PostgreSQL 直接连接执行 SQL
             if self.pg_executor is None:
-                self.pg_executor = PostgreSQLExecutor()
+                try:
+                    # 延迟导入 PostgreSQLExecutor，这样如果 psycopg2 不可用也不会导致应用启动失败
+                    from app.services.postgresql_executor import PostgreSQLExecutor
+                    self.pg_executor = PostgreSQLExecutor()
+                except ImportError as e:
+                    logger.warning(f"Cannot import PostgreSQLExecutor: {str(e)}, falling back to Supabase")
+                    self.pg_executor = False  # 标记为不可用
             
-            # 连接到数据库
-            if not self.pg_executor.conn:
-                if not self.pg_executor.connect():
-                    logger.warning("PostgreSQL direct connection failed, falling back to Supabase")
+            # 如果 PostgreSQL 可用，尝试使用它
+            if self.pg_executor and self.pg_executor is not False:
+                # 连接到数据库
+                if not self.pg_executor.conn:
+                    if not self.pg_executor.connect():
+                        logger.warning("PostgreSQL direct connection failed, falling back to Supabase")
+                        return self._execute_via_supabase(sql)
+                
+                # 执行 SQL 查询
+                logger.info(f"Executing SQL via PostgreSQL: {sql}")
+                
+                try:
+                    self.pg_executor.cursor.execute(sql)
+                    
+                    # 获取所有结果
+                    rows = self.pg_executor.cursor.fetchall()
+                    
+                    # 获取列名
+                    column_names = [desc[0] for desc in self.pg_executor.cursor.description]
+                    
+                    # 将结果转换为字典列表
+                    data = []
+                    for row in rows:
+                        row_dict = {}
+                        for i, col_name in enumerate(column_names):
+                            row_dict[col_name] = row[i]
+                        data.append(row_dict)
+                    
+                    logger.info(f"✅ Query executed successfully: {len(data)} rows returned")
+                    
+                    return {
+                        'success': True,
+                        'data': data,
+                        'count': len(data),
+                        'message': f'成功返回 {len(data)} 条记录'
+                    }
+                    
+                except Exception as query_error:
+                    logger.error(f"PostgreSQL query execution failed: {str(query_error)}")
+                    # 查询执行失败，尝试回退到Supabase
                     return self._execute_via_supabase(sql)
-            
-            # 执行 SQL 查询
-            logger.info(f"Executing SQL via PostgreSQL: {sql}")
-            
-            try:
-                self.pg_executor.cursor.execute(sql)
-                
-                # 获取所有结果
-                rows = self.pg_executor.cursor.fetchall()
-                
-                # 获取列名
-                column_names = [desc[0] for desc in self.pg_executor.cursor.description]
-                
-                # 将结果转换为字典列表
-                data = []
-                for row in rows:
-                    row_dict = {}
-                    for i, col_name in enumerate(column_names):
-                        row_dict[col_name] = row[i]
-                    data.append(row_dict)
-                
-                logger.info(f"✅ Query executed successfully: {len(data)} rows returned")
-                
-                return {
-                    'success': True,
-                    'data': data,
-                    'count': len(data),
-                    'message': f'成功返回 {len(data)} 条记录'
-                }
-                
-            except Exception as query_error:
-                logger.error(f"PostgreSQL query execution failed: {str(query_error)}")
-                # 查询执行失败，尝试回退到Supabase
+            else:
+                # PostgreSQL 不可用，直接使用 Supabase
+                logger.info("PostgreSQL executor not available, using Supabase")
                 return self._execute_via_supabase(sql)
             
         except Exception as e:

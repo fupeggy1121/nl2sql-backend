@@ -3,12 +3,20 @@ Supabase 直接 SQL 执行服务
 用于数据库迁移、表创建等管理操作
 """
 
-import psycopg2
-from psycopg2 import sql
 import os
 import logging
 from typing import List, Tuple, Optional
 from dotenv import load_dotenv
+
+# 尝试导入 psycopg2，如果不可用则标记为不可用
+try:
+    import psycopg2
+    from psycopg2 import sql
+    PSYCOPG2_AVAILABLE = True
+except ImportError:
+    PSYCOPG2_AVAILABLE = False
+    psycopg2 = None
+    sql = None
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -24,6 +32,9 @@ class PostgreSQLExecutor:
     """
     
     def __init__(self):
+        if not PSYCOPG2_AVAILABLE:
+            logger.warning("⚠️ psycopg2 not available - PostgreSQL direct connection will be unavailable")
+        
         self.conn = None
         self.cursor = None
         self.connection_string = self._build_connection_string()
@@ -41,6 +52,10 @@ class PostgreSQLExecutor:
     
     def connect(self) -> bool:
         """建立数据库连接"""
+        if not PSYCOPG2_AVAILABLE:
+            logger.error("❌ psycopg2 not available - cannot establish PostgreSQL connection")
+            return False
+        
         try:
             # 从连接字符串连接
             self.conn = psycopg2.connect(self.connection_string)
