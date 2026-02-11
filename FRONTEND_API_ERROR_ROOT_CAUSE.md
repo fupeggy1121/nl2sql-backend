@@ -1,4 +1,5 @@
-# 前端 API 错误 - 问题分析和解决方案
+# 自动检测和运行最佳方案
+python find_all_tables_comprehensive.py# 前端 API 错误 - 问题分析和解决方案
 
 ## 🔍 问题分析
 
