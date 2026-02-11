@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>表名同义词管理 - NL2SQL Admin</title>
+<style>
+:root {
+  --primary: #4f46e5;
+  --primary-light: #818cf8;
+  --primary-bg: #eef2ff;
+  --success: #059669;
+  --success-bg: #ecfdf5;
+  --warning: #d97706;
+  --warning-bg: #fffbeb;
+  --danger: #dc2626;
+  --danger-bg: #fef2f2;
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.06);
+  --shadow-md: 0 4px 6px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.06);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans SC', sans-serif; background: var(--gray-50); color: var(--gray-800); line-height: 1.6; }
+
+/* Header */
+.header { background: white; border-bottom: 1px solid var(--gray-200); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top:0; z-index:100; }
+.header h1 { font-size: 20px; font-weight: 700; color: var(--gray-900); }
+.header h1 span { color: var(--primary); }
+.header-stats { display: flex; gap: 16px; font-size: 13px; color: var(--gray-500); }
+.header-stats .stat { display: flex; align-items: center; gap: 4px; }
+.header-stats .stat b { color: var(--gray-800); font-size: 15px; }
+
+/* Tabs */
+.tabs { display: flex; gap: 0; background: white; border-bottom: 2px solid var(--gray-200); padding: 0 24px; }
+.tab { padding: 12px 20px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--gray-500); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .2s; position: relative; }
+.tab:hover { color: var(--gray-700); background: var(--gray-50); }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+.tab .badge { position: absolute; top: 6px; right: 4px; background: var(--danger); color: white; font-size: 11px; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; }
+
+/* Content */
+.content { max-width: 1200px; margin: 0 auto; padding: 24px; }
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Cards */
+.card { background: white; border-radius: var(--radius); border: 1px solid var(--gray-200); box-shadow: var(--shadow); margin-bottom: 16px; }
+.card-header { padding: 16px 20px; border-bottom: 1px solid var(--gray-100); display: flex; align-items: center; justify-content: space-between; }
+.card-header h3 { font-size: 15px; font-weight: 600; }
+.card-body { padding: 20px; }
+
+/* Filter bar */
+.filter-bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.filter-bar select, .filter-bar input { padding: 8px 12px; border: 1px solid var(--gray-300); border-radius: 6px; font-size: 13px; background: white; outline: none; }
+.filter-bar select:focus, .filter-bar input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-bg); }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all .15s; }
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: #4338ca; }
+.btn-success { background: var(--success); color: white; }
+.btn-success:hover { background: #047857; }
+.btn-warning { background: var(--warning); color: white; }
+.btn-warning:hover { background: #b45309; }
+.btn-danger { background: var(--danger); color: white; }
+.btn-danger:hover { background: #b91c1c; }
+.btn-outline { background: white; color: var(--gray-600); border: 1px solid var(--gray-300); }
+.btn-outline:hover { background: var(--gray-50); border-color: var(--gray-400); }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-group { display: flex; gap: 6px; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th { background: var(--gray-50); padding: 10px 14px; text-align: left; font-weight: 600; color: var(--gray-600); border-bottom: 1px solid var(--gray-200); white-space: nowrap; }
+tbody td { padding: 10px 14px; border-bottom: 1px solid var(--gray-100); }
+tbody tr:hover { background: var(--gray-50); }
+
+/* Tags */
+.tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+.tag-builtin { background: #dbeafe; color: #1d4ed8; }
+.tag-manual { background: #fae8ff; color: #a21caf; }
+.tag-auto { background: #d1fae5; color: #065f46; }
+.tag-active { background: var(--success-bg); color: var(--success); }
+.tag-inactive { background: var(--gray-100); color: var(--gray-400); }
+.tag-pending { background: var(--warning-bg); color: var(--warning); }
+.tag-approved { background: var(--success-bg); color: var(--success); }
+.tag-rejected { background: var(--danger-bg); color: var(--danger); }
+
+/* Table summary cards */
+.table-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.table-card { background: white; border: 1px solid var(--gray-200); border-radius: var(--radius); padding: 14px; cursor: pointer; transition: all .15s; }
+.table-card:hover { border-color: var(--primary-light); box-shadow: var(--shadow-md); }
+.table-card.selected { border-color: var(--primary); background: var(--primary-bg); }
+.table-card h4 { font-size: 14px; color: var(--gray-800); margin-bottom: 6px; font-family: 'SF Mono', Consolas, monospace; }
+.table-card .meta { display: flex; gap: 8px; font-size: 12px; color: var(--gray-500); }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 200; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.modal-overlay.open { opacity: 1; pointer-events: auto; }
+.modal { background: white; border-radius: 12px; width: 500px; max-width: 90vw; box-shadow: 0 20px 60px rgba(0,0,0,.15); }
+.modal-header { padding: 20px 24px 0; display: flex; justify-content: space-between; align-items: center; }
+.modal-header h3 { font-size: 17px; font-weight: 600; }
+.modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--gray-400); padding: 4px; }
+.modal-close:hover { color: var(--gray-600); }
+.modal-body { padding: 20px 24px; }
+.modal-footer { padding: 16px 24px; border-top: 1px solid var(--gray-100); display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Form */
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 13px; font-weight: 500; color: var(--gray-700); margin-bottom: 4px; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--gray-300); border-radius: 6px; font-size: 14px; outline: none; }
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-bg); }
+.form-group .hint { font-size: 12px; color: var(--gray-400); margin-top: 2px; }
+
+/* Toast */
+.toast-container { position: fixed; top: 16px; right: 16px; z-index: 300; display: flex; flex-direction: column; gap: 8px; }
+.toast { padding: 12px 20px; border-radius: 8px; font-size: 14px; color: white; box-shadow: var(--shadow-md); animation: slideIn .3s ease; }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.toast-success { background: var(--success); }
+.toast-error { background: var(--danger); }
+.toast-info { background: var(--primary); }
+
+/* Frequency bar */
+.freq-bar { display: flex; align-items: center; gap: 6px; }
+.freq-bar-fill { height: 6px; border-radius: 3px; background: var(--primary-light); min-width: 4px; }
+.freq-bar span { font-size: 12px; color: var(--gray-500); white-space: nowrap; }
+
+/* Empty state */
+.empty { padding: 40px; text-align: center; color: var(--gray-400); font-size: 14px; }
+.empty svg { width: 48px; height: 48px; margin-bottom: 12px; opacity: .4; }
+
+/* Loading */
+.loading { text-align: center; padding: 32px; color: var(--gray-400); }
+.spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--gray-200); border-top-color: var(--primary); border-radius: 50%; animation: spin .6s linear infinite; margin-right: 8px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header { flex-direction: column; gap: 8px; }
+  .filter-bar { flex-direction: column; }
+  .table-grid { grid-template-columns: 1fr; }
+  .content { padding: 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toasts"></div>
+
+<!-- Header -->
+<div class="header">
+  <h1>📋 <span>NL2SQL</span> 表名同义词管理</h1>
+  <div class="header-stats" id="headerStats">
+    <div class="stat">同义词 <b id="statTotal">-</b></div>
+    <div class="stat">活跃 <b id="statActive">-</b></div>
+    <div class="stat">表 <b id="statTables">-</b></div>
+    <div class="stat">待审批 <b id="statPending" style="color:var(--warning)">-</b></div>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <div class="tab active" data-panel="synonyms">同义词管理</div>
+  <div class="tab" data-panel="unmatched">未匹配词审批 <span class="badge" id="unmatchedBadge" style="display:none">0</span></div>
+  <div class="tab" data-panel="audit">操作日志</div>
+</div>
+
+<!-- Content -->
+<div class="content">
+
+  <!-- ============ Panel 1: Synonym Management ============ -->
+  <div class="panel active" id="panel-synonyms">
+    <!-- Table summary grid -->
+    <div class="card">
+      <div class="card-header">
+        <h3>📊 按表分组概览</h3>
+        <button class="btn btn-primary" onclick="openAddModal()">＋ 添加同义词</button>
+      </div>
+      <div class="card-body">
+        <div class="table-grid" id="tableGrid"></div>
+      </div>
+    </div>
+
+    <!-- Synonym list -->
+    <div class="card">
+      <div class="card-header">
+        <h3 id="synonymListTitle">全部同义词</h3>
+        <div class="filter-bar">
+          <select id="filterTable" onchange="loadSynonyms()">
+            <option value="">全部表</option>
+          </select>
+          <select id="filterSource" onchange="loadSynonyms()">
+            <option value="">全部来源</option>
+            <option value="builtin">内置</option>
+            <option value="manual">手动</option>
+            <option value="auto">自动</option>
+          </select>
+          <select id="filterActive" onchange="loadSynonyms()">
+            <option value="true">仅活跃</option>
+            <option value="false">仅停用</option>
+            <option value="">全部</option>
+          </select>
+          <input type="text" id="filterSearch" placeholder="搜索同义词..." oninput="filterSynonymTable()" style="width:180px">
+        </div>
+      </div>
+      <div class="card-body" style="padding:0; overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>表名</th>
+              <th>同义词</th>
+              <th>来源</th>
+              <th>状态</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="synonymTableBody">
+            <tr><td colspan="7" class="loading"><span class="spinner"></span>加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Panel 2: Unmatched Terms ============ -->
+  <div class="panel" id="panel-unmatched">
+    <div class="card">
+      <div class="card-header">
+        <h3>🔍 未匹配查询词 — 候选审批队列</h3>
+        <div class="filter-bar">
+          <select id="unmatchedStatus" onchange="loadUnmatched()">
+            <option value="pending">待处理</option>
+            <option value="approved">已审批</option>
+            <option value="rejected">已拒绝</option>
+            <option value="ignored">已忽略</option>
+          </select>
+          <select id="unmatchedMinFreq" onchange="loadUnmatched()">
+            <option value="1">频次 ≥ 1</option>
+            <option value="2">频次 ≥ 2</option>
+            <option value="5">频次 ≥ 5</option>
+            <option value="10">频次 ≥ 10</option>
+          </select>
+        </div>
+      </div>
+      <div class="card-body" style="padding:0; overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>查询词</th>
+              <th>频次</th>
+              <th>原始查询</th>
+              <th>推荐表</th>
+              <th>状态</th>
+              <th>创建时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="unmatchedTableBody">
+            <tr><td colspan="8" class="empty">暂无未匹配的查询词</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>💡 工作原理</h3></div>
+      <div class="card-body" style="font-size:13px; color: var(--gray-600); line-height: 1.8;">
+        <p>当用户通过自然语言查询数据时，如果意图识别系统无法将输入映射到已知表名，该查询词会被自动记录到此列表。</p>
+        <p style="margin-top:8px"><b>审批流程:</b> 查看高频未匹配词 → 选择目标表 → 点击「审批」→ 系统自动创建同义词映射，后续查询立即生效。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Panel 3: Audit Log ============ -->
+  <div class="panel" id="panel-audit">
+    <div class="card">
+      <div class="card-header">
+        <h3>📜 同义词操作审计日志</h3>
+        <button class="btn btn-outline" onclick="loadAuditLog()">🔄 刷新</button>
+      </div>
+      <div class="card-body" style="padding:0; overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>操作</th>
+              <th>表名</th>
+              <th>同义词</th>
+              <th>操作人</th>
+              <th>详情</th>
+            </tr>
+          </thead>
+          <tbody id="auditTableBody">
+            <tr><td colspan="6" class="loading"><span class="spinner"></span>加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">添加同义词</h3>
+      <button class="modal-close" onclick="closeModal('addModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>目标表名 *</label>
+        <select id="modalTableName"></select>
+      </div>
+      <div class="form-group">
+        <label>同义词 *</label>
+        <textarea id="modalSynonyms" rows="3" placeholder="输入同义词，每行一个（支持批量添加）"></textarea>
+        <div class="hint">每行一条，支持中英文。例如: 晶圆架、wafer_boat</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('addModal')">取消</button>
+      <button class="btn btn-primary" onclick="submitAddSynonym()">确认添加</button>
+    </div>
+  </div>
+</div>
+
+<!-- Approve Modal -->
+<div class="modal-overlay" id="approveModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>审批未匹配词</h3>
+      <button class="modal-close" onclick="closeModal('approveModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>查询词</label>
+        <input id="approveTerm" readonly style="background: var(--gray-50)">
+      </div>
+      <div class="form-group">
+        <label>映射到表名 *</label>
+        <select id="approveTableName"></select>
+      </div>
+      <div class="form-group">
+        <label>原始查询</label>
+        <input id="approveOriginalQuery" readonly style="background: var(--gray-50)">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('approveModal')">取消</button>
+      <button class="btn btn-success" onclick="submitApprove()">✓ 审批通过</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ======================================================
+// Config
+// ======================================================
+const API_BASE = window.location.origin + '/api/synonyms';
+
+// ======================================================
+// State
+// ======================================================
+let allSynonyms = [];
+let allTableNames = [];
+let currentApproveId = null;
+
+// ======================================================
+// Utils
+// ======================================================
+function toast(message, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = message;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+async function api(path, options = {}) {
+  const url = API_BASE + path;
+  try {
+    const res = await fetch(url, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+    const data = await res.json();
+    if (!res.ok && !data.success) {
+      toast(data.error || `请求失败 (${res.status})`, 'error');
+    }
+    return data;
+  } catch (e) {
+    toast(`网络错误: ${e.message}`, 'error');
+    return { success: false, error: e.message };
+  }
+}
+
+function formatDate(iso) {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function sourceTag(source) {
+  const map = { builtin: 'tag-builtin', manual: 'tag-manual', auto: 'tag-auto' };
+  const labels = { builtin: '内置', manual: '手动', auto: '自动' };
+  return `<span class="tag ${map[source] || ''}">${labels[source] || source}</span>`;
+}
+
+function statusTag(active) {
+  return active
+    ? '<span class="tag tag-active">活跃</span>'
+    : '<span class="tag tag-inactive">停用</span>';
+}
+
+function unmatchedStatusTag(status) {
+  const map = { pending: 'tag-pending', approved: 'tag-approved', rejected: 'tag-rejected', ignored: 'tag-inactive' };
+  const labels = { pending: '待处理', approved: '已审批', rejected: '已拒绝', ignored: '已忽略' };
+  return `<span class="tag ${map[status] || ''}">${labels[status] || status}</span>`;
+}
+
+function actionTag(action) {
+  const colors = { add: 'tag-approved', delete: 'tag-rejected', hard_delete: 'tag-rejected', update: 'tag-pending', approve: 'tag-approved', reject: 'tag-rejected' };
+  return `<span class="tag ${colors[action] || 'tag-builtin'}">${action}</span>`;
+}
+
+// ======================================================
+// Tab switching
+// ======================================================
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.panel).classList.add('active');
+    // Load data for the panel
+    if (tab.dataset.panel === 'unmatched') loadUnmatched();
+    if (tab.dataset.panel === 'audit') loadAuditLog();
+  });
+});
+
+// ======================================================
+// Modal helpers
+// ======================================================
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function openAddModal() {
+  document.getElementById('modalTitle').textContent = '添加同义词';
+  document.getElementById('modalSynonyms').value = '';
+  populateTableNameSelect('modalTableName');
+  openModal('addModal');
+}
+
+function populateTableNameSelect(selectId) {
+  const select = document.getElementById(selectId);
+  select.innerHTML = allTableNames.map(t => `<option value="${t}">${t}</option>`).join('');
+}
+
+// ======================================================
+// Stats
+// ======================================================
+async function loadStats() {
+  const data = await api('/stats');
+  if (data.success && data.data) {
+    const s = data.data.synonyms || {};
+    const u = data.data.unmatched || {};
+    document.getElementById('statTotal').textContent = s.total ?? '-';
+    document.getElementById('statActive').textContent = s.active ?? '-';
+    document.getElementById('statTables').textContent = s.tables ?? '-';
+    document.getElementById('statPending').textContent = u.pending ?? '0';
+    const badge = document.getElementById('unmatchedBadge');
+    if (u.pending > 0) {
+      badge.style.display = 'flex';
+      badge.textContent = u.pending;
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+}
+
+// ======================================================
+// Table summary grid
+// ======================================================
+async function loadTableSummary() {
+  const data = await api('/tables');
+  const grid = document.getElementById('tableGrid');
+  if (!data.success || !data.data || data.data.length === 0) {
+    // Fallback: build from synonym list
+    await loadSynonyms();
+    buildGridFromSynonyms();
+    return;
+  }
+  allTableNames = data.data.map(t => t.table_name);
+  grid.innerHTML = data.data.map(t => `
+    <div class="table-card" onclick="selectTable('${t.table_name}')" data-table="${t.table_name}">
+      <h4>${t.table_name}</h4>
+      <div class="meta">
+        <span>共 ${t.total}</span>
+        <span>活跃 ${t.active}</span>
+        ${t.manual > 0 ? `<span style="color:var(--primary)">手动 ${t.manual}</span>` : ''}
+        ${t.auto > 0 ? `<span style="color:var(--success)">自动 ${t.auto}</span>` : ''}
+      </div>
+    </div>
+  `).join('');
+  populateFilterTableSelect();
+}
+
+function buildGridFromSynonyms() {
+  const tableMap = {};
+  allSynonyms.forEach(s => {
+    if (!tableMap[s.table_name]) tableMap[s.table_name] = { total: 0, active: 0, manual: 0, auto: 0, builtin: 0 };
+    tableMap[s.table_name].total++;
+    if (s.is_active) tableMap[s.table_name].active++;
+    tableMap[s.table_name][s.source] = (tableMap[s.table_name][s.source] || 0) + 1;
+  });
+  allTableNames = Object.keys(tableMap).sort();
+  const grid = document.getElementById('tableGrid');
+  grid.innerHTML = allTableNames.map(name => {
+    const t = tableMap[name];
+    return `
+      <div class="table-card" onclick="selectTable('${name}')" data-table="${name}">
+        <h4>${name}</h4>
+        <div class="meta">
+          <span>共 ${t.total}</span>
+          <span>活跃 ${t.active}</span>
+        </div>
+      </div>`;
+  }).join('');
+  populateFilterTableSelect();
+}
+
+function populateFilterTableSelect() {
+  const sel = document.getElementById('filterTable');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">全部表</option>' + allTableNames.map(t => `<option value="${t}">${t}</option>`).join('');
+  sel.value = current;
+}
+
+function selectTable(tableName) {
+  document.querySelectorAll('.table-card').forEach(c => c.classList.remove('selected'));
+  const card = document.querySelector(`.table-card[data-table="${tableName}"]`);
+  if (card) card.classList.add('selected');
+  document.getElementById('filterTable').value = tableName;
+  document.getElementById('synonymListTitle').textContent = `${tableName} 的同义词`;
+  loadSynonyms();
+}
+
+// ======================================================
+// Synonym list
+// ======================================================
+async function loadSynonyms() {
+  const table = document.getElementById('filterTable').value;
+  const source = document.getElementById('filterSource').value;
+  const active = document.getElementById('filterActive').value;
+  let qs = '?';
+  if (table) qs += `table_name=${encodeURIComponent(table)}&`;
+  if (source) qs += `source=${source}&`;
+  if (active !== '') qs += `is_active=${active}&`;
+
+  const tbody = document.getElementById('synonymTableBody');
+  tbody.innerHTML = '<tr><td colspan="7" class="loading"><span class="spinner"></span>加载中...</td></tr>';
+
+  const data = await api(qs);
+  allSynonyms = data.data || [];
+
+  if (!table) {
+    document.getElementById('synonymListTitle').textContent = `全部同义词 (${allSynonyms.length})`;
+  }
+
+  renderSynonymTable(allSynonyms);
+}
+
+function renderSynonymTable(list) {
+  const tbody = document.getElementById('synonymTableBody');
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无数据</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(s => `
+    <tr data-synonym="${(s.synonym || '').toLowerCase()}">
+      <td>${s.id ?? '-'}</td>
+      <td><code style="font-size:12px; background:var(--gray-100); padding:2px 6px; border-radius:4px">${s.table_name}</code></td>
+      <td><b>${s.synonym}</b></td>
+      <td>${sourceTag(s.source)}</td>
+      <td>${statusTag(s.is_active)}</td>
+      <td>${formatDate(s.created_at)}</td>
+      <td>
+        <div class="btn-group">
+          ${s.id ? `
+            ${s.is_active
+              ? `<button class="btn btn-outline btn-sm" onclick="toggleSynonym(${s.id}, false)" title="停用">⏸</button>`
+              : `<button class="btn btn-outline btn-sm" onclick="toggleSynonym(${s.id}, true)" title="启用">▶</button>`
+            }
+            <button class="btn btn-danger btn-sm" onclick="deleteSynonym(${s.id})" title="删除">✕</button>
+          ` : '<span style="color:var(--gray-400); font-size:12px">只读</span>'}
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function filterSynonymTable() {
+  const q = document.getElementById('filterSearch').value.toLowerCase();
+  const rows = document.querySelectorAll('#synonymTableBody tr[data-synonym]');
+  rows.forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+
+// ======================================================
+// Synonym CRUD
+// ======================================================
+async function submitAddSynonym() {
+  const tableName = document.getElementById('modalTableName').value;
+  const raw = document.getElementById('modalSynonyms').value.trim();
+  if (!tableName || !raw) { toast('请填写表名和同义词', 'error'); return; }
+
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+
+  let body;
+  if (lines.length === 1) {
+    body = { table_name: tableName, synonym: lines[0] };
+  } else {
+    body = { table_name: tableName, synonyms: lines };
+  }
+
+  const data = await api('', { method: 'POST', body: JSON.stringify(body) });
+  if (data.success) {
+    toast(`成功添加 ${lines.length} 条同义词`, 'success');
+    closeModal('addModal');
+    loadSynonyms();
+    loadTableSummary();
+    loadStats();
+  }
+}
+
+async function toggleSynonym(id, isActive) {
+  const data = await api(`/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({ is_active: isActive }),
+  });
+  if (data.success) {
+    toast(isActive ? '已启用' : '已停用', 'success');
+    loadSynonyms();
+    loadStats();
+  }
+}
+
+async function deleteSynonym(id) {
+  if (!confirm('确定要删除这条同义词吗？')) return;
+  const data = await api(`/${id}`, { method: 'DELETE' });
+  if (data.success) {
+    toast('已删除', 'success');
+    loadSynonyms();
+    loadStats();
+  }
+}
+
+// ======================================================
+// Unmatched terms
+// ======================================================
+async function loadUnmatched() {
+  const status = document.getElementById('unmatchedStatus').value;
+  const minFreq = document.getElementById('unmatchedMinFreq').value;
+  const data = await api(`/unmatched?status=${status}&min_frequency=${minFreq}&limit=100`);
+  const tbody = document.getElementById('unmatchedTableBody');
+  const list = data.data || [];
+
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty">${status === 'pending' ? '🎉 暂无待处理的未匹配词' : '暂无数据'}</td></tr>`;
+    return;
+  }
+
+  const maxFreq = Math.max(...list.map(t => t.frequency));
+
+  tbody.innerHTML = list.map(t => `
+    <tr>
+      <td>${t.id}</td>
+      <td><b>${t.term}</b></td>
+      <td>
+        <div class="freq-bar">
+          <div class="freq-bar-fill" style="width:${Math.max(4, (t.frequency / maxFreq) * 60)}px"></div>
+          <span>${t.frequency}次</span>
+        </div>
+      </td>
+      <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${t.original_query || ''}">${t.original_query || '-'}</td>
+      <td>${t.suggested_table ? `<code>${t.suggested_table}</code>` : '-'}</td>
+      <td>${unmatchedStatusTag(t.status)}</td>
+      <td>${formatDate(t.created_at)}</td>
+      <td>
+        ${t.status === 'pending' ? `
+          <div class="btn-group">
+            <button class="btn btn-success btn-sm" onclick="openApproveModal(${t.id}, '${t.term}', '${t.original_query || ''}', '${t.suggested_table || ''}')">✓ 审批</button>
+            <button class="btn btn-outline btn-sm" onclick="rejectTerm(${t.id})">✕</button>
+            <button class="btn btn-outline btn-sm" onclick="ignoreTerm(${t.id})" title="忽略">⊘</button>
+          </div>
+        ` : '-'}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openApproveModal(id, term, originalQuery, suggestedTable) {
+  currentApproveId = id;
+  document.getElementById('approveTerm').value = term;
+  document.getElementById('approveOriginalQuery').value = originalQuery || '无';
+  populateTableNameSelect('approveTableName');
+  if (suggestedTable) {
+    document.getElementById('approveTableName').value = suggestedTable;
+  }
+  openModal('approveModal');
+}
+
+async function submitApprove() {
+  const tableName = document.getElementById('approveTableName').value;
+  if (!tableName) { toast('请选择目标表', 'error'); return; }
+  const data = await api(`/unmatched/${currentApproveId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ table_name: tableName }),
+  });
+  if (data.success) {
+    toast(`已审批: "${data.term}" → ${data.table_name}`, 'success');
+    closeModal('approveModal');
+    loadUnmatched();
+    loadSynonyms();
+    loadStats();
+  }
+}
+
+async function rejectTerm(id) {
+  if (!confirm('确定要拒绝此查询词吗？')) return;
+  const data = await api(`/unmatched/${id}/reject`, { method: 'POST' });
+  if (data.success) { toast('已拒绝', 'info'); loadUnmatched(); loadStats(); }
+}
+
+async function ignoreTerm(id) {
+  const data = await api(`/unmatched/${id}/ignore`, { method: 'POST' });
+  if (data.success) { toast('已忽略', 'info'); loadUnmatched(); loadStats(); }
+}
+
+// ======================================================
+// Audit log
+// ======================================================
+async function loadAuditLog() {
+  const data = await api('/audit-log?limit=100');
+  const tbody = document.getElementById('auditTableBody');
+  const list = data.data || [];
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">暂无操作日志</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(l => `
+    <tr>
+      <td>${formatDate(l.created_at)}</td>
+      <td>${actionTag(l.action)}</td>
+      <td><code>${l.table_name || '-'}</code></td>
+      <td><b>${l.synonym || '-'}</b></td>
+      <td>${l.performed_by || '-'}</td>
+      <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis">${l.details ? JSON.stringify(l.details) : '-'}</td>
+    </tr>
+  `).join('');
+}
+
+// ======================================================
+// Init
+// ======================================================
+async function init() {
+  await loadStats();
+  await loadSynonyms();
+  // Build table grid from synonym data
+  buildGridFromSynonyms();
+  // Also try the DB-backed table summary
+  loadTableSummary();
+}
+
+init();
+</script>
+</body>
+</html>
