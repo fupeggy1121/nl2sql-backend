@@ -1,0 +1,2672 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-02-11T09:46:10.612479",
+  "total_tables": 35,
+  "tables": {
+    "wafer_inspection_results": {
+      "name": "wafer_inspection_results",
+      "description": "晶圆检测结果 - 记录晶圆在各站点的检测数据和结果",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "545e8355-cf44-4642-8121-607392b739fe"
+        },
+        {
+          "name": "wafer_id_code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "wafer_id_code",
+          "sample_value": "W-BATCHHDDTFP-01-17"
+        },
+        {
+          "name": "batch_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "批次 ID - 关联的生产批次",
+          "sample_value": "207b7612-7e5a-4b47-914a-979fd946c52a"
+        },
+        {
+          "name": "station_code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "站点代码 - 生产站点编号",
+          "sample_value": "particleInspection"
+        },
+        {
+          "name": "inspection_data",
+          "type": "jsonb",
+          "python_type": "dict",
+          "nullable": false,
+          "description": "inspection_data",
+          "sample_value": "{'grade': '', 'waferType': 'GOOD', 'defectCode': None, 'defectType': 'GOOD', 'parameters': [{'max': "
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-01-09T06:59:42+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2026-01-09T06:59:42+00:00"
+        }
+      ],
+      "column_count": 7,
+      "status": "success"
+    },
+    "quality_records": {
+      "name": "quality_records",
+      "description": "质量记录 - 存储产品质量测量和检验数据",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "de363ad7-2a1b-48e7-afa9-33518f696939"
+        },
+        {
+          "name": "equipment_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "设备 ID - 关联的生产设备",
+          "sample_value": "E-001"
+        },
+        {
+          "name": "product_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "产品 ID - 关联的产品",
+          "sample_value": "P-005"
+        },
+        {
+          "name": "measurement_type",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "measurement_type",
+          "sample_value": "diameter"
+        },
+        {
+          "name": "measurement_value",
+          "type": "numeric",
+          "python_type": "float",
+          "nullable": false,
+          "description": "measurement_value",
+          "sample_value": "9.86"
+        },
+        {
+          "name": "unit",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "unit",
+          "sample_value": "mm"
+        },
+        {
+          "name": "upper_limit",
+          "type": "numeric",
+          "python_type": "float",
+          "nullable": false,
+          "description": "upper_limit",
+          "sample_value": "10.2"
+        },
+        {
+          "name": "lower_limit",
+          "type": "numeric",
+          "python_type": "float",
+          "nullable": false,
+          "description": "lower_limit",
+          "sample_value": "9.8"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "状态 - 记录的当前状态",
+          "sample_value": "PASS"
+        },
+        {
+          "name": "shift",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "shift",
+          "sample_value": "A"
+        },
+        {
+          "name": "timestamp",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "timestamp",
+          "sample_value": "2025-12-30T15:31:29.783+00:00"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-01-29T01:39:30.266218+00:00"
+        }
+      ],
+      "column_count": 12,
+      "status": "success"
+    },
+    "wafer_carrier_contents": {
+      "name": "wafer_carrier_contents",
+      "description": "晶圆载体内容 - 晶圆在载体中的位置和状态信息",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "a6027b26-de22-49a2-988f-94befd135c9e"
+        },
+        {
+          "name": "wafer_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "晶圆 ID - 关联的晶圆",
+          "sample_value": "209262ff-38b7-4a0d-9b24-33946a4bf5c4"
+        },
+        {
+          "name": "carrier_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "载体 ID - 关联的装载容器",
+          "sample_value": "e3329d0d-8664-4153-9cfc-b3ff40759140"
+        },
+        {
+          "name": "slot_number",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "slot_number",
+          "sample_value": "1"
+        },
+        {
+          "name": "sub_batch_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "sub_batch_id",
+          "sample_value": "59046524-64af-47be-848e-91f2e7538f2b"
+        },
+        {
+          "name": "wafer_type",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "wafer_type",
+          "sample_value": "GOOD"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-01-05T02:47:35.278+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2026-01-05T02:47:35.278+00:00"
+        }
+      ],
+      "column_count": 8,
+      "status": "success"
+    },
+    "wafers": {
+      "name": "wafers",
+      "description": "晶圆 - 晶圆基础信息（ID、批次、类型等）",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "209262ff-38b7-4a0d-9b24-33946a4bf5c4"
+        },
+        {
+          "name": "wafer_id_code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "wafer_id_code",
+          "sample_value": "W-BATCHHDDTFP-01-01"
+        },
+        {
+          "name": "batch_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "批次 ID - 关联的生产批次",
+          "sample_value": "207b7612-7e5a-4b47-914a-979fd946c52a"
+        },
+        {
+          "name": "initial_product_version",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "initial_product_version",
+          "sample_value": "3"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-01-05T02:47:35.278+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2026-01-05T02:47:35.278+00:00"
+        }
+      ],
+      "column_count": 6,
+      "status": "success"
+    },
+    "production_events": {
+      "name": "production_events",
+      "description": "生产事件 - 记录生产过程中发生的各类事件",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "3f7671c0-4d75-4966-9b9f-47237072e031"
+        },
+        {
+          "name": "equipment_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "设备 ID - 关联的生产设备",
+          "sample_value": "E-001"
+        },
+        {
+          "name": "event_type",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "event_type",
+          "sample_value": "PRODUCTION"
+        },
+        {
+          "name": "product_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "产品 ID - 关联的产品",
+          "sample_value": "P-005"
+        },
+        {
+          "name": "shift",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "shift",
+          "sample_value": "A"
+        },
+        {
+          "name": "operator",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "operator",
+          "sample_value": "OP-006"
+        },
+        {
+          "name": "output_qty",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "output_qty",
+          "sample_value": "221"
+        },
+        {
+          "name": "good_qty",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "good_qty",
+          "sample_value": "203"
+        },
+        {
+          "name": "defect_qty",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "defect_qty",
+          "sample_value": "18"
+        },
+        {
+          "name": "cycle_time",
+          "type": "numeric",
+          "python_type": "float",
+          "nullable": false,
+          "description": "cycle_time",
+          "sample_value": "27.19016811789144"
+        },
+        {
+          "name": "downtime",
+          "type": "numeric",
+          "python_type": "float",
+          "nullable": false,
+          "description": "downtime",
+          "sample_value": "1.137196164088714"
+        },
+        {
+          "name": "timestamp",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "timestamp",
+          "sample_value": "2025-12-30T00:39:25.638+00:00"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-01-29T01:39:26.154221+00:00"
+        }
+      ],
+      "column_count": 13,
+      "status": "success"
+    },
+    "oee_records": {
+      "name": "oee_records",
+      "description": "OEE 记录 - 设备综合效率记录",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "1a00ca06-bf61-42e0-8c96-59c16d651ad4"
+        },
+        {
+          "name": "equipment_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "设备 ID - 关联的生产设备",
+          "sample_value": "E-001"
+        },
+        {
+          "name": "date",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "date",
+          "sample_value": "2025-12-30"
+        },
+        {
+          "name": "shift",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "shift",
+          "sample_value": "A"
+        },
+        {
+          "name": "availability",
+          "type": "numeric",
+          "python_type": "float",
+          "nullable": false,
+          "description": "availability",
+          "sample_value": "86.91"
+        },
+        {
+          "name": "performance",
+          "type": "numeric",
+          "python_type": "float",
+          "nullable": false,
+          "description": "performance",
+          "sample_value": "92.52"
+        },
+        {
+          "name": "quality",
+          "type": "numeric",
+          "python_type": "float",
+          "nullable": false,
+          "description": "quality",
+          "sample_value": "95.74"
+        },
+        {
+          "name": "oee",
+          "type": "numeric",
+          "python_type": "float",
+          "nullable": false,
+          "description": "oee",
+          "sample_value": "76.98"
+        },
+        {
+          "name": "planned_time",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "planned_time",
+          "sample_value": "480"
+        },
+        {
+          "name": "actual_time",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "actual_time",
+          "sample_value": "417"
+        },
+        {
+          "name": "total_output",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "total_output",
+          "sample_value": "176"
+        },
+        {
+          "name": "good_output",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "good_output",
+          "sample_value": "168"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-01-29T01:39:28.248048+00:00"
+        }
+      ],
+      "column_count": 13,
+      "status": "success"
+    },
+    "chat_messages": {
+      "name": "chat_messages",
+      "description": "聊天消息 - NL2SQL 对话系统的消息记录",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "6477b737-359a-4d35-9f8f-e6bbce86312e"
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "session_id",
+          "sample_value": "current_user_session_id"
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "类型 - 对象或参数的类型",
+          "sample_value": "user"
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "content",
+          "sample_value": "昨天设备E-001的OEE是多少？"
+        },
+        {
+          "name": "timestamp",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "timestamp",
+          "sample_value": "2026-01-28T14:47:57.344+00:00"
+        },
+        {
+          "name": "intent_data",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "intent_data",
+          "sample_value": null
+        },
+        {
+          "name": "result_data",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "result_data",
+          "sample_value": null
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-01-28T14:47:57.76766+00:00"
+        },
+        {
+          "name": "clarification_options",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "clarification_options",
+          "sample_value": null
+        }
+      ],
+      "column_count": 9,
+      "status": "success"
+    },
+    "carriers": {
+      "name": "carriers",
+      "description": "载体 - 晶圆载体的基础信息",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "b05c9966-c836-4309-9bb5-a5a89c1b378b"
+        },
+        {
+          "name": "carrier_code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "carrier_code",
+          "sample_value": "CARCLWIBH"
+        },
+        {
+          "name": "capacity",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "capacity",
+          "sample_value": "25"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "状态 - 记录的当前状态",
+          "sample_value": "available"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2025-12-31T05:18:42.304+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2025-12-31T05:18:42.304+00:00"
+        }
+      ],
+      "column_count": 6,
+      "status": "success"
+    },
+    "parameter_group_parameters": {
+      "name": "parameter_group_parameters",
+      "description": "参数组参数 - 参数组中包含的具体参数",
+      "columns": [
+        {
+          "name": "parameter_group_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "parameter_group_id",
+          "sample_value": "b7c2d660-23a1-4e9f-aa9a-f5d23caac175"
+        },
+        {
+          "name": "parameter_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "parameter_id",
+          "sample_value": "23bd3ba5-b4ad-4f5b-aa47-32684dacd9a0"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-01-26T14:15:27.492966+00:00"
+        }
+      ],
+      "column_count": 3,
+      "status": "success"
+    },
+    "sub_batches": {
+      "name": "sub_batches",
+      "description": "子批次 - 生产批次的细分单位",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "59046524-64af-47be-848e-91f2e7538f2b"
+        },
+        {
+          "name": "batch_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "批次 ID - 关联的生产批次",
+          "sample_value": "207b7612-7e5a-4b47-914a-979fd946c52a"
+        },
+        {
+          "name": "sub_batch_code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "sub_batch_code",
+          "sample_value": "BATCHHDDTFP-SUB-01"
+        },
+        {
+          "name": "current_carrier_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "current_carrier_id",
+          "sample_value": "e3329d0d-8664-4153-9cfc-b3ff40759140"
+        },
+        {
+          "name": "current_station_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "current_station_id",
+          "sample_value": "fca17cd2-e8a4-43c9-893a-6313c9b20584"
+        },
+        {
+          "name": "total_qty",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "total_qty",
+          "sample_value": "25"
+        },
+        {
+          "name": "good_qty",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "good_qty",
+          "sample_value": "25"
+        },
+        {
+          "name": "defect_qty",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "defect_qty",
+          "sample_value": "0"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "状态 - 记录的当前状态",
+          "sample_value": "待进站"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2025-12-31T03:41:49.221+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2025-12-31T03:41:49.221+00:00"
+        }
+      ],
+      "column_count": 11,
+      "status": "success"
+    },
+    "parameters": {
+      "name": "parameters",
+      "description": "参数 - 工艺参数定义和配置",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "18ddff77-7e8d-4ff6-cc4e-4bb7bb168c99"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "名称 - 对象的名称",
+          "sample_value": "压力"
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "代码 - 对象的编码",
+          "sample_value": "PRESSURE"
+        },
+        {
+          "name": "unit",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "unit",
+          "sample_value": "Torr"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "描述 - 详细说明",
+          "sample_value": "工艺过程中的压力"
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "类型 - 对象或参数的类型",
+          "sample_value": "process"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-01-05T05:32:38.02684+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2026-01-05T05:32:38.02684+00:00"
+        },
+        {
+          "name": "parameter_type",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "parameter_type",
+          "sample_value": "process"
+        },
+        {
+          "name": "lower_limit",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "lower_limit",
+          "sample_value": null
+        },
+        {
+          "name": "upper_limit",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "upper_limit",
+          "sample_value": null
+        },
+        {
+          "name": "target_value",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "target_value",
+          "sample_value": null
+        }
+      ],
+      "column_count": 12,
+      "status": "success"
+    },
+    "stations": {
+      "name": "stations",
+      "description": "生产站点 - 生产线上的工作站点",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "29e27d65-a29d-46ad-94db-37360e242fe9"
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "代码 - 对象的编码",
+          "sample_value": "8602"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "名称 - 对象的名称",
+          "sample_value": "体金属检测"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "描述 - 详细说明",
+          "sample_value": "体金属检测"
+        },
+        {
+          "name": "workshop",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "workshop",
+          "sample_value": "Lot C"
+        },
+        {
+          "name": "station_type",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "station_type",
+          "sample_value": "measurement"
+        },
+        {
+          "name": "linked_processing_station_id",
+          "type": "jsonb",
+          "python_type": "list",
+          "nullable": false,
+          "description": "linked_processing_station_id",
+          "sample_value": "[None]"
+        },
+        {
+          "name": "equipment_group",
+          "type": "jsonb",
+          "python_type": "list",
+          "nullable": false,
+          "description": "equipment_group",
+          "sample_value": "['MET01']"
+        },
+        {
+          "name": "tool_group",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "tool_group",
+          "sample_value": ""
+        },
+        {
+          "name": "personnel_group",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "personnel_group",
+          "sample_value": ""
+        },
+        {
+          "name": "work_standards",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "work_standards",
+          "sample_value": ""
+        },
+        {
+          "name": "auto_entry",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "auto_entry",
+          "sample_value": null
+        },
+        {
+          "name": "auto_exit",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "auto_exit",
+          "sample_value": null
+        },
+        {
+          "name": "entry_form_config",
+          "type": "jsonb",
+          "python_type": "list",
+          "nullable": false,
+          "description": "entry_form_config",
+          "sample_value": "[]"
+        },
+        {
+          "name": "exit_form_config",
+          "type": "jsonb",
+          "python_type": "list",
+          "nullable": false,
+          "description": "exit_form_config",
+          "sample_value": "[]"
+        },
+        {
+          "name": "process_rules",
+          "type": "jsonb",
+          "python_type": "dict",
+          "nullable": false,
+          "description": "process_rules",
+          "sample_value": "{}"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "状态 - 记录的当前状态",
+          "sample_value": "active"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2025-12-22T04:56:45.76814+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2025-12-22T04:56:45.76814+00:00"
+        },
+        {
+          "name": "processing_unit",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "processing_unit",
+          "sample_value": "Lot"
+        },
+        {
+          "name": "sub_path_configs",
+          "type": "jsonb",
+          "python_type": "list",
+          "nullable": false,
+          "description": "sub_path_configs",
+          "sample_value": "[]"
+        },
+        {
+          "name": "entry_basket_group",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "entry_basket_group",
+          "sample_value": ""
+        },
+        {
+          "name": "exit_basket_group",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "exit_basket_group",
+          "sample_value": ""
+        },
+        {
+          "name": "basket_change_mode",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "basket_change_mode",
+          "sample_value": ""
+        },
+        {
+          "name": "parameter_group_ids",
+          "type": "jsonb",
+          "python_type": "list",
+          "nullable": false,
+          "description": "parameter_group_ids",
+          "sample_value": "['b7c2d660-23a1-4e9f-aa9a-f5d23caac175']"
+        },
+        {
+          "name": "recipe_id",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "recipe_id",
+          "sample_value": null
+        },
+        {
+          "name": "equipment_group_ids",
+          "type": "jsonb",
+          "python_type": "list",
+          "nullable": false,
+          "description": "equipment_group_ids",
+          "sample_value": "[]"
+        }
+      ],
+      "column_count": 27,
+      "status": "success"
+    },
+    "process_route_stations": {
+      "name": "process_route_stations",
+      "description": "工艺路线站点 - 工艺路线中的站点配置",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "5484aeb3-55ab-49f9-8e29-22f143ae835f"
+        },
+        {
+          "name": "route_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "route_id",
+          "sample_value": "c82728fb-7ab2-40cd-b4bc-a74ecf2804ae"
+        },
+        {
+          "name": "station_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "station_id",
+          "sample_value": "4fe917ee-9b57-4f56-ad35-5f795a1c6620"
+        },
+        {
+          "name": "sequence",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "sequence",
+          "sample_value": "1"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2025-12-22T04:56:46.958892+00:00"
+        }
+      ],
+      "column_count": 5,
+      "status": "success"
+    },
+    "parameter_groups": {
+      "name": "parameter_groups",
+      "description": "参数组 - 参数的分组管理",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "b7c2d660-23a1-4e9f-aa9a-f5d23caac175"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "名称 - 对象的名称",
+          "sample_value": "体金属检测参数组"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "描述 - 详细说明",
+          "sample_value": "用于体金属检测站点的measurement参数"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-01-26T14:15:27.492966+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2026-01-26T14:15:27.492966+00:00"
+        }
+      ],
+      "column_count": 5,
+      "status": "success"
+    },
+    "process_routes": {
+      "name": "process_routes",
+      "description": "工艺路线 - 产品生产的工艺路线",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "3ca95efb-1ddd-4c78-87d4-82f1d99ed2a2"
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "代码 - 对象的编码",
+          "sample_value": "ROUTE-B"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "名称 - 对象的名称",
+          "sample_value": "快速工艺路径B"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "描述 - 详细说明",
+          "sample_value": "产品B的快速生产路径"
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "version",
+          "sample_value": "1"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "状态 - 记录的当前状态",
+          "sample_value": "active"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2025-12-22T04:56:46.380445+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2025-12-22T04:56:46.380445+00:00"
+        },
+        {
+          "name": "path_type",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "path_type",
+          "sample_value": "regular_sub"
+        }
+      ],
+      "column_count": 9,
+      "status": "success"
+    },
+    "products": {
+      "name": "products",
+      "description": "产品 - 产品信息和规格",
+      "columns": [
+        {
+          "name": "supabase_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "supabase_id",
+          "sample_value": "c2ddec11-1e2d-4ff0-bb8f-8dd1df502c33"
+        },
+        {
+          "name": "id",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "53"
+        },
+        {
+          "name": "product_code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "product_code",
+          "sample_value": "9999-0003"
+        },
+        {
+          "name": "product_name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "product_name",
+          "sample_value": "SPCZDF06BA-A625BENNN-SPECIAL"
+        },
+        {
+          "name": "product_category",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "product_category",
+          "sample_value": "Wafer"
+        },
+        {
+          "name": "product_category_version",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "product_category_version",
+          "sample_value": "V3"
+        },
+        {
+          "name": "product_type",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "product_type",
+          "sample_value": "Silicon"
+        },
+        {
+          "name": "customer_name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "customer_name",
+          "sample_value": "Customer C"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "描述 - 详细说明",
+          "sample_value": "6寸抛光片"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "状态 - 记录的当前状态",
+          "sample_value": "ACTIVE"
+        },
+        {
+          "name": "specifications",
+          "type": "jsonb",
+          "python_type": "dict",
+          "nullable": false,
+          "description": "specifications",
+          "sample_value": "{}"
+        },
+        {
+          "name": "process_stations",
+          "type": "jsonb",
+          "python_type": "list",
+          "nullable": false,
+          "description": "process_stations",
+          "sample_value": "[]"
+        },
+        {
+          "name": "station_sub_path_overrides",
+          "type": "jsonb",
+          "python_type": "list",
+          "nullable": false,
+          "description": "station_sub_path_overrides",
+          "sample_value": "[]"
+        },
+        {
+          "name": "revision_history",
+          "type": "jsonb",
+          "python_type": "list",
+          "nullable": false,
+          "description": "revision_history",
+          "sample_value": "[]"
+        },
+        {
+          "name": "experimental_deviation_config",
+          "type": "jsonb",
+          "python_type": "dict",
+          "nullable": false,
+          "description": "experimental_deviation_config",
+          "sample_value": "{}"
+        },
+        {
+          "name": "sub_process_configs",
+          "type": "jsonb",
+          "python_type": "list",
+          "nullable": false,
+          "description": "sub_process_configs",
+          "sample_value": "[]"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2025-12-30T03:00:13.98413+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2025-12-30T03:00:13.98413+00:00"
+        },
+        {
+          "name": "main_process_route_id",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "main_process_route_id",
+          "sample_value": null
+        }
+      ],
+      "column_count": 19,
+      "status": "success"
+    },
+    "batches": {
+      "name": "batches",
+      "description": "批次 - 生产批次主记录",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "aba03c67-3bf4-417c-b013-43f8f4d83c8e"
+        },
+        {
+          "name": "batch_code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "batch_code",
+          "sample_value": "BATCHQO20O3"
+        },
+        {
+          "name": "product_code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "product_code",
+          "sample_value": "P001"
+        },
+        {
+          "name": "product_name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "product_name",
+          "sample_value": "Product Alpha"
+        },
+        {
+          "name": "total_qty",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "total_qty",
+          "sample_value": "311"
+        },
+        {
+          "name": "good_qty",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "good_qty",
+          "sample_value": "258"
+        },
+        {
+          "name": "defect_qty",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "defect_qty",
+          "sample_value": "53"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "状态 - 记录的当前状态",
+          "sample_value": "待进站"
+        },
+        {
+          "name": "current_station_code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "current_station_code",
+          "sample_value": "station13"
+        },
+        {
+          "name": "current_station_name",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "current_station_name",
+          "sample_value": null
+        },
+        {
+          "name": "equipment_code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "equipment_code",
+          "sample_value": "EQ003"
+        },
+        {
+          "name": "equipment_name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "equipment_name",
+          "sample_value": "Equipment B"
+        },
+        {
+          "name": "equipment_chamber",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "equipment_chamber",
+          "sample_value": "Chamber 2"
+        },
+        {
+          "name": "next_station_code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "next_station_code",
+          "sample_value": "station11"
+        },
+        {
+          "name": "next_station_name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "next_station_name",
+          "sample_value": "Unknown Next Station"
+        },
+        {
+          "name": "product_version",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "product_version",
+          "sample_value": "1"
+        },
+        {
+          "name": "recipe_code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "recipe_code",
+          "sample_value": "REC002"
+        },
+        {
+          "name": "ingot_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "ingot_id",
+          "sample_value": "ING005"
+        },
+        {
+          "name": "is_small_batch",
+          "type": "boolean",
+          "python_type": "bool",
+          "nullable": false,
+          "description": "is_small_batch",
+          "sample_value": "False"
+        },
+        {
+          "name": "is_hold",
+          "type": "boolean",
+          "python_type": "bool",
+          "nullable": false,
+          "description": "is_hold",
+          "sample_value": "True"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2025-12-31T02:34:30.306+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2025-12-31T02:34:30.306+00:00"
+        }
+      ],
+      "column_count": 22,
+      "status": "success"
+    },
+    "parameter_equipment": {
+      "name": "parameter_equipment",
+      "description": "参数设备关联 - 参数与设备的关联关系",
+      "columns": [
+        {
+          "name": "parameter_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "parameter_id",
+          "sample_value": "d3eeec22-2f3e-4aa1-bb9a-9ee2ef613d44"
+        },
+        {
+          "name": "equipment_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "设备 ID - 关联的生产设备",
+          "sample_value": "17aa9966-6b7a-4ee5-113b-311611057e88"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-01-05T05:32:38.02684+00:00"
+        }
+      ],
+      "column_count": 3,
+      "status": "success"
+    },
+    "product_boms": {
+      "name": "product_boms",
+      "description": "产品 BOM - 产品物料清单",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "98a31401-92eb-42ca-8141-71d775712389"
+        },
+        {
+          "name": "template_name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "template_name",
+          "sample_value": "氮化镓外延片标准BOM"
+        },
+        {
+          "name": "template_code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "template_code",
+          "sample_value": "GAN-EPI-BOM-STD"
+        },
+        {
+          "name": "product_type",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "product_type",
+          "sample_value": "氮化镓外延片"
+        },
+        {
+          "name": "version",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "version",
+          "sample_value": "1.0"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "描述 - 详细说明",
+          "sample_value": "氮化镓外延片标准生产工艺所需物料清单"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "状态 - 记录的当前状态",
+          "sample_value": "active"
+        },
+        {
+          "name": "bom_items",
+          "type": "jsonb",
+          "python_type": "list",
+          "nullable": false,
+          "description": "bom_items",
+          "sample_value": "[{'id': 'item-gan-001', 'unit': '片', 'notes': '衬底准备工序', 'supplier': '衬底供应商A', 'unitPrice': 150.0, 'm"
+        },
+        {
+          "name": "total_amount",
+          "type": "numeric",
+          "python_type": "float",
+          "nullable": false,
+          "description": "total_amount",
+          "sample_value": "291.0"
+        },
+        {
+          "name": "created_by",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "created_by",
+          "sample_value": "系统管理员"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2025-12-31T09:33:24.612405+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2025-12-31T09:33:24.612405+00:00"
+        }
+      ],
+      "column_count": 12,
+      "status": "success"
+    },
+    "chat_sessions": {
+      "name": "chat_sessions",
+      "description": "聊天会话 - NL2SQL 对话会话管理",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "session-1769657589377"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "名称 - 对象的名称",
+          "sample_value": "新对话 1"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-01-29T03:33:10.345801+00:00"
+        }
+      ],
+      "column_count": 3,
+      "status": "success"
+    },
+    "production_orders": {
+      "name": "production_orders",
+      "description": "生产订单 - 生产订单主记录",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "99ce16a6-7600-4caf-95c8-4eadf521dbfb"
+        },
+        {
+          "name": "order_type",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "order_type",
+          "sample_value": "标准工单"
+        },
+        {
+          "name": "order_number",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "order_number",
+          "sample_value": "WO-2024-1001"
+        },
+        {
+          "name": "plan_name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "plan_name",
+          "sample_value": "氮化镓外延片生产计划1"
+        },
+        {
+          "name": "product_ref_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "product_ref_id",
+          "sample_value": "5e25ff87-b797-47bf-a040-aeed13767a34"
+        },
+        {
+          "name": "product_name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "product_name",
+          "sample_value": "氮化镓外延片"
+        },
+        {
+          "name": "target_quantity",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "target_quantity",
+          "sample_value": "2500"
+        },
+        {
+          "name": "current_progress",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "current_progress",
+          "sample_value": "1200"
+        },
+        {
+          "name": "start_process_station_code",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "start_process_station_code",
+          "sample_value": null
+        },
+        {
+          "name": "end_process_station_code",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "end_process_station_code",
+          "sample_value": null
+        },
+        {
+          "name": "start_date",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "start_date",
+          "sample_value": "2025-01-10T08:00:00+00:00"
+        },
+        {
+          "name": "end_date",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "end_date",
+          "sample_value": "2025-01-25T17:00:00+00:00"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "状态 - 记录的当前状态",
+          "sample_value": "partially scheduled"
+        },
+        {
+          "name": "priority",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "priority",
+          "sample_value": "high"
+        },
+        {
+          "name": "assigned_operator",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "assigned_operator",
+          "sample_value": "张三"
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "notes",
+          "sample_value": "需要特殊工艺处理"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2025-12-31T01:46:03.034085+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2025-12-31T01:46:03.034085+00:00"
+        },
+        {
+          "name": "bom_items",
+          "type": "jsonb",
+          "python_type": "list",
+          "nullable": false,
+          "description": "bom_items",
+          "sample_value": "[{'id': 'BOM-ITEM-STATION-GAN-001', 'unit': '件', 'notes': '用于衬底准备工序', 'supplier': '供应商X', 'unitPrice"
+        }
+      ],
+      "column_count": 19,
+      "status": "success"
+    },
+    "approved_schema_metadata": {
+      "name": "approved_schema_metadata",
+      "description": "批准的元数据 - 经过审批的数据库架构元数据",
+      "columns": [
+        {
+          "name": "table_name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "table_name",
+          "sample_value": "production_orders"
+        },
+        {
+          "name": "table_name_cn",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "table_name_cn",
+          "sample_value": "生产订单"
+        },
+        {
+          "name": "description_cn",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "description_cn",
+          "sample_value": "存储来自客户的生产订单信息"
+        },
+        {
+          "name": "description_en",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "description_en",
+          "sample_value": "Storage for production orders from customers"
+        },
+        {
+          "name": "business_meaning",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "business_meaning",
+          "sample_value": "用于跟踪和管理生产计划"
+        },
+        {
+          "name": "column_name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "column_name",
+          "sample_value": "order_number"
+        },
+        {
+          "name": "column_name_cn",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "column_name_cn",
+          "sample_value": "订单编号"
+        },
+        {
+          "name": "data_type",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "data_type",
+          "sample_value": "varchar"
+        },
+        {
+          "name": "column_description_cn",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "column_description_cn",
+          "sample_value": "唯一的订单编号"
+        },
+        {
+          "name": "column_description_en",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "column_description_en",
+          "sample_value": "Unique order number"
+        },
+        {
+          "name": "example_value",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "example_value",
+          "sample_value": "ORD-2026-001"
+        },
+        {
+          "name": "column_business_meaning",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "column_business_meaning",
+          "sample_value": "用于识别订单"
+        },
+        {
+          "name": "value_range",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "value_range",
+          "sample_value": "6-20 字符"
+        }
+      ],
+      "column_count": 13,
+      "status": "success"
+    },
+    "custom_process_rules": {
+      "name": "custom_process_rules",
+      "description": "自定义工艺规则 - 用户自定义的生产规则",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "dfcd43f7-aa18-4e94-a9de-2c1dac745037"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "名称 - 对象的名称",
+          "sample_value": "温度超限报警"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "描述 - 详细说明",
+          "sample_value": "当加工温度超出设定范围时触发报警并暂停"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2025-12-30T05:07:00.463813+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2025-12-30T05:07:00.463813+00:00"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "状态 - 记录的当前状态",
+          "sample_value": "active"
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "代码 - 对象的编码",
+          "sample_value": "TEMP_CODE"
+        }
+      ],
+      "column_count": 7,
+      "status": "success"
+    },
+    "equipment": {
+      "name": "equipment",
+      "description": "设备 - 生产设备信息",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "33cccc22-2d3c-4aa1-ee9d-9ee2ee613a44"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "名称 - 对象的名称",
+          "sample_value": "清洗机A"
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "代码 - 对象的编码",
+          "sample_value": "CLEANER_A"
+        },
+        {
+          "name": "equipment_group_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "equipment_group_id",
+          "sample_value": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "描述 - 详细说明",
+          "sample_value": "第一道清洗设备"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-01-05T05:32:38.02684+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2026-01-05T05:32:38.02684+00:00"
+        },
+        {
+          "name": "recipe_id",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "recipe_id",
+          "sample_value": null
+        }
+      ],
+      "column_count": 8,
+      "status": "success"
+    },
+    "schema_column_annotations": {
+      "name": "schema_column_annotations",
+      "description": "列注释 - 数据库列的注释说明",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "3f767ed9-7a60-45e1-abb3-3c96bdac7e87"
+        },
+        {
+          "name": "table_name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "table_name",
+          "sample_value": "production_orders"
+        },
+        {
+          "name": "column_name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "column_name",
+          "sample_value": "order_number"
+        },
+        {
+          "name": "column_name_cn",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "column_name_cn",
+          "sample_value": "订单编号"
+        },
+        {
+          "name": "data_type",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "data_type",
+          "sample_value": "varchar"
+        },
+        {
+          "name": "description_cn",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "description_cn",
+          "sample_value": "唯一的订单编号"
+        },
+        {
+          "name": "description_en",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "description_en",
+          "sample_value": "Unique order number"
+        },
+        {
+          "name": "example_value",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "example_value",
+          "sample_value": "ORD-2026-001"
+        },
+        {
+          "name": "business_meaning",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "business_meaning",
+          "sample_value": "用于识别订单"
+        },
+        {
+          "name": "value_range",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "value_range",
+          "sample_value": "6-20 字符"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "状态 - 记录的当前状态",
+          "sample_value": "approved"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-02-03T05:22:40.570529"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2026-02-03T05:58:54.200158"
+        },
+        {
+          "name": "created_by",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "created_by",
+          "sample_value": "system"
+        },
+        {
+          "name": "reviewed_by",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "reviewed_by",
+          "sample_value": "admin"
+        },
+        {
+          "name": "rejection_reason",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "rejection_reason",
+          "sample_value": null
+        }
+      ],
+      "column_count": 16,
+      "status": "success"
+    },
+    "equipment_groups": {
+      "name": "equipment_groups",
+      "description": "设备组 - 设备的分组管理",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "名称 - 对象的名称",
+          "sample_value": "清洗设备组"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "描述 - 详细说明",
+          "sample_value": "用于硅片清洗的设备集合"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-01-05T05:32:38.02684+00:00"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2026-01-05T05:32:38.02684+00:00"
+        }
+      ],
+      "column_count": 5,
+      "status": "success"
+    },
+    "schema_table_annotations": {
+      "name": "schema_table_annotations",
+      "description": "表注释 - 数据库表的注释说明",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "82885fc0-7927-46c6-9c65-ef758b805ce5"
+        },
+        {
+          "name": "table_name",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "table_name",
+          "sample_value": "production_orders"
+        },
+        {
+          "name": "table_name_cn",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "table_name_cn",
+          "sample_value": "生产订单"
+        },
+        {
+          "name": "description_cn",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "description_cn",
+          "sample_value": "存储来自客户的生产订单信息"
+        },
+        {
+          "name": "description_en",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "description_en",
+          "sample_value": "Storage for production orders from customers"
+        },
+        {
+          "name": "business_meaning",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "business_meaning",
+          "sample_value": "用于跟踪和管理生产计划"
+        },
+        {
+          "name": "use_case",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "use_case",
+          "sample_value": "订单录入、生产排期、订单跟踪"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "状态 - 记录的当前状态",
+          "sample_value": "approved"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-02-03T05:22:39.823575"
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "更新时间 - 记录最后更新的时间戳",
+          "sample_value": "2026-02-03T05:25:00.736031"
+        },
+        {
+          "name": "created_by",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "created_by",
+          "sample_value": "system"
+        },
+        {
+          "name": "reviewed_by",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "reviewed_by",
+          "sample_value": "admin"
+        },
+        {
+          "name": "rejection_reason",
+          "type": "unknown",
+          "python_type": "NoneType",
+          "nullable": true,
+          "description": "rejection_reason",
+          "sample_value": null
+        }
+      ],
+      "column_count": 13,
+      "status": "success"
+    },
+    "feedback": {
+      "name": "feedback",
+      "description": "用户反馈 - 用户对系统的反馈",
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "唯一标识符 - 主键",
+          "sample_value": "e23e449a-53b8-47df-becd-9c1810f61380"
+        },
+        {
+          "name": "message_id",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "message_id",
+          "sample_value": "1"
+        },
+        {
+          "name": "feedback_type",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "feedback_type",
+          "sample_value": "helpful"
+        },
+        {
+          "name": "rating",
+          "type": "integer",
+          "python_type": "int",
+          "nullable": false,
+          "description": "rating",
+          "sample_value": "3"
+        },
+        {
+          "name": "comment",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "comment",
+          "sample_value": ""
+        },
+        {
+          "name": "query",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "query",
+          "sample_value": ""
+        },
+        {
+          "name": "response",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "response",
+          "sample_value": "您好！我是 MES 数据智能分析助手。我可以帮您分析生产数据、生成报表、监控设备状态。\n\n您可以用自然语言提问，例如：\n• \"显示今天各设备的OEE\"\n• \"对比A班和B班的生产效率\"\n• \"查看设备"
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "python_type": "str",
+          "nullable": false,
+          "description": "创建时间 - 记录创建的时间戳",
+          "sample_value": "2026-02-02T16:58:57.391433+00:00"
+        }
+      ],
+      "column_count": 8,
+      "status": "success"
+    },
+    "annotation_audit_log": {
+      "name": "annotation_audit_log",
+      "description": "注释审计日志 - 注释修改的审计记录",
+      "columns": [],
+      "column_count": 0,
+      "status": "no_data"
+    },
+    "batch_remarks": {
+      "name": "batch_remarks",
+      "description": "批次备注 - 批次的备注说明",
+      "columns": [],
+      "column_count": 0,
+      "status": "no_data"
+    },
+    "intent_feedback": {
+      "name": "intent_feedback",
+      "description": "意图反馈 - NL2SQL 意图识别的反馈",
+      "columns": [],
+      "column_count": 0,
+      "status": "no_data"
+    },
+    "query_result_feedback": {
+      "name": "query_result_feedback",
+      "description": "查询结果反馈 - 查询结果的用户反馈",
+      "columns": [],
+      "column_count": 0,
+      "status": "no_data"
+    },
+    "saved_reports": {
+      "name": "saved_reports",
+      "description": "保存的报告 - 用户保存的查询报告",
+      "columns": [],
+      "column_count": 0,
+      "status": "no_data"
+    },
+    "schema_relation_annotations": {
+      "name": "schema_relation_annotations",
+      "description": "关系注释 - 表关系的注释说明",
+      "columns": [],
+      "column_count": 0,
+      "status": "no_data"
+    },
+    "sub_batch_process_log": {
+      "name": "sub_batch_process_log",
+      "description": "子批次工艺日志 - 子批次的工艺过程记录",
+      "columns": [],
+      "column_count": 0,
+      "status": "no_data"
+    }
+  },
+  "type_descriptions": {
+    "bigint": "大整数 - 可存储大数值",
+    "integer": "整数 - 标准整数类型",
+    "smallint": "小整数 - 节省存储空间的整数",
+    "numeric": "数值 - 精确的数值类型",
+    "decimal": "十进制 - 用于金融数据",
+    "real": "实数 - 浮点数",
+    "double precision": "双精度浮点 - 高精度浮点数",
+    "text": "文本 - 可变长文本",
+    "varchar": "字符串 - 可变长字符串",
+    "char": "字符 - 固定长字符",
+    "boolean": "布尔值 - 真/假",
+    "date": "日期 - 仅日期部分",
+    "time": "时间 - 仅时间部分",
+    "timestamp": "时间戳 - 日期时间组合",
+    "interval": "时间间隔 - 时间跨度",
+    "uuid": "唯一标识符 - 全局唯一ID",
+    "json": "JSON - JSON 格式数据",
+    "jsonb": "JSONB - 二进制 JSON 格式",
+    "bytea": "字节数组 - 二进制数据"
+  },
+  "column_descriptions": {
+    "id": "唯一标识符 - 主键",
+    "created_at": "创建时间 - 记录创建的时间戳",
+    "updated_at": "更新时间 - 记录最后更新的时间戳",
+    "batch_id": "批次 ID - 关联的生产批次",
+    "product_id": "产品 ID - 关联的产品",
+    "equipment_id": "设备 ID - 关联的生产设备",
+    "station_code": "站点代码 - 生产站点编号",
+    "wafer_id": "晶圆 ID - 关联的晶圆",
+    "carrier_id": "载体 ID - 关联的装载容器",
+    "user_id": "用户 ID - 关联的用户",
+    "status": "状态 - 记录的当前状态",
+    "remarks": "备注 - 说明或备注信息",
+    "name": "名称 - 对象的名称",
+    "code": "代码 - 对象的编码",
+    "description": "描述 - 详细说明",
+    "value": "值 - 数值或参数值",
+    "type": "类型 - 对象或参数的类型"
+  }
+}

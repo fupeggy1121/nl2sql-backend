@@ -1,0 +1,169 @@
+{
+  "version": "1.0",
+  "generated_at": "2026-02-11T09:47:49.022270",
+  "summary": {
+    "total_tables": 35,
+    "tables_with_data": 28,
+    "empty_tables": 7,
+    "total_columns": 294
+  },
+  "architecture": {
+    "数据源层": {
+      "设备相关": [
+        "equipment",
+        "equipment_groups",
+        "stations",
+        "process_routes"
+      ],
+      "产品相关": [
+        "products",
+        "product_boms",
+        "parameters",
+        "parameter_groups"
+      ],
+      "订单相关": [
+        "production_orders",
+        "batches"
+      ]
+    },
+    "中间层": {
+      "生产执行": [
+        "production_events",
+        "oee_records",
+        "sub_batches"
+      ],
+      "质量检测": [
+        "quality_records",
+        "wafer_inspection_results"
+      ],
+      "物流管理": [
+        "carriers",
+        "wafer_carrier_contents"
+      ]
+    },
+    "应用层": {
+      "对话系统": [
+        "chat_sessions",
+        "chat_messages"
+      ],
+      "反馈系统": [
+        "feedback",
+        "intent_feedback",
+        "query_result_feedback"
+      ],
+      "编辑器系统": [
+        "schema_table_annotations",
+        "schema_column_annotations",
+        "annotation_audit_log"
+      ]
+    }
+  },
+  "relationships": {
+    "batches": {
+      "parent": null,
+      "children": [
+        "sub_batches",
+        "production_events",
+        "quality_records",
+        "wafers"
+      ],
+      "description": "生产批次的主表"
+    },
+    "sub_batches": {
+      "parent": "batches",
+      "children": [
+        "wafer_carrier_contents",
+        "wafer_inspection_results"
+      ],
+      "description": "批次的细分单位"
+    },
+    "products": {
+      "parent": null,
+      "children": [
+        "batches",
+        "product_boms",
+        "quality_records"
+      ],
+      "description": "产品主表"
+    },
+    "wafers": {
+      "parent": "batches",
+      "children": [
+        "wafer_carrier_contents",
+        "wafer_inspection_results"
+      ],
+      "description": "晶圆主表"
+    },
+    "carriers": {
+      "parent": null,
+      "children": [
+        "wafer_carrier_contents"
+      ],
+      "description": "晶圆载体主表"
+    },
+    "stations": {
+      "parent": null,
+      "children": [
+        "production_events",
+        "wafer_inspection_results"
+      ],
+      "description": "生产站点主表"
+    },
+    "equipment": {
+      "parent": null,
+      "children": [
+        "production_events",
+        "oee_records",
+        "parameter_equipment"
+      ],
+      "description": "设备主表"
+    },
+    "process_routes": {
+      "parent": null,
+      "children": [
+        "process_route_stations",
+        "batches"
+      ],
+      "description": "工艺路线主表"
+    },
+    "parameters": {
+      "parent": null,
+      "children": [
+        "parameter_group_parameters",
+        "parameter_equipment"
+      ],
+      "description": "参数定义表"
+    },
+    "parameter_groups": {
+      "parent": null,
+      "children": [
+        "parameter_group_parameters"
+      ],
+      "description": "参数分组表"
+    }
+  },
+  "statistics": {
+    "largest_tables": [
+      {
+        "name": "wafer_inspection_results",
+        "rows": 7113
+      },
+      {
+        "name": "quality_records",
+        "rows": 6200
+      },
+      {
+        "name": "wafer_carrier_contents",
+        "rows": 2180
+      },
+      {
+        "name": "wafers",
+        "rows": 2180
+      },
+      {
+        "name": "production_events",
+        "rows": 930
+      }
+    ]
+  }
+}
