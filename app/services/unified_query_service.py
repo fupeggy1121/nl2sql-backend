@@ -103,7 +103,7 @@ class QueryResult:
     generated_at: str = None
 
     def to_dict(self):
-        """转换为字典"""
+        """转换为字典（不含 visualization，该字段提到响应顶层）"""
         return {
             "success": self.success,
             "data": self.data or [],
@@ -111,7 +111,6 @@ class QueryResult:
             "rows_count": self.rows_count,
             "summary": self.summary,
             "visualization_type": self.visualization_type.value if self.visualization_type else "table",
-            "visualization": self.visualization,
             "actions": self.actions or [],
             "error_message": self.error_message,
             "query_time_ms": self.query_time_ms,

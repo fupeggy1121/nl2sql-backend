@@ -30,9 +30,21 @@ TIME_KEYWORDS = {
 
 # ─── 分类/维度字段关键词 ───────────────────────────────
 CATEGORY_KEYWORDS = {
-    'type', 'status', 'category', 'name', 'level', 'group', 'class',
+    'type', 'status', 'category', 'level', 'group', 'class',
     'department', 'line', 'station', 'shift', 'model', 'product', 'region',
     'equipment', 'machine', 'area', 'zone', 'team', 'grade', 'priority',
+}
+
+# ─── 聚合别名关键词（用于检测数值列来自聚合） ──────────
+AGG_ALIAS_KEYWORDS = {
+    'count', 'total', 'sum', 'avg', 'average', 'min', 'max', 'cnt',
+    'amount', 'quantity', 'num', 'number',
+}
+
+# ─── 分布/占比类查询关键词（意图中出现时倾向 pie） ─────
+DISTRIBUTION_KEYWORDS = {
+    '分布', '占比', '比例', '构成', '组成', '分类', '份额',
+    'distribution', 'ratio', 'proportion', 'share', 'composition',
 }
 
 
@@ -92,7 +104,8 @@ class ChartRecommender:
             return {
                 'row_count': 0, 'col_count': 0, 'columns': [],
                 'time_cols': [], 'numeric_cols': [], 'category_cols': [],
-                'string_cols': [], 'has_aggregation': False,
+                'string_cols': [], 'agg_numeric_cols': [],
+                'has_aggregation': False,
                 'has_group_by': False, 'has_order_by': False,
                 'is_single_value': False,
             }
@@ -102,26 +115,44 @@ class ChartRecommender:
 
         # 按列分析数据类型
         time_cols, numeric_cols, category_cols, string_cols = [], [], [], []
+        agg_numeric_cols = []  # 看起来是聚合结果的数值列
 
         for col in columns:
             col_lower = col.lower()
-            # 时间列
+
+            # 1) 时间列: 关键词匹配 + 值格式检测
             if any(kw in col_lower for kw in TIME_KEYWORDS):
                 time_cols.append(col)
                 continue
-            # 采样前 10 行判断类型
-            sample = [row[col] for row in data[:10] if row.get(col) is not None]
+            # 值格式检测（ISO date 等）
+            sample_vals = [row[col] for row in data[:5] if row.get(col) is not None]
+            if sample_vals and all(isinstance(v, str) and self._looks_like_date(v) for v in sample_vals):
+                time_cols.append(col)
+                continue
+
+            # 2) 采样判断
+            sample = [row[col] for row in data[:min(20, row_count)] if row.get(col) is not None]
             if not sample:
                 string_cols.append(col)
                 continue
-            if all(isinstance(v, (int, float)) for v in sample):
+
+            # 数值判断（含数字字符串如 "85.3"）
+            is_numeric = all(isinstance(v, (int, float)) for v in sample)
+            if not is_numeric:
+                is_numeric = all(self._is_numeric_str(v) for v in sample)
+
+            if is_numeric:
                 numeric_cols.append(col)
-            elif any(kw in col_lower for kw in CATEGORY_KEYWORDS):
+                # 判断是否像聚合结果列
+                if any(kw in col_lower for kw in AGG_ALIAS_KEYWORDS):
+                    agg_numeric_cols.append(col)
+            elif any(kw == col_lower or col_lower.endswith(f'_{kw}') for kw in CATEGORY_KEYWORDS):
+                # 精确匹配分类关键词（避免 "name" 这样的宽泛词误匹配）
                 category_cols.append(col)
             else:
-                # 尝试检查值的唯一数 — 低基数视为分类
+                # 低基数视为分类
                 unique_vals = set(str(v) for v in sample)
-                if len(unique_vals) <= min(10, row_count * 0.5):
+                if len(unique_vals) <= min(10, max(1, row_count * 0.3)):
                     category_cols.append(col)
                 else:
                     string_cols.append(col)
@@ -134,6 +165,8 @@ class ChartRecommender:
 
         # 单值检测（如 SELECT COUNT(*)）
         is_single_value = (row_count == 1 and col_count == 1)
+        # 少量聚合行检测（如 SELECT status, COUNT(*) GROUP BY status → 3-8 行）
+        is_small_aggregation = has_agg and has_group and 2 <= row_count <= 8
 
         return {
             'row_count': row_count,
@@ -143,13 +176,43 @@ class ChartRecommender:
             'numeric_cols': numeric_cols,
             'category_cols': category_cols,
             'string_cols': string_cols,
+            'agg_numeric_cols': agg_numeric_cols,
             'has_aggregation': has_agg,
             'has_group_by': has_group,
             'has_order_by': has_order,
             'is_single_value': is_single_value,
+            'is_small_aggregation': is_small_aggregation,
         }
 
-    # ─── 规则引擎 ─────────────────────────────────────
+    @staticmethod
+    def _looks_like_date(v: str) -> bool:
+        """简单判断字符串是否看起来像日期"""
+        return bool(re.match(
+            r'^\d{4}[-/]\d{1,2}[-/]\d{1,2}', v
+        ))
+
+    @staticmethod
+    def _is_numeric_str(v) -> bool:
+        """判断值是否为数字或可转数字的字符串"""
+        if isinstance(v, (int, float)):
+            return True
+        if isinstance(v, str):
+            try:
+                float(v)
+                return True
+            except (ValueError, TypeError):
+                return False
+        return False
+
+    # ─── 检测意图是否含分布关键词 ────────────────────────
+    @staticmethod
+    def _intent_wants_distribution(intent: Optional[Dict]) -> bool:
+        if not intent:
+            return False
+        nl = intent.get('natural_language', '')
+        return any(kw in nl for kw in DISTRIBUTION_KEYWORDS)
+
+    # ─── 规则引擎（优化版） ───────────────────────────────
     def _rule_based_recommend(
         self, features: Dict[str, Any], intent: Optional[Dict] = None
     ) -> Dict[str, Any]:
@@ -159,6 +222,7 @@ class ChartRecommender:
         time_cols = f['time_cols']
         numeric_cols = f['numeric_cols']
         category_cols = f['category_cols']
+        wants_distribution = self._intent_wants_distribution(intent)
 
         # 默认 fallback
         result = {
@@ -171,12 +235,12 @@ class ChartRecommender:
             'reason': '默认表格展示',
         }
 
-        # ── 规则 1: 空数据 ──
+        # ── R1: 空数据 ──
         if row_count == 0:
             result.update(type=CHART_TABLE, confidence=1.0, reason='无数据，使用表格')
             return result
 
-        # ── 规则 2: 单值聚合 (如 COUNT=238) → card ──
+        # ── R2: 单值聚合 (1行1列, 如 COUNT=238) → card ──
         if f['is_single_value']:
             col = f['columns'][0]
             result.update(
@@ -188,19 +252,32 @@ class ChartRecommender:
             )
             return result
 
-        # ── 规则 3: 1 行多列 (多指标聚合) → card / pie ──
+        # ── R3: 单行多数值列 (多指标聚合) → pie ──
         if row_count == 1 and len(numeric_cols) >= 2:
             result.update(
                 type=CHART_PIE,
                 title=self._gen_title(intent, '多指标分布'),
                 xAxisField=None,
                 yAxisField=None,
-                confidence=0.8,
-                reason='单行多数值列，使用饼图展示分布'
+                confidence=0.85,
+                reason='单行多数值列，使用饼图展示各指标占比'
             )
             return result
 
-        # ── 规则 4: 时间列 + 数值列 → line 趋势图 ──
+        # ── R4: 意图驱动 — 分布/占比类查询 → pie（优先于时间/柱状图）──
+        if wants_distribution and col_count == 2 and len(numeric_cols) >= 1 and row_count <= 12:
+            non_num = [c for c in f['columns'] if c not in numeric_cols]
+            result.update(
+                type=CHART_PIE,
+                title=self._gen_title(intent, f'{numeric_cols[0]} 分布'),
+                xAxisField=non_num[0] if non_num else None,
+                yAxisField=numeric_cols[0],
+                confidence=0.93,
+                reason='用户意图含分布/占比关键词，使用饼图'
+            )
+            return result
+
+        # ── R5: 时间列 + 数值列 → line 趋势图 ──
         if time_cols and numeric_cols:
             y_field = numeric_cols[0]
             series = numeric_cols[1] if len(numeric_cols) > 1 else None
@@ -215,24 +292,39 @@ class ChartRecommender:
             )
             return result
 
-        # ── 规则 5: 分类列 + 1 个数值列 + 少量行 → bar ──
-        if category_cols and len(numeric_cols) == 1 and row_count <= 30:
+        # ── R6: 小聚合 (GROUP BY + 2-8行 + 两列) → pie 优先于 bar ──
+        if f.get('is_small_aggregation') and col_count == 2 and len(numeric_cols) == 1 and row_count <= 8:
+            non_num = [c for c in f['columns'] if c not in numeric_cols]
+            result.update(
+                type=CHART_PIE,
+                title=self._gen_title(intent, f'{numeric_cols[0]} 分布'),
+                xAxisField=non_num[0] if non_num else None,
+                yAxisField=numeric_cols[0],
+                confidence=0.90,
+                reason='小聚合两列 (≤8 组)，使用饼图展示占比'
+            )
+            return result
+
+        # ── R7: 分类 + 1 数值 + 少量行 → bar ──
+        if (category_cols or f['string_cols']) and len(numeric_cols) == 1 and row_count <= 30:
+            x_field = category_cols[0] if category_cols else f['string_cols'][0]
             result.update(
                 type=CHART_BAR,
-                title=self._gen_title(intent, f'按 {category_cols[0]} 统计 {numeric_cols[0]}'),
-                xAxisField=category_cols[0],
+                title=self._gen_title(intent, f'按 {x_field} 统计 {numeric_cols[0]}'),
+                xAxisField=x_field,
                 yAxisField=numeric_cols[0],
                 confidence=0.9,
                 reason='类别 + 数值，使用柱状图'
             )
             return result
 
-        # ── 规则 6: 分类列 + 多数值列 → grouped_bar ──
-        if category_cols and len(numeric_cols) >= 2 and row_count <= 30:
+        # ── R8: 分类 + 多数值列 → grouped_bar ──
+        if (category_cols or f['string_cols']) and len(numeric_cols) >= 2 and row_count <= 30:
+            x_field = category_cols[0] if category_cols else f['string_cols'][0]
             result.update(
                 type=CHART_GROUPED_BAR,
-                title=self._gen_title(intent, f'按 {category_cols[0]} 多指标对比'),
-                xAxisField=category_cols[0],
+                title=self._gen_title(intent, f'按 {x_field} 多指标对比'),
+                xAxisField=x_field,
                 yAxisField=numeric_cols[0],
                 seriesField=None,  # 前端遍历所有数值列
                 confidence=0.85,
@@ -240,20 +332,7 @@ class ChartRecommender:
             )
             return result
 
-        # ── 规则 7: 两列（分类+数值）且行数 <= 8 → pie ──
-        if col_count == 2 and len(numeric_cols) == 1 and row_count <= 8:
-            non_num = [c for c in f['columns'] if c not in numeric_cols]
-            result.update(
-                type=CHART_PIE,
-                title=self._gen_title(intent, f'{numeric_cols[0]} 分布'),
-                xAxisField=non_num[0] if non_num else None,
-                yAxisField=numeric_cols[0],
-                confidence=0.88,
-                reason='两列且行数少，使用饼图展示占比'
-            )
-            return result
-
-        # ── 规则 8: 两数值列 → scatter ──
+        # ── R9: 两数值列无分类 → scatter ──
         if len(numeric_cols) >= 2 and (not category_cols) and (not time_cols):
             result.update(
                 type=CHART_SCATTER,
@@ -265,7 +344,7 @@ class ChartRecommender:
             )
             return result
 
-        # ── 规则 9: 超过 20 行详细记录 → table ──
+        # ── R10: 超过 20 行明细 → table ──
         if row_count > 20:
             result.update(
                 type=CHART_TABLE,
@@ -275,13 +354,13 @@ class ChartRecommender:
             )
             return result
 
-        # ── 规则 10: 聚合 + GROUP BY 无时间列 → bar ──
+        # ── R11: 聚合 + GROUP BY 无时间列 → bar (兜底) ──
         if f['has_aggregation'] and f['has_group_by'] and not time_cols:
             x = category_cols[0] if category_cols else (f['string_cols'][0] if f['string_cols'] else f['columns'][0])
             y = numeric_cols[0] if numeric_cols else f['columns'][-1]
             result.update(
                 type=CHART_BAR,
-                title=self._gen_title(intent, f'分组统计'),
+                title=self._gen_title(intent, '分组统计'),
                 xAxisField=x,
                 yAxisField=y,
                 confidence=0.82,

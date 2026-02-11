@@ -1,8 +1,11 @@
-"""测试图表推荐服务"""
+"""测试图表推荐服务（优化版规则）"""
 import sys
 sys.path.insert(0, '.')
 
-from app.services.chart_recommender import ChartRecommender, CHART_CARD, CHART_LINE, CHART_BAR, CHART_PIE, CHART_TABLE, CHART_SCATTER, CHART_GROUPED_BAR
+from app.services.chart_recommender import (
+    ChartRecommender, CHART_CARD, CHART_LINE, CHART_BAR, CHART_PIE,
+    CHART_TABLE, CHART_SCATTER, CHART_GROUPED_BAR
+)
 
 cr = ChartRecommender()
 
@@ -37,20 +40,20 @@ data_bar = [
     {'status': 'maintenance', 'count': 38},
 ]
 r = cr.recommend('SELECT status, COUNT(*) as count FROM carriers GROUP BY status', data_bar)
-assert r['type'] == CHART_BAR, f"Expected bar, got {r['type']}"
+assert r['type'] in (CHART_BAR, CHART_PIE), f"Expected bar or pie, got {r['type']}"
 print(f"✅ 4. Category + numeric → {r['type']} (x={r['xAxisField']}, y={r['yAxisField']})")
 
-# === 5. 两列少行（无分类关键词名） → pie ===
-data_pie = [
-    {'region': 'A区', 'total': 50},
-    {'region': 'B区', 'total': 30},
-    {'region': 'C区', 'total': 20},
+# === 5. 意图驱动: 分布查询 → pie ===
+intent_dist = {'natural_language': '查询各类型载具的数量分布'}
+data_dist = [
+    {'carrier_type': 'A', 'count': 50},
+    {'carrier_type': 'B', 'count': 30},
+    {'carrier_type': 'C', 'count': 20},
 ]
-r = cr.recommend('SELECT region, SUM(qty) as total FROM items GROUP BY region', data_pie)
-# region 不在 CATEGORY_KEYWORDS 且唯一值少→category，但 rule 5 (cat+1num) 先命中 bar
-# 这里放宽断言：对 category+1num 的少行数据，bar 和 pie 都是合理推荐
-assert r['type'] in (CHART_BAR, CHART_PIE), f"Expected bar or pie, got {r['type']}"
-print(f"✅ 5. Two cols + few rows → {r['type']}")
+r = cr.recommend('SELECT carrier_type, COUNT(*) as count FROM carriers GROUP BY carrier_type',
+                  data_dist, query_intent=intent_dist)
+assert r['type'] == CHART_PIE, f"Expected pie (distribution intent), got {r['type']}"
+print(f"✅ 5. Distribution intent → {r['type']}")
 
 # === 6. 分类 + 多数值 → grouped_bar ===
 data_grouped = [
@@ -61,7 +64,7 @@ r = cr.recommend('SELECT line, oee, yield_rate FROM reports', data_grouped)
 assert r['type'] == CHART_GROUPED_BAR, f"Expected grouped_bar, got {r['type']}"
 print(f"✅ 6. Category + multi-numeric → {r['type']}")
 
-# === 7. 超过 20 行非聚合记录 → table ===
+# === 7. 超过 20 行非图表数据 → table ===
 data_many = [{'wafer_id': f'W{i:04d}', 'lot': f'L{i:03d}', 'result': f'r{i}', 'note': f'n{i}'} for i in range(25)]
 r = cr.recommend('SELECT wafer_id, lot, result, note FROM wafers LIMIT 25', data_many)
 assert r['type'] == CHART_TABLE, f"Expected table, got {r['type']}"
@@ -79,17 +82,46 @@ r = cr.recommend('SELECT AVG(oee) as avg_oee, AVG(yield) as avg_yield, AVG(uptim
 assert r['type'] == CHART_PIE, f"Expected pie, got {r['type']}"
 print(f"✅ 9. Single row multi-values → {r['type']}")
 
-# === 10. 带 intent 的标题生成 ===
+# === 10. 标题生成 ===
 intent = {'natural_language': '查询可用的载具数量'}
-r = cr.recommend('SELECT COUNT(*) FROM carriers WHERE status = \'available\'',
+r = cr.recommend("SELECT COUNT(*) FROM carriers WHERE status = 'available'",
                   [{'count': 120}], query_intent=intent)
 assert '载具' in r['title'] or '查询' in r['title']
 print(f"✅ 10. Title from intent → \"{r['title']}\"")
 
-# === 11. visualization 字段包含完整结构 ===
+# === 11. 响应结构完整 ===
 required_keys = {'type', 'title', 'xAxisField', 'yAxisField', 'confidence', 'reason'}
 assert required_keys.issubset(set(r.keys())), f"Missing keys: {required_keys - set(r.keys())}"
-print(f"✅ 11. Response structure complete → {sorted(r.keys())}")
+print(f"✅ 11. Response structure → {sorted(r.keys())}")
+
+# === 12. 日期值格式检测 (ISO日期字符串也识别为时间列) ===
+data_iso = [
+    {'report_day': '2026-01-15', 'total': 100},
+    {'report_day': '2026-01-16', 'total': 120},
+    {'report_day': '2026-01-17', 'total': 95},
+]
+r = cr.recommend('SELECT report_day, total FROM daily_stats', data_iso)
+assert r['type'] == CHART_LINE, f"Expected line (date value detection), got {r['type']}"
+print(f"✅ 12. ISO date value detection → {r['type']}")
+
+# === 13. 小聚合(GROUP BY + ≤8行 + 两列) → pie ===
+data_small_agg = [
+    {'department': 'A', 'cnt': 50},
+    {'department': 'B', 'cnt': 30},
+    {'department': 'C', 'cnt': 20},
+]
+r = cr.recommend('SELECT department, COUNT(*) as cnt FROM staff GROUP BY department', data_small_agg)
+assert r['type'] == CHART_PIE, f"Expected pie (small aggregation), got {r['type']}"
+print(f"✅ 13. Small aggregation (≤8 groups) → {r['type']}")
+
+# === 14. 数字字符串列也识别为数值 ===
+data_numstr = [
+    {'equipment_type': 'CNC', 'total': '85'},
+    {'equipment_type': 'Assembly', 'total': '120'},
+]
+r = cr.recommend('SELECT equipment_type, total FROM summary', data_numstr)
+assert r['type'] in (CHART_BAR, CHART_PIE), f"Expected bar/pie, got {r['type']}"
+print(f"✅ 14. Numeric string detection → {r['type']}")
 
 print()
-print('🎉 All 11 chart recommender tests passed!')
+print('🎉 All 14 chart recommender tests passed!')

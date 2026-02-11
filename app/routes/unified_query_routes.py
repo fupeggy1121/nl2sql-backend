@@ -62,7 +62,8 @@ def process_query():
         response = {
             "success": True,
             "query_plan": query_plan.to_dict() if query_plan else None,
-            "query_result": query_result.to_dict() if query_result else None
+            "query_result": query_result.to_dict() if query_result else None,
+            "visualization": query_result.visualization if query_result else None
         }
 
         return jsonify(response), 200
@@ -175,7 +176,8 @@ def execute_query():
 
         return jsonify({
             "success": query_result.success,
-            "query_result": query_result.to_dict()
+            "query_result": query_result.to_dict(),
+            "visualization": query_result.visualization
         }), 200 if query_result.success else 400
 
     except Exception as e:
