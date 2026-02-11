@@ -342,12 +342,18 @@ Return analysis result in JSON format (must be valid JSON):
                     candidates_to_try.append(char)
                 
                 # Try each candidate (longest first)
+                matched = False
                 for candidate in sorted(set(candidates_to_try), key=len, reverse=True):
                     if is_valid_table_name(candidate):
                         mapped_name = map_table_name(candidate)
                         entities['table'] = mapped_name
                         entities['raw_table_name'] = candidate
+                        matched = True
                         break
+                
+                # 反馈学习: 如果查询词看起来像表名但未匹配，记录到候选队列
+                if not matched and cleaned_text and len(cleaned_text) >= 2:
+                    self._record_unmatched_table_term(cleaned_text, text)
         
         # LIMIT extraction
         limit_match = re.search(r'(?:前\s*)?(\d+)\s*(?:条|条数|行|rows)', text)
@@ -453,6 +459,20 @@ Return analysis result in JSON format (must be valid JSON):
                 clarifications.append('Please specify the time range for comparison.')
         
         return clarifications
+
+    def _record_unmatched_table_term(self, term: str, original_query: str):
+        """
+        记录未匹配的查询词到候选队列 (异步 / 非阻塞)
+
+        当意图识别无法将用户输入映射到已知表名时调用。
+        系统会自动累计频次，管理员可在前端审批并创建新映射。
+        """
+        try:
+            from app.services.synonym_manager import synonym_manager
+            synonym_manager.record_unmatched_term(term, original_query)
+        except Exception as e:
+            # 反馈记录失败不应影响主流程
+            logger.debug(f"记录未匹配词失败 (非关键): {e}")
 
     def to_frontend_format(self, result: Dict[str, Any]) -> Dict[str, Any]:
         """

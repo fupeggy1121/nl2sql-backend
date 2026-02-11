@@ -71,7 +71,9 @@ def register_blueprints(app):
         app: Flask 应用实例
     """
     from app.routes import query_routes, schema_routes, unified_query_routes
+    from app.routes import synonym_routes
     
     app.register_blueprint(query_routes.bp)
     app.register_blueprint(schema_routes.bp)
     app.register_blueprint(unified_query_routes.bp)
+    app.register_blueprint(synonym_routes.bp)

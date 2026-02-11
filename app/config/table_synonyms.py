@@ -2,6 +2,10 @@
 Table Name Synonyms Mapping Configuration
 用于识别各种同义词并将其映射到实际的表名
 
+支持两种模式:
+  1. 静态模式 (默认): 使用本文件中的 TABLE_SYNONYMS 字典
+  2. 数据库模式: 使用 synonym_manager 服务从数据库加载
+
 Example:
   当用户输入"查询片篮"、"查询载具"等时，都能正确映射到 carriers 表
 """

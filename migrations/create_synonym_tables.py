@@ -101,7 +101,7 @@ def run_migration():
         print(f"❌ 迁移失败: {e}")
         return False
     finally:
-        executor.disconnect()
+        executor.close()
 
 
 if __name__ == '__main__':
