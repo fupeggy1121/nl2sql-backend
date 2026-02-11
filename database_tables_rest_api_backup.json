@@ -1,0 +1,184 @@
+{
+  "method": "Supabase REST API",
+  "status": "success",
+  "total_tables": 35,
+  "total_rows": 20335,
+  "tables": [
+    {
+      "name": "wafer_inspection_results",
+      "rows": 7113,
+      "accessible": true
+    },
+    {
+      "name": "quality_records",
+      "rows": 6200,
+      "accessible": true
+    },
+    {
+      "name": "wafer_carrier_contents",
+      "rows": 2180,
+      "accessible": true
+    },
+    {
+      "name": "wafers",
+      "rows": 2180,
+      "accessible": true
+    },
+    {
+      "name": "production_events",
+      "rows": 930,
+      "accessible": true
+    },
+    {
+      "name": "oee_records",
+      "rows": 465,
+      "accessible": true
+    },
+    {
+      "name": "chat_messages",
+      "rows": 337,
+      "accessible": true
+    },
+    {
+      "name": "carriers",
+      "rows": 276,
+      "accessible": true
+    },
+    {
+      "name": "parameter_group_parameters",
+      "rows": 120,
+      "accessible": true
+    },
+    {
+      "name": "sub_batches",
+      "rows": 102,
+      "accessible": true
+    },
+    {
+      "name": "parameters",
+      "rows": 89,
+      "accessible": true
+    },
+    {
+      "name": "stations",
+      "rows": 64,
+      "accessible": true
+    },
+    {
+      "name": "process_route_stations",
+      "rows": 60,
+      "accessible": true
+    },
+    {
+      "name": "parameter_groups",
+      "rows": 55,
+      "accessible": true
+    },
+    {
+      "name": "process_routes",
+      "rows": 43,
+      "accessible": true
+    },
+    {
+      "name": "products",
+      "rows": 31,
+      "accessible": true
+    },
+    {
+      "name": "batches",
+      "rows": 20,
+      "accessible": true
+    },
+    {
+      "name": "parameter_equipment",
+      "rows": 18,
+      "accessible": true
+    },
+    {
+      "name": "product_boms",
+      "rows": 12,
+      "accessible": true
+    },
+    {
+      "name": "chat_sessions",
+      "rows": 8,
+      "accessible": true
+    },
+    {
+      "name": "production_orders",
+      "rows": 6,
+      "accessible": true
+    },
+    {
+      "name": "approved_schema_metadata",
+      "rows": 5,
+      "accessible": true
+    },
+    {
+      "name": "custom_process_rules",
+      "rows": 5,
+      "accessible": true
+    },
+    {
+      "name": "equipment",
+      "rows": 5,
+      "accessible": true
+    },
+    {
+      "name": "schema_column_annotations",
+      "rows": 5,
+      "accessible": true
+    },
+    {
+      "name": "equipment_groups",
+      "rows": 3,
+      "accessible": true
+    },
+    {
+      "name": "schema_table_annotations",
+      "rows": 2,
+      "accessible": true
+    },
+    {
+      "name": "feedback",
+      "rows": 1,
+      "accessible": true
+    },
+    {
+      "name": "annotation_audit_log",
+      "rows": 0,
+      "accessible": true
+    },
+    {
+      "name": "batch_remarks",
+      "rows": 0,
+      "accessible": true
+    },
+    {
+      "name": "intent_feedback",
+      "rows": 0,
+      "accessible": true
+    },
+    {
+      "name": "query_result_feedback",
+      "rows": 0,
+      "accessible": true
+    },
+    {
+      "name": "saved_reports",
+      "rows": 0,
+      "accessible": true
+    },
+    {
+      "name": "schema_relation_annotations",
+      "rows": 0,
+      "accessible": true
+    },
+    {
+      "name": "sub_batch_process_log",
+      "rows": 0,
+      "accessible": true
+    }
+  ],
+  "note": "通过 REST API 获取（权限受限，某些表可能不可见）"
+}
