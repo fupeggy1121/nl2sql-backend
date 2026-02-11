@@ -14,6 +14,7 @@ from app.services.nl2sql_enhanced import get_enhanced_nl2sql_converter
 from app.services.query_executor import QueryExecutor
 from app.services.llm_provider import get_llm_provider
 from app.services.supabase_client import get_supabase_client
+from app.services.chart_recommender import get_chart_recommender
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,7 @@ class QueryResult:
     rows_count: int = 0
     summary: str = None
     visualization_type: VisualizationType = VisualizationType.TABLE
+    visualization: Optional[Dict[str, Any]] = None  # 图表推荐详情
     actions: List[str] = None
     error_message: Optional[str] = None
     query_time_ms: float = 0.0
@@ -109,6 +111,7 @@ class QueryResult:
             "rows_count": self.rows_count,
             "summary": self.summary,
             "visualization_type": self.visualization_type.value if self.visualization_type else "table",
+            "visualization": self.visualization,
             "actions": self.actions or [],
             "error_message": self.error_message,
             "query_time_ms": self.query_time_ms,
@@ -131,6 +134,7 @@ class UnifiedQueryService:
         self.intent_recognizer = IntentRecognizer(llm_provider=self.llm_provider)
         self.nl2sql_converter = get_enhanced_nl2sql_converter()
         self.query_executor = QueryExecutor(supabase_client=supabase_client)
+        self.chart_recommender = get_chart_recommender(llm_provider=self.llm_provider)
         logger.info("UnifiedQueryService initialized")
 
     async def process_natural_language_query(
@@ -381,8 +385,24 @@ class UnifiedQueryService:
             if not isinstance(data, list):
                 data = [data]
 
-            # 确定可视化类型
-            viz_type = self._determine_visualization_type(query_intent, data)
+            # 图表推荐（AI + 规则引擎）
+            intent_dict = query_intent.to_dict() if query_intent else None
+            chart_rec = self.chart_recommender.recommend(
+                sql=sql_query, data=data, query_intent=intent_dict
+            )
+            
+            # 兼容旧字段 visualization_type
+            viz_type_str = chart_rec.get('type', 'table')
+            viz_type_map = {
+                'table': VisualizationType.TABLE,
+                'bar': VisualizationType.BAR,
+                'grouped_bar': VisualizationType.BAR,
+                'line': VisualizationType.LINE,
+                'pie': VisualizationType.PIE,
+                'card': VisualizationType.GAUGE,
+                'scatter': VisualizationType.TABLE,
+            }
+            viz_type = viz_type_map.get(viz_type_str, VisualizationType.TABLE)
 
             # 生成摘要
             summary = self._generate_result_summary(query_intent, data)
@@ -394,6 +414,7 @@ class UnifiedQueryService:
                 rows_count=len(data),
                 summary=summary,
                 visualization_type=viz_type,
+                visualization=chart_rec,
                 actions=self._determine_available_actions(query_intent),
                 query_time_ms=(time.time() - start_time) * 1000,
                 generated_at=datetime.now().isoformat()
