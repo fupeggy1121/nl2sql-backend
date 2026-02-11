@@ -1,25 +1,27 @@
 """
 数据库查询服务
 执行 SQL 查询并返回结果
-支持 Supabase 客户端
+支持 PostgreSQL 直接连接和 Supabase 客户端
 """
 from typing import List, Dict, Any, Optional
 import logging
 import re
+from app.services.postgresql_executor import PostgreSQLExecutor
 
 logger = logging.getLogger(__name__)
 
 class QueryExecutor:
-    """SQL 查询执行器 - 支持 Supabase"""
+    """SQL 查询执行器 - 支持 PostgreSQL 直接连接和 Supabase"""
     
     def __init__(self, supabase_client=None):
         """
         初始化查询执行器
         
         Args:
-            supabase_client: Supabase 客户端对象
+            supabase_client: Supabase 客户端对象（可选）
         """
         self.supabase_client = supabase_client
+        self.pg_executor = None  # 延迟初始化PostgreSQL执行器
     
     def _extract_table_from_sql(self, sql: str) -> Optional[str]:
         """
@@ -66,30 +68,88 @@ class QueryExecutor:
     
     def execute_query(self, sql: str, params: Optional[List] = None) -> Dict[str, Any]:
         """
-        执行 SQL 查询
+        执行 SQL 查询 - 使用 PostgreSQL 直接连接
+        
+        优点：支持完整的 SQL 语法，包括 WHERE、GROUP BY、ORDER BY 等所有条件
         
         Args:
-            sql: SQL 查询语句
+            sql: SQL 查询语句（完整的SQL，包括WHERE条件）
             params: 查询参数（可选，Supabase 不支持）
             
         Returns:
             包含查询结果和元数据的字典
         """
         try:
-            if not self.supabase_client:
-                logger.error("Database connection not initialized")
-                return {
-                    'success': False,
-                    'error': 'Database connection not initialized',
-                    'data': []
-                }
+            # 首先尝试使用 PostgreSQL 直接连接执行 SQL
+            if self.pg_executor is None:
+                self.pg_executor = PostgreSQLExecutor()
             
-            # 检查 Supabase 客户端是否连接
-            if not self.supabase_client.client:
-                logger.error("Supabase client not connected")
+            # 连接到数据库
+            if not self.pg_executor.conn:
+                if not self.pg_executor.connect():
+                    logger.warning("PostgreSQL direct connection failed, falling back to Supabase")
+                    return self._execute_via_supabase(sql)
+            
+            # 执行 SQL 查询
+            logger.info(f"Executing SQL via PostgreSQL: {sql}")
+            
+            try:
+                self.pg_executor.cursor.execute(sql)
+                
+                # 获取所有结果
+                rows = self.pg_executor.cursor.fetchall()
+                
+                # 获取列名
+                column_names = [desc[0] for desc in self.pg_executor.cursor.description]
+                
+                # 将结果转换为字典列表
+                data = []
+                for row in rows:
+                    row_dict = {}
+                    for i, col_name in enumerate(column_names):
+                        row_dict[col_name] = row[i]
+                    data.append(row_dict)
+                
+                logger.info(f"✅ Query executed successfully: {len(data)} rows returned")
+                
+                return {
+                    'success': True,
+                    'data': data,
+                    'count': len(data),
+                    'message': f'成功返回 {len(data)} 条记录'
+                }
+                
+            except Exception as query_error:
+                logger.error(f"PostgreSQL query execution failed: {str(query_error)}")
+                # 查询执行失败，尝试回退到Supabase
+                return self._execute_via_supabase(sql)
+            
+        except Exception as e:
+            logger.error(f"Error in execute_query: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e),
+                'data': []
+            }
+    
+    def _execute_via_supabase(self, sql: str) -> Dict[str, Any]:
+        """
+        通过 Supabase 客户端执行查询（回退方案）
+        
+        注意：这种方式可能不支持复杂的 WHERE 条件，
+        建议也用PostgreSQL直接连接
+        
+        Args:
+            sql: SQL 查询语句
+            
+        Returns:
+            查询结果
+        """
+        try:
+            if not self.supabase_client:
                 return {
                     'success': False,
-                    'error': 'Supabase client not connected',
+                    'error': 'No database connection available (neither PostgreSQL nor Supabase)',
                     'data': []
                 }
             
@@ -105,9 +165,8 @@ class QueryExecutor:
                     'sql': sql
                 }
             
-            # 使用 Supabase 执行查询
-            logger.info(f"Executing query on table: {table_name}")
-            logger.info(f"SQL: {sql}")
+            logger.info(f"Falling back to Supabase for query on table: {table_name}")
+            logger.warning(f"⚠️ Supabase PostgREST may not support WHERE conditions in this query")
             
             # 调用 Supabase 客户端的 execute_query 方法
             result = self.supabase_client.execute_query(sql, table_name)
@@ -115,7 +174,7 @@ class QueryExecutor:
             return result
             
         except Exception as e:
-            logger.error(f"Error executing query: {str(e)}")
+            logger.error(f"Error in _execute_via_supabase: {str(e)}")
             return {
                 'success': False,
                 'error': str(e),

@@ -5,6 +5,7 @@ Supabase 客户端
 """
 import os
 import logging
+import re
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 
@@ -88,14 +89,18 @@ class SupabaseClient:
     
     def execute_query(self, sql: str, table_name: str = None) -> Dict[str, Any]:
         """
-        执行查询 - 使用 PostgREST API
+        执行查询 - 使用 PostgREST API + WHERE 条件支持
         
         Args:
-            sql: SQL 查询语句（作为注释/参考）
+            sql: SQL 查询语句（包含WHERE条件）
             table_name: 表名（必需）
             
         Returns:
             查询结果
+            
+        改进说明：
+        - 支持解析SQL中的WHERE条件
+        - 通过PostgREST的过滤参数应用这些条件
         """
         try:
             if not self.client:
@@ -105,25 +110,37 @@ class SupabaseClient:
                     'data': []
                 }
             
-            # 对于简单查询，直接从表中读取
-            if table_name:
-                response = self.client.table(table_name).select('*').execute()
-                data = response.data
-                
-                logger.info(f"✅ Query executed: {len(data)} rows returned from {table_name}")
-                
-                return {
-                    'success': True,
-                    'data': data,
-                    'count': len(data),
-                    'message': f'成功返回 {len(data)} 条记录'
-                }
-            else:
+            if not table_name:
                 return {
                     'success': False,
                     'error': 'table_name is required for PostgREST queries',
                     'data': []
                 }
+            
+            # 解析SQL中的WHERE条件
+            where_conditions = self._parse_where_conditions(sql)
+            
+            logger.info(f"Executing query on {table_name} with WHERE conditions: {where_conditions}")
+            
+            # 构建查询
+            query = self.client.table(table_name).select('*')
+            
+            # 应用WHERE条件
+            if where_conditions:
+                query = self._apply_where_conditions(query, where_conditions)
+            
+            # 执行查询
+            response = query.execute()
+            data = response.data
+            
+            logger.info(f"✅ Query executed: {len(data)} rows returned from {table_name}")
+            
+            return {
+                'success': True,
+                'data': data,
+                'count': len(data),
+                'message': f'成功返回 {len(data)} 条记录'
+            }
             
         except Exception as e:
             error_msg = str(e)
@@ -133,6 +150,71 @@ class SupabaseClient:
                 'error': error_msg,
                 'data': []
             }
+    
+    def _parse_where_conditions(self, sql: str) -> Dict[str, Any]:
+        """
+        解析SQL中的WHERE条件
+        
+        Args:
+            sql: SQL查询语句
+            
+        Returns:
+            WHERE条件字典 {column: value, ...}
+        """
+        # 匹配 WHERE 后的条件
+        # 支持的格式:
+        # - WHERE column = 'value'
+        # - WHERE column = value
+        # - WHERE column1 = 'val1' AND column2 = 'val2'
+        
+        where_match = re.search(r'WHERE\s+(.+?)(?:;|ORDER|GROUP|LIMIT|\s*$)', sql, re.IGNORECASE)
+        
+        if not where_match:
+            return {}
+        
+        where_clause = where_match.group(1).strip()
+        conditions = {}
+        
+        # Split by AND
+        and_conditions = re.split(r'\s+AND\s+', where_clause, flags=re.IGNORECASE)
+        
+        for condition in and_conditions:
+            # Parse individual conditions: column = value
+            # Support: column = 'string' or column = number
+            match = re.match(r"(\w+)\s*=\s*'([^']*)'", condition, re.IGNORECASE) or \
+                    re.match(r"(\w+)\s*=\s*(\d+)", condition, re.IGNORECASE)
+            
+            if match:
+                column = match.group(1)
+                value = match.group(2)
+                
+                # Try to convert to number if possible
+                try:
+                    value = int(value)
+                except (ValueError, TypeError):
+                    pass
+                
+                conditions[column] = value
+                logger.info(f"  Parsed condition: {column} = {value}")
+        
+        return conditions
+    
+    def _apply_where_conditions(self, query, conditions: Dict[str, Any]):
+        """
+        应用WHERE条件到PostgREST查询
+        
+        Args:
+            query: PostgREST查询对象
+            conditions: WHERE条件字典
+            
+        Returns:
+            应用了条件的查询对象
+        """
+        for column, value in conditions.items():
+            logger.info(f"Applying filter: {column} eq {value}")
+            query = query.eq(column, value)
+        
+        return query
     
     def execute_write(self, table_name: str, data: Dict[str, Any], operation: str = 'insert') -> Dict[str, Any]:
         """
