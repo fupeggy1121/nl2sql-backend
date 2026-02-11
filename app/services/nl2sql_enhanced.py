@@ -27,24 +27,50 @@ class EnhancedNL2SQLConverter:
         self._load_annotation_metadata()
     
     def _load_annotation_metadata(self) -> None:
-        """从 Schema Annotation API 加载元数据"""
+        """从 Supabase 直接加载表注释元数据"""
         try:
-            response = requests.get(
-                f"{self.schema_api_url}/metadata",
-                timeout=5
-            )
-            if response.status_code == 200:
-                data = response.json()
-                self.annotation_metadata = data.get('metadata', {})
-                logger.info(f"✅ Loaded schema annotation metadata")
-                logger.info(f"   Tables: {list(self.annotation_metadata.get('tables', {}).keys())}")
-                logger.info(f"   Columns: {len(self.annotation_metadata.get('columns', {}))}")
-            else:
-                logger.warning(f"Failed to load annotation metadata: {response.status_code}")
-        except requests.exceptions.ConnectionError:
-            logger.warning("Schema Annotation API not available, using basic schema")
+            from app.services.supabase_client import SupabaseClient
+            supabase = SupabaseClient()
+            
+            # 从 schema_table_annotations 表加载表注释
+            tables_response = supabase.client.table('schema_table_annotations').select('*').execute()
+            tables_data = {}
+            for row in tables_response.data:
+                table_name = row.get('table_name')
+                tables_data[table_name] = {
+                    'name_cn': row.get('table_name_cn', ''),
+                    'description_cn': row.get('description_cn', ''),
+                    'description_en': row.get('description_en', ''),
+                    'business_meaning': row.get('business_meaning', ''),
+                    'use_case': row.get('use_case', '')
+                }
+            
+            # 从 schema_column_annotations 表加载列注释
+            columns_response = supabase.client.table('schema_column_annotations').select('*').execute()
+            columns_data = {}
+            for row in columns_response.data:
+                col_key = f"{row.get('table_name')}.{row.get('column_name')}"
+                columns_data[col_key] = {
+                    'table_name': row.get('table_name'),
+                    'column_name': row.get('column_name'),
+                    'column_name_cn': row.get('column_name_cn', ''),
+                    'data_type': row.get('data_type', ''),
+                    'description_cn': row.get('description_cn', ''),
+                    'example_value': row.get('example_value', '')
+                }
+            
+            self.annotation_metadata = {
+                'tables': tables_data,
+                'columns': columns_data
+            }
+            
+            logger.info(f"✅ Loaded schema annotation metadata from Supabase")
+            logger.info(f"   Tables: {len(tables_data)}")
+            logger.info(f"   Columns: {len(columns_data)}")
+            
         except Exception as e:
-            logger.warning(f"Error loading annotation metadata: {e}")
+            logger.warning(f"Error loading annotation metadata from Supabase: {e}")
+            logger.info("Using fallback metadata loading...")
     
     def refresh_metadata(self) -> None:
         """刷新元数据（手动调用）"""
@@ -120,25 +146,39 @@ class EnhancedNL2SQLConverter:
         return "\n".join(schema_lines)
     
     def _build_enhanced_prompt(self, natural_language: str) -> str:
-        """构建增强的 LLM 提示词"""
+        """构建增强的 LLM 提示词，包含显式的中文-英文表名映射"""
         schema_prompt = self._build_enhanced_schema_prompt()
         
-        prompt = f"""{schema_prompt}
+        # 构建中文-英文表名映射表
+        tables = self.annotation_metadata.get('tables', {})
+        table_mappings = []
+        for table_name, table_info in tables.items():
+            cn_name = table_info.get('name_cn', '')
+            if cn_name:
+                table_mappings.append(f"  • '{cn_name}' → {table_name}")
+        
+        mapping_section = ""
+        if table_mappings:
+            mapping_section = "\n【中文表名映射】\n" + "\n".join(table_mappings)
+        
+        prompt = f"""{schema_prompt}{mapping_section}
 
 【用户查询】
 {natural_language}
 
 【转换规则】
 1. 使用正确的表名和列名
-2. 如果用户提及中文名称（如"生产订单"），请自动映射到对应的表名
-3. 考虑业务含义和使用场景来构建正确的逻辑
-4. 优先使用表中存在的列名
-5. 生成的 SQL 应该是可执行的
+2. 如果用户提及中文名称，请根据【中文表名映射】自动映射到对应的英文表名
+3. 例外：如果用户说"载具"，应该映射到"carriers"表；"生产订单"映射到"production_orders"表
+4. 考虑业务含义和使用场景来构建正确的逻辑
+5. 优先使用表中存在的列名
+6. 生成的 SQL 应该是可执行的，使用数据库中实际存在的表名
 
 【输出要求】
 - 仅输出 SQL 语句，不要包含其他文本或解释
 - 如果无法理解查询，返回一个安全的 SELECT 语句
-- 确保 SQL 语法正确"""
+- 确保 SQL 语法正确
+- 确保表名是从【中文表名映射】中选择的"""
         
         return prompt
     
@@ -161,7 +201,15 @@ class EnhancedNL2SQLConverter:
             ) else self._call_llm_with_prompt(enhanced_prompt)
             
             if sql:
-                logger.info(f"✅ Converted NL to SQL: {sql[:100]}...")
+                logger.info(f"✅ Converted NL to SQL (before validation): {sql[:100]}...")
+                
+                # 验证和纠正表名
+                corrected_sql = self._validate_and_fix_table_names(sql)
+                
+                if corrected_sql != sql:
+                    logger.info(f"✅ SQL corrected: {corrected_sql[:100]}...")
+                    return corrected_sql.strip()
+                
                 return sql.strip()
             else:
                 logger.warning("LLM provider returned None")
@@ -241,6 +289,107 @@ class EnhancedNL2SQLConverter:
             if (col.get('table_name') == table_name and 
                 col.get('column_name_cn') == cn_col_name):
                 return col.get('column_name')
+        return None
+    
+    def _validate_and_fix_table_names(self, sql: str) -> str:
+        """验证和修正SQL中的表名
+        
+        检查SQL中使用的表是否存在，如果不存在则尝试修正
+        """
+        import re
+        
+        tables = self.annotation_metadata.get('tables', {})
+        valid_table_names = set(tables.keys())
+        
+        if not valid_table_names:
+            return sql
+        
+        # 提取SQL中的表名
+        from_pattern = r'FROM\s+([\w_]+)(?:\s|$|;)'
+        join_pattern = r'JOIN\s+([\w_]+)(?:\s|$|;)'
+        
+        corrected_sql = sql
+        
+        # 检查FROM子句中的表名
+        for match in re.finditer(from_pattern, sql, re.IGNORECASE):
+            table_name = match.group(1)
+            if table_name.lower() not in [t.lower() for t in valid_table_names]:
+                # 表名不存在，这是一个可能的错误
+                logger.warning(f"Table '{table_name}' not found in schema, attempting to correct...")
+                
+                # 尝试通过中文名称反向查找
+                corrected_name = self._find_best_matching_table(table_name)
+                if corrected_name:
+                    logger.info(f"Corrected table name: {table_name} → {corrected_name}")
+                    corrected_sql = re.sub(
+                        rf'\b{re.escape(table_name)}\b',
+                        corrected_name,
+                        corrected_sql,
+                        flags=re.IGNORECASE
+                    )
+        
+        # 检查JOIN子句中的表名
+        for match in re.finditer(join_pattern, sql, re.IGNORECASE):
+            table_name = match.group(1)
+            if table_name.lower() not in [t.lower() for t in valid_table_names]:
+                logger.warning(f"Table '{table_name}' in JOIN not found in schema")
+                corrected_name = self._find_best_matching_table(table_name)
+                if corrected_name:
+                    logger.info(f"Corrected JOIN table: {table_name} → {corrected_name}")
+                    corrected_sql = re.sub(
+                        rf'\b{re.escape(table_name)}\b',
+                        corrected_name,
+                        corrected_sql,
+                        flags=re.IGNORECASE
+                    )
+        
+        return corrected_sql
+    
+    def _find_best_matching_table(self, incorrect_table: str) -> Optional[str]:
+        """通过相似度或中文映射查找最匹配的表名"""
+        tables = self.annotation_metadata.get('tables', {})
+        
+        # 明确的映射规则（常见错误）
+        specific_mappings = {
+            'vehicles': 'carriers',
+            'vehicle': 'carriers',
+            'equipment': 'equipment',
+            'orders': 'production_orders',
+            'order': 'production_orders',
+            'products': 'products',
+            'product': 'products',
+            'batches': 'batches',
+            'batch': 'batches',
+            'wafers': 'wafers',
+            'wafer': 'wafers',
+            'stations': 'stations',
+            'station': 'stations',
+            'carriers': 'carriers',
+            'carrier': 'carriers',
+        }
+        
+        # 精确匹配（忽略大小写）
+        incorrect_lower = incorrect_table.lower()
+        if incorrect_lower in specific_mappings:
+            mapped = specific_mappings[incorrect_lower]
+            if mapped in tables:
+                return mapped
+        
+        # 模糊匹配：寻找最相似的表名
+        from difflib import SequenceMatcher
+        best_match = None
+        best_ratio = 0.6  # 至少 60% 相似度
+        
+        for table_name in tables.keys():
+            ratio = SequenceMatcher(None, incorrect_lower, table_name.lower()).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_match = table_name
+        
+        if best_match:
+            logger.info(f"Found similar table: {best_match} (similarity: {best_ratio:.2%})")
+            return best_match
+        
         return None
     
     def get_metadata_summary(self) -> Dict[str, Any]:
