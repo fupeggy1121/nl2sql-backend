@@ -2,6 +2,7 @@
 数据库查询服务
 执行 SQL 查询并返回结果
 支持 PostgreSQL 直接连接和 Supabase 客户端
+带有查询缓存层
 """
 from typing import List, Dict, Any, Optional
 import logging
@@ -9,8 +10,9 @@ import re
 
 logger = logging.getLogger(__name__)
 
+
 class QueryExecutor:
-    """SQL 查询执行器 - 支持 PostgreSQL 直接连接和 Supabase"""
+    """SQL 查询执行器 - 支持 PostgreSQL 直接连接和 Supabase + 查询缓存"""
     
     def __init__(self, supabase_client=None):
         """
@@ -21,6 +23,19 @@ class QueryExecutor:
         """
         self.supabase_client = supabase_client
         self.pg_executor = None  # 延迟初始化PostgreSQL执行器
+        self._cache = None       # 延迟初始化查询缓存
+    
+    @property
+    def cache(self):
+        """延迟获取查询缓存单例"""
+        if self._cache is None:
+            try:
+                from app.services.query_cache import get_query_cache
+                self._cache = get_query_cache()
+            except Exception as e:
+                logger.warning(f"Query cache unavailable: {e}")
+                self._cache = False  # 标记为不可用
+        return self._cache if self._cache is not False else None
     
     def _extract_table_from_sql(self, sql: str) -> Optional[str]:
         """
@@ -67,19 +82,17 @@ class QueryExecutor:
     
     def execute_query(self, sql: str, params: Optional[List] = None) -> Dict[str, Any]:
         """
-        执行 SQL 查询 - 使用 PostgreSQL 直接连接
-        
-        优点：支持完整的 SQL 语法，包括 WHERE、GROUP BY、ORDER BY 等所有条件
-        
-        Args:
-            sql: SQL 查询语句（完整的SQL，包括WHERE条件）
-            params: 查询参数（可选，Supabase 不支持）
-            
-        Returns:
-            包含查询结果和元数据的字典
+        执行 SQL 查询 - 优先命中缓存 → PostgreSQL → Supabase PostgREST
         """
         try:
-            # 首先尝试使用 PostgreSQL 直接连接执行 SQL
+            # ── 1. 查缓存 ──
+            if self.cache:
+                cached = self.cache.get(sql)
+                if cached is not None:
+                    logger.info(f"✅ Cache HIT for SQL: {sql[:60]}...")
+                    return cached
+            
+            # ── 2. PostgreSQL 直连 ──
             if self.pg_executor is None:
                 try:
                     # 延迟导入 PostgreSQLExecutor，这样如果 psycopg2 不可用也不会导致应用启动失败
@@ -119,12 +132,18 @@ class QueryExecutor:
                     
                     logger.info(f"✅ Query executed successfully: {len(data)} rows returned")
                     
-                    return {
+                    result = {
                         'success': True,
                         'data': data,
                         'count': len(data),
                         'message': f'成功返回 {len(data)} 条记录'
                     }
+                    
+                    # 缓存结果
+                    if self.cache:
+                        self.cache.set(sql, result)
+                    
+                    return result
                     
                 except Exception as query_error:
                     logger.error(f"PostgreSQL query execution failed: {str(query_error)}")
@@ -181,6 +200,10 @@ class QueryExecutor:
             
             # 调用 Supabase 客户端的 execute_query 方法
             result = self.supabase_client.execute_query(sql, table_name)
+            
+            # 缓存成功的结果
+            if result.get('success') and self.cache:
+                self.cache.set(sql, result)
             
             return result
             

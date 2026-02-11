@@ -87,214 +87,342 @@ class SupabaseClient:
                 self.init_error = f"Connection test failed: {error_msg}"
                 return False
     
+    # ─── SQL 复杂度分类 ──────────────────────────────
+    
+    SQL_COMPLEXITY_SIMPLE = 'simple'        # SELECT * FROM t WHERE ... LIMIT ...
+    SQL_COMPLEXITY_AGGREGATE = 'aggregate'  # COUNT/SUM/AVG + 可能有 GROUP BY
+    SQL_COMPLEXITY_COMPLEX = 'complex'      # JOIN / 子查询 / UNION / HAVING / 窗口函数
+    
+    def classify_sql_complexity(self, sql: str) -> str:
+        """
+        对 SQL 语句进行复杂度分级
+        
+        Returns:
+            'simple' / 'aggregate' / 'complex'
+        """
+        sql_upper = re.sub(r'\s+', ' ', sql).upper().strip()
+        
+        # complex: JOIN / 子查询 / UNION / HAVING / 窗口函数
+        complex_patterns = [
+            r'\bJOIN\b',
+            r'\bUNION\b',
+            r'\bHAVING\b',
+            r'\bWITH\b\s+\w+\s+AS\b',  # CTE
+            r'\bOVER\s*\(',              # 窗口函数
+            r'\(\s*SELECT\b',            # 子查询
+        ]
+        for pattern in complex_patterns:
+            if re.search(pattern, sql_upper):
+                return self.SQL_COMPLEXITY_COMPLEX
+        
+        # aggregate: COUNT/SUM/AVG/MIN/MAX 或 GROUP BY
+        if re.search(r'\b(COUNT|SUM|AVG|MIN|MAX)\s*\(', sql_upper) or \
+           re.search(r'\bGROUP\s+BY\b', sql_upper):
+            return self.SQL_COMPLEXITY_AGGREGATE
+        
+        return self.SQL_COMPLEXITY_SIMPLE
+    
+    # ─── 聚合查询检测 ─────────────────────────────────
+    
     def _detect_aggregate_query(self, sql: str) -> Optional[Dict[str, Any]]:
         """
         检测SQL是否为聚合查询 (COUNT, SUM, AVG, MIN, MAX)
+        支持单聚合和多聚合。
         
         Returns:
-            聚合信息字典 {'function': 'count', 'column': '*', 'alias': 'count'} 或 None
+            聚合信息字典或 None
+            单聚合: {'function': 'count', 'column': '*', 'alias': 'count'}
+            多聚合: {'multi': True, 'aggregates': [{...}, {...}]}
         """
         sql_clean = re.sub(r'\s+', ' ', sql).strip()
-        # 匹配 SELECT COUNT(*), SELECT COUNT(col), SELECT SUM(col) AS alias 等
-        agg_pattern = r'SELECT\s+(COUNT|SUM|AVG|MIN|MAX)\s*\(\s*(\*|\w+)\s*\)(?:\s+AS\s+(\w+))?'
-        match = re.search(agg_pattern, sql_clean, re.IGNORECASE)
-        if match:
-            func_name = match.group(1).lower()
-            column = match.group(2)
-            alias = match.group(3) or func_name
-            return {'function': func_name, 'column': column, 'alias': alias}
-        return None
+        
+        # 匹配所有聚合函数
+        agg_pattern = r'(COUNT|SUM|AVG|MIN|MAX)\s*\(\s*(\*|\w+)\s*\)(?:\s+AS\s+(\w+))?'
+        matches = list(re.finditer(agg_pattern, sql_clean, re.IGNORECASE))
+        
+        if not matches:
+            return None
+        
+        aggregates = []
+        for m in matches:
+            func_name = m.group(1).lower()
+            column = m.group(2)
+            alias = m.group(3) or func_name
+            aggregates.append({'function': func_name, 'column': column, 'alias': alias})
+        
+        # 检测 GROUP BY
+        group_by = self._parse_group_by(sql_clean)
+        
+        if len(aggregates) == 1 and not group_by:
+            return aggregates[0]
+        
+        return {'multi': True, 'aggregates': aggregates, 'group_by': group_by}
 
     def execute_query(self, sql: str, table_name: str = None) -> Dict[str, Any]:
         """
-        执行查询 - 使用 PostgREST API + WHERE 条件支持
+        执行查询 - 分层策略
         
-        支持聚合查询 (COUNT/SUM/AVG/MIN/MAX) 和普通 SELECT 查询。
+        根据 SQL 复杂度自动选择最优执行路径:
+          simple    → PostgREST select + filter + order + limit
+          aggregate → PostgREST count / client-side aggregation
+          complex   → 尝试 Supabase RPC (rpc_execute_sql) 或降级
         
         Args:
-            sql: SQL 查询语句（包含WHERE条件）
+            sql: SQL 查询语句
             table_name: 表名（必需）
-            
-        Returns:
-            查询结果
         """
         try:
             if not self.client:
-                return {
-                    'success': False,
-                    'error': 'Supabase not connected',
-                    'data': []
-                }
-            
+                return {'success': False, 'error': 'Supabase not connected', 'data': []}
             if not table_name:
-                return {
-                    'success': False,
-                    'error': 'table_name is required for PostgREST queries',
-                    'data': []
-                }
+                return {'success': False, 'error': 'table_name is required for PostgREST queries', 'data': []}
             
-            # 解析SQL中的WHERE条件
+            complexity = self.classify_sql_complexity(sql)
+            logger.info(f"SQL complexity: {complexity} | table: {table_name} | SQL: {sql[:80]}...")
+            
+            # ── complex: 尝试 RPC，失败则降级 ──
+            if complexity == self.SQL_COMPLEXITY_COMPLEX:
+                rpc_result = self._try_execute_via_rpc(sql)
+                if rpc_result and rpc_result.get('success'):
+                    return rpc_result
+                logger.warning(f"⚠️ Complex SQL degraded to PostgREST (may lose precision): {sql[:80]}")
+            
+            # ── 解析公共子句 ──
             where_conditions = self._parse_where_conditions(sql)
             
-            # 检测是否为聚合查询
+            # ── aggregate ──
             agg_info = self._detect_aggregate_query(sql)
-            
             if agg_info:
-                return self._execute_aggregate_query(
-                    table_name, agg_info, where_conditions, sql
-                )
+                return self._execute_aggregate_query(table_name, agg_info, where_conditions, sql)
             
-            logger.info(f"Executing query on {table_name} with WHERE conditions: {where_conditions}")
-            
-            # 普通 SELECT 查询
-            # 解析 SELECT 列（支持 SELECT col1, col2 而不仅是 SELECT *）
-            select_columns = self._parse_select_columns(sql)
-            query = self.client.table(table_name).select(select_columns)
-            
-            # 应用WHERE条件
-            if where_conditions:
-                query = self._apply_where_conditions(query, where_conditions)
-            
-            # 解析 LIMIT
-            limit = self._parse_limit(sql)
-            if limit:
-                query = query.limit(limit)
-            
-            # 解析 ORDER BY
-            order_info = self._parse_order_by(sql)
-            if order_info:
-                query = query.order(order_info['column'], desc=order_info['desc'])
-            
-            # 执行查询
-            response = query.execute()
-            data = response.data
-            
-            logger.info(f"✅ Query executed: {len(data)} rows returned from {table_name}")
-            
-            return {
-                'success': True,
-                'data': data,
-                'count': len(data),
-                'message': f'成功返回 {len(data)} 条记录'
-            }
+            # ── simple: 标准 PostgREST 查询 ──
+            return self._execute_simple_query(table_name, sql, where_conditions)
             
         except Exception as e:
-            error_msg = str(e)
-            logger.error(f"❌ Query execution failed: {error_msg}")
-            return {
-                'success': False,
-                'error': error_msg,
-                'data': []
-            }
+            logger.error(f"❌ Query execution failed: {str(e)}")
+            return {'success': False, 'error': str(e), 'data': []}
+    
+    def _execute_simple_query(
+        self, table_name: str, sql: str, where_conditions: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        执行简单查询 — PostgREST select + filter + order + limit + distinct
+        """
+        select_columns = self._parse_select_columns(sql)
+        
+        # DISTINCT 检测
+        is_distinct = bool(re.search(r'SELECT\s+DISTINCT\b', sql, re.IGNORECASE))
+        
+        query = self.client.table(table_name).select(select_columns)
+        
+        # 应用 WHERE
+        if where_conditions:
+            query = self._apply_where_conditions(query, where_conditions)
+        
+        # LIMIT
+        limit = self._parse_limit(sql)
+        if limit:
+            query = query.limit(limit)
+        
+        # OFFSET
+        offset = self._parse_offset(sql)
+        if offset:
+            query = query.offset(offset)
+        
+        # ORDER BY（支持多列）
+        order_list = self._parse_order_by_multi(sql)
+        for order_info in order_list:
+            query = query.order(order_info['column'], desc=order_info['desc'])
+        
+        response = query.execute()
+        data = response.data
+        
+        # 客户端去重 (PostgREST 不直接支持 DISTINCT)
+        if is_distinct and data:
+            data = self._client_distinct(data)
+        
+        logger.info(f"✅ Simple query: {len(data)} rows from {table_name}")
+        return {
+            'success': True,
+            'data': data,
+            'count': len(data),
+            'message': f'成功返回 {len(data)} 条记录'
+        }
+    
+    def _try_execute_via_rpc(self, sql: str) -> Optional[Dict[str, Any]]:
+        """
+        尝试通过 Supabase RPC 执行复杂 SQL
+        
+        需要在数据库中创建函数:
+          CREATE OR REPLACE FUNCTION execute_sql(query text)
+          RETURNS json AS $$ ... $$ LANGUAGE plpgsql SECURITY DEFINER;
+        
+        如果 RPC 不存在，返回 None 以触发降级
+        """
+        try:
+            if not self.client:
+                return None
+            response = self.client.rpc('execute_sql', {'query': sql}).execute()
+            if response.data is not None:
+                # RPC 返回的可能是 JSON 数据
+                data = response.data if isinstance(response.data, list) else [response.data]
+                logger.info(f"✅ RPC execute_sql succeeded: {len(data)} rows")
+                return {
+                    'success': True,
+                    'data': data,
+                    'count': len(data),
+                    'message': f'通过 RPC 执行成功，返回 {len(data)} 条记录',
+                    'execution_method': 'rpc'
+                }
+            return None
+        except Exception as e:
+            logger.debug(f"RPC execute_sql not available: {str(e)[:100]}")
+            return None
     
     def _execute_aggregate_query(
         self, table_name: str, agg_info: Dict[str, Any],
         where_conditions: Dict[str, Any], original_sql: str
     ) -> Dict[str, Any]:
         """
-        执行聚合查询 (COUNT/SUM/AVG/MIN/MAX)
+        执行聚合查询 — 支持单聚合、多聚合、GROUP BY
         
-        对于 COUNT 使用 PostgREST 的 count='exact' 参数；
-        对于 SUM/AVG/MIN/MAX 先拉取目标列数据再在 Python 端计算。
+        策略:
+        - 纯 COUNT(*) → PostgREST count='exact' + limit(0)（最高效）
+        - 单聚合无 GROUP BY → 拉取目标列 + Python 计算
+        - 多聚合 / GROUP BY → 拉取必要列 + Python 分组聚合
         """
-        func = agg_info['function']
-        column = agg_info['column']
-        alias = agg_info['alias']
+        is_multi = agg_info.get('multi', False)
+        aggregates = agg_info.get('aggregates', [agg_info]) if is_multi else [agg_info]
+        group_by = agg_info.get('group_by', []) if is_multi else []
         
-        logger.info(f"Executing aggregate query: {func}({column}) on {table_name}, WHERE={where_conditions}")
+        logger.info(f"Aggregate query: {[a['function']+'('+a['column']+')' for a in aggregates]} "
+                     f"GROUP BY {group_by} on {table_name}")
         
         try:
-            if func == 'count':
-                # 使用 PostgREST 的 count 功能，只获取 count 不拉取数据
-                query = self.client.table(table_name).select('*', count='exact')
-                if where_conditions:
-                    query = self._apply_where_conditions(query, where_conditions)
-                query = query.limit(0)  # 不需要实际数据行
-                response = query.execute()
-                count_value = response.count if hasattr(response, 'count') and response.count is not None else len(response.data)
-                
-                logger.info(f"✅ COUNT query result: {count_value}")
-                return {
-                    'success': True,
-                    'data': [{alias: count_value}],
-                    'count': 1,
-                    'message': f'{func.upper()}({column}) = {count_value}'
-                }
+            # ── 快速路径: 纯 COUNT(*) 无 GROUP BY ──
+            if len(aggregates) == 1 and aggregates[0]['function'] == 'count' and not group_by:
+                return self._fast_count(table_name, aggregates[0], where_conditions)
             
+            # ── 通用路径: 拉取数据 + Python 聚合 ──
+            # 确定需要拉取的列
+            needed_cols = set(group_by)
+            for agg in aggregates:
+                if agg['column'] != '*':
+                    needed_cols.add(agg['column'])
+            
+            select_str = ','.join(needed_cols) if needed_cols else '*'
+            query = self.client.table(table_name).select(select_str)
+            if where_conditions:
+                query = self._apply_where_conditions(query, where_conditions)
+            response = query.execute()
+            rows = response.data
+            
+            if not rows:
+                empty_row = {a['alias']: None for a in aggregates}
+                return {'success': True, 'data': [empty_row], 'count': 1,
+                        'message': '无数据可聚合'}
+            
+            # 分组
+            if group_by:
+                result_data = self._grouped_aggregate(rows, aggregates, group_by)
             else:
-                # SUM / AVG / MIN / MAX — 拉取目标列数据后在 Python 端计算
-                select_col = column if column != '*' else '*'
-                query = self.client.table(table_name).select(select_col)
-                if where_conditions:
-                    query = self._apply_where_conditions(query, where_conditions)
-                response = query.execute()
-                rows = response.data
-                
-                if not rows or column == '*':
-                    return {
-                        'success': True,
-                        'data': [{alias: None}],
-                        'count': 1,
-                        'message': f'无数据可计算 {func.upper()}'
-                    }
-                
-                values = []
-                for row in rows:
-                    val = row.get(column)
-                    if val is not None:
-                        try:
-                            values.append(float(val))
-                        except (ValueError, TypeError):
-                            pass
-                
-                if not values:
-                    result_value = None
-                elif func == 'sum':
-                    result_value = sum(values)
-                elif func == 'avg':
-                    result_value = sum(values) / len(values)
-                elif func == 'min':
-                    result_value = min(values)
-                elif func == 'max':
-                    result_value = max(values)
-                else:
-                    result_value = None
-                
-                # 保留合理精度
-                if result_value is not None and isinstance(result_value, float):
-                    result_value = round(result_value, 4)
-                
-                logger.info(f"✅ {func.upper()} query result: {result_value}")
-                return {
-                    'success': True,
-                    'data': [{alias: result_value}],
-                    'count': 1,
-                    'message': f'{func.upper()}({column}) = {result_value}'
-                }
+                result_data = [self._compute_aggregates(rows, aggregates)]
+            
+            logger.info(f"✅ Aggregate result: {len(result_data)} groups")
+            return {
+                'success': True,
+                'data': result_data,
+                'count': len(result_data),
+                'message': f'聚合查询成功，返回 {len(result_data)} 条结果'
+            }
         
         except Exception as e:
             logger.error(f"❌ Aggregate query failed: {str(e)}")
-            return {
-                'success': False,
-                'error': f'聚合查询失败: {str(e)}',
-                'data': []
-            }
+            return {'success': False, 'error': f'聚合查询失败: {str(e)}', 'data': []}
+    
+    def _fast_count(self, table_name: str, agg: Dict, where_conditions: Dict) -> Dict[str, Any]:
+        """使用 PostgREST count='exact' 的快速计数"""
+        query = self.client.table(table_name).select('*', count='exact')
+        if where_conditions:
+            query = self._apply_where_conditions(query, where_conditions)
+        query = query.limit(0)
+        response = query.execute()
+        count_val = response.count if hasattr(response, 'count') and response.count is not None else len(response.data)
+        alias = agg.get('alias', 'count')
+        logger.info(f"✅ Fast COUNT: {count_val}")
+        return {
+            'success': True,
+            'data': [{alias: count_val}],
+            'count': 1,
+            'message': f'COUNT = {count_val}'
+        }
+    
+    def _compute_aggregates(self, rows: list, aggregates: list) -> Dict[str, Any]:
+        """对一组行计算多个聚合函数"""
+        result = {}
+        for agg in aggregates:
+            func, col, alias = agg['function'], agg['column'], agg['alias']
+            
+            if func == 'count':
+                result[alias] = len(rows)
+                continue
+            
+            values = []
+            for row in rows:
+                val = row.get(col)
+                if val is not None:
+                    try:
+                        values.append(float(val))
+                    except (ValueError, TypeError):
+                        pass
+            
+            if not values:
+                result[alias] = None
+            elif func == 'sum':
+                result[alias] = round(sum(values), 4)
+            elif func == 'avg':
+                result[alias] = round(sum(values) / len(values), 4)
+            elif func == 'min':
+                result[alias] = min(values)
+            elif func == 'max':
+                result[alias] = max(values)
+            else:
+                result[alias] = None
+        
+        return result
+    
+    def _grouped_aggregate(self, rows: list, aggregates: list, group_by: list) -> list:
+        """分组后对每组计算聚合"""
+        from collections import defaultdict
+        groups = defaultdict(list)
+        
+        for row in rows:
+            key = tuple(row.get(col) for col in group_by)
+            groups[key].append(row)
+        
+        results = []
+        for key, group_rows in groups.items():
+            row_result = dict(zip(group_by, key))
+            agg_values = self._compute_aggregates(group_rows, aggregates)
+            row_result.update(agg_values)
+            results.append(row_result)
+        
+        return results
     
     def _parse_select_columns(self, sql: str) -> str:
         """解析 SELECT 列，返回 PostgREST 兼容的 select 字符串"""
-        match = re.search(r'SELECT\s+(.+?)\s+FROM', sql, re.IGNORECASE)
+        match = re.search(r'SELECT\s+(DISTINCT\s+)?(.+?)\s+FROM', sql, re.IGNORECASE)
         if match:
-            cols = match.group(1).strip()
-            # 如果是聚合函数就返回 *（由 _execute_aggregate_query 处理）
+            cols = match.group(2).strip()
             if re.search(r'(COUNT|SUM|AVG|MIN|MAX)\s*\(', cols, re.IGNORECASE):
                 return '*'
-            # 如果已经是 *，直接返回
             if cols.strip() == '*':
                 return '*'
-            # 清理别名 (col AS alias → col)
             cleaned = []
             for col in cols.split(','):
                 col = col.strip()
+                # 去除 table.column 的表名前缀
+                col = re.sub(r'^\w+\.', '', col)
                 col = re.sub(r'\s+AS\s+\w+', '', col, flags=re.IGNORECASE).strip()
                 if col:
                     cleaned.append(col)
@@ -304,82 +432,211 @@ class SupabaseClient:
     def _parse_limit(self, sql: str) -> Optional[int]:
         """解析 LIMIT 子句"""
         match = re.search(r'LIMIT\s+(\d+)', sql, re.IGNORECASE)
-        if match:
-            return int(match.group(1))
-        return None
+        return int(match.group(1)) if match else None
     
-    def _parse_order_by(self, sql: str) -> Optional[Dict[str, Any]]:
-        """解析 ORDER BY 子句"""
-        match = re.search(r'ORDER\s+BY\s+(\w+)(?:\s+(ASC|DESC))?', sql, re.IGNORECASE)
-        if match:
-            return {
-                'column': match.group(1),
-                'desc': match.group(2) and match.group(2).upper() == 'DESC'
-            }
-        return None
+    def _parse_offset(self, sql: str) -> Optional[int]:
+        """解析 OFFSET 子句"""
+        match = re.search(r'OFFSET\s+(\d+)', sql, re.IGNORECASE)
+        return int(match.group(1)) if match else None
     
-    def _parse_where_conditions(self, sql: str) -> Dict[str, Any]:
+    def _parse_order_by_multi(self, sql: str) -> list:
+        """解析 ORDER BY 子句 — 支持多列排序"""
+        match = re.search(r'ORDER\s+BY\s+(.+?)(?:LIMIT|OFFSET|;|$)', sql, re.IGNORECASE)
+        if not match:
+            return []
+        order_clause = match.group(1).strip()
+        results = []
+        for part in order_clause.split(','):
+            part = part.strip()
+            m = re.match(r'(\w+)(?:\s+(ASC|DESC))?', part, re.IGNORECASE)
+            if m:
+                results.append({
+                    'column': m.group(1),
+                    'desc': m.group(2) and m.group(2).upper() == 'DESC'
+                })
+        return results
+    
+    def _parse_group_by(self, sql: str) -> list:
+        """解析 GROUP BY 子句"""
+        match = re.search(r'GROUP\s+BY\s+(.+?)(?:HAVING|ORDER|LIMIT|;|$)', sql, re.IGNORECASE)
+        if not match:
+            return []
+        return [col.strip() for col in match.group(1).split(',') if col.strip()]
+    
+    @staticmethod
+    def _client_distinct(data: list) -> list:
+        """客户端去重"""
+        import json
+        seen = set()
+        result = []
+        for row in data:
+            key = json.dumps(row, sort_keys=True, default=str)
+            if key not in seen:
+                seen.add(key)
+                result.append(row)
+        return result
+    
+    def _parse_where_conditions(self, sql: str) -> list:
         """
-        解析SQL中的WHERE条件
+        解析 SQL 中的 WHERE 条件（增强版）
         
-        Args:
-            sql: SQL查询语句
-            
+        支持的操作符: =, !=, <>, >, <, >=, <=, LIKE, ILIKE,
+                      IN (...), IS NULL, IS NOT NULL, BETWEEN
+        
         Returns:
-            WHERE条件字典 {column: value, ...}
+            条件列表 [{'column': str, 'op': str, 'value': Any}, ...]
         """
-        # 匹配 WHERE 后的条件
-        # 支持的格式:
-        # - WHERE column = 'value'
-        # - WHERE column = value
-        # - WHERE column1 = 'val1' AND column2 = 'val2'
-        
-        where_match = re.search(r'WHERE\s+(.+?)(?:;|ORDER|GROUP|LIMIT|\s*$)', sql, re.IGNORECASE)
-        
+        where_match = re.search(
+            r'WHERE\s+(.+?)(?:;|ORDER\s|GROUP\s|LIMIT\s|HAVING\s|\s*$)',
+            sql, re.IGNORECASE
+        )
         if not where_match:
-            return {}
+            return []
         
         where_clause = where_match.group(1).strip()
-        conditions = {}
         
-        # Split by AND
-        and_conditions = re.split(r'\s+AND\s+', where_clause, flags=re.IGNORECASE)
+        # 先提取 BETWEEN...AND... 子句并替换为占位符，
+        # 避免 BETWEEN 的 AND 被误分割
+        between_cache = {}
+        counter = [0]
+        def replace_between(m):
+            placeholder = f'__BETWEEN_{counter[0]}__'
+            between_cache[placeholder] = m.group(0)
+            counter[0] += 1
+            return placeholder
+        where_clause = re.sub(
+            r"\w+\s+BETWEEN\s+.+?\s+AND\s+\S+",
+            replace_between, where_clause, flags=re.IGNORECASE
+        )
         
-        for condition in and_conditions:
-            # Parse individual conditions: column = value
-            # Support: column = 'string' or column = number
-            match = re.match(r"(\w+)\s*=\s*'([^']*)'", condition, re.IGNORECASE) or \
-                    re.match(r"(\w+)\s*=\s*(\d+)", condition, re.IGNORECASE)
+        and_parts = re.split(r'\s+AND\s+', where_clause, flags=re.IGNORECASE)
+        # 恢复 BETWEEN 占位符
+        and_parts = [between_cache.get(p.strip(), p) for p in and_parts]
+        
+        conditions = []
+        for part in and_parts:
+            part = part.strip()
+            cond = None
             
-            if match:
-                column = match.group(1)
-                value = match.group(2)
-                
-                # Try to convert to number if possible
-                try:
-                    value = int(value)
-                except (ValueError, TypeError):
-                    pass
-                
-                conditions[column] = value
-                logger.info(f"  Parsed condition: {column} = {value}")
+            # IS NOT NULL
+            m = re.match(r'(\w+)\s+IS\s+NOT\s+NULL', part, re.IGNORECASE)
+            if m:
+                cond = {'column': m.group(1), 'op': 'is_not_null', 'value': None}
+            
+            # IS NULL
+            if not cond:
+                m = re.match(r'(\w+)\s+IS\s+NULL', part, re.IGNORECASE)
+                if m:
+                    cond = {'column': m.group(1), 'op': 'is_null', 'value': None}
+            
+            # BETWEEN
+            if not cond:
+                m = re.match(r"(\w+)\s+BETWEEN\s+'?([^']+?)'?\s+AND\s+'?([^']+?)'?$",
+                             part, re.IGNORECASE)
+                if m:
+                    cond = {'column': m.group(1), 'op': 'between',
+                            'value': [self._cast_value(m.group(2)), self._cast_value(m.group(3))]}
+            
+            # IN (...)
+            if not cond:
+                m = re.match(r"(\w+)\s+IN\s*\((.+?)\)", part, re.IGNORECASE)
+                if m:
+                    raw_vals = [v.strip().strip("'\"") for v in m.group(2).split(',')]
+                    cond = {'column': m.group(1), 'op': 'in',
+                            'value': [self._cast_value(v) for v in raw_vals]}
+            
+            # NOT LIKE / NOT ILIKE
+            if not cond:
+                m = re.match(r"(\w+)\s+NOT\s+(I?LIKE)\s+'([^']+)'", part, re.IGNORECASE)
+                if m:
+                    op = 'not_ilike' if m.group(2).upper() == 'ILIKE' else 'not_like'
+                    cond = {'column': m.group(1), 'op': op, 'value': m.group(3)}
+            
+            # LIKE / ILIKE
+            if not cond:
+                m = re.match(r"(\w+)\s+(I?LIKE)\s+'([^']+)'", part, re.IGNORECASE)
+                if m:
+                    op = 'ilike' if m.group(2).upper() == 'ILIKE' else 'like'
+                    cond = {'column': m.group(1), 'op': op, 'value': m.group(3)}
+            
+            # 比较操作符: >=, <=, !=, <>, >, <, =
+            if not cond:
+                m = re.match(r"(\w+)\s*(>=|<=|!=|<>|>|<|=)\s*'?([^']*?)'?\s*$", part, re.IGNORECASE)
+                if m:
+                    col, op_str, val = m.group(1), m.group(2), m.group(3)
+                    op_map = {
+                        '=': 'eq', '!=': 'neq', '<>': 'neq',
+                        '>': 'gt', '<': 'lt', '>=': 'gte', '<=': 'lte'
+                    }
+                    cond = {'column': col, 'op': op_map[op_str], 'value': self._cast_value(val)}
+            
+            if cond:
+                logger.info(f"  Parsed condition: {cond['column']} {cond['op']} {cond.get('value')}")
+                conditions.append(cond)
+            else:
+                logger.warning(f"  Unparsed WHERE part: {part}")
         
         return conditions
     
-    def _apply_where_conditions(self, query, conditions: Dict[str, Any]):
+    @staticmethod
+    def _cast_value(val):
+        """尝试将字符串转为 int / float"""
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            pass
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            pass
+        return val
+    
+    def _apply_where_conditions(self, query, conditions):
         """
-        应用WHERE条件到PostgREST查询
+        应用 WHERE 条件到 PostgREST 查询（增强版）
         
-        Args:
-            query: PostgREST查询对象
-            conditions: WHERE条件字典
-            
-        Returns:
-            应用了条件的查询对象
+        兼容旧版 dict 和新版 list[dict] 格式
         """
-        for column, value in conditions.items():
-            logger.info(f"Applying filter: {column} eq {value}")
-            query = query.eq(column, value)
+        # 兼容旧格式 dict
+        if isinstance(conditions, dict):
+            for col, val in conditions.items():
+                query = query.eq(col, val)
+            return query
+        
+        for cond in conditions:
+            col, op, val = cond['column'], cond['op'], cond.get('value')
+            logger.info(f"Applying filter: {col} {op} {val}")
+            
+            if op == 'eq':
+                query = query.eq(col, val)
+            elif op == 'neq':
+                query = query.neq(col, val)
+            elif op == 'gt':
+                query = query.gt(col, val)
+            elif op == 'lt':
+                query = query.lt(col, val)
+            elif op == 'gte':
+                query = query.gte(col, val)
+            elif op == 'lte':
+                query = query.lte(col, val)
+            elif op == 'like':
+                query = query.like(col, val)
+            elif op == 'ilike':
+                query = query.ilike(col, val)
+            elif op == 'not_like':
+                query = query.not_.like(col, val)
+            elif op == 'not_ilike':
+                query = query.not_.ilike(col, val)
+            elif op in ('in',):
+                query = query.in_(col, val)
+            elif op == 'is_null':
+                query = query.is_(col, 'null')
+            elif op == 'is_not_null':
+                query = query.neq(col, 'null')
+            elif op == 'between':
+                query = query.gte(col, val[0]).lte(col, val[1])
+            else:
+                logger.warning(f"Unsupported op '{op}', skipping")
         
         return query
     
