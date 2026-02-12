@@ -67,6 +67,10 @@ def _register_routes(app: FastAPI):
     from app.api.v1.chat import router as chat_router
     app.include_router(chat_router)
 
+    # LLM Provider 管理 API
+    from app.api.v1.llm_provider import router as llm_provider_router
+    app.include_router(llm_provider_router)
+
     # 旧 API 兼容层
     from app.api.compat import router as compat_router
     app.include_router(compat_router)
