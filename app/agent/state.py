@@ -33,6 +33,7 @@ class AgentState(TypedDict, total=False):
     query_result: Dict[str, Any]                 # 查询结果 {"success": bool, "data": [...], ...}
     sql_retry_count: int                         # SQL 重试次数（自我修正计数器）
     sql_error: str                               # SQL 执行错误信息（用于自我修正）
+    sql_validation: Dict[str, Any]               # SQL 验证结果 (Phase B)
 
     # ── 结果分析 ──
     chart_type: str                              # 推荐图表类型

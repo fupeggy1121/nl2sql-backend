@@ -1,10 +1,16 @@
 """
-LangGraph 工作流 — AI Agent 的核心决策引擎
+LangGraph 工作流 — AI Agent 的核心决策引擎 (Phase B 增强版)
 
 构建一个有向图状态机，包含:
 - 意图路由（条件分支）
-- 查询流水线（intent → plan → sql → execute → analyze → chart → response）
-- SQL 自我修正循环（执行失败 → 重新生成 → 最多重试 3 次）
+- 查询分解（复杂查询拆解为子步骤）
+- SQL 预验证（执行前检查表/列名是否存在）
+- SQL 自我修正循环（验证失败/执行失败 → 重新生成 → 最多重试 3 次）
+
+Phase B 新增:
+- query_decomposer 节点: 复杂查询分解
+- sql_validator 节点: SQL 预验证（表名/列名/语法）
+- 验证失败也可触发自我修正循环
 """
 
 import logging
@@ -14,7 +20,9 @@ from app.agent.state import AgentState
 from app.agent.nodes import (
     intent_router_node,
     query_planner_node,
+    query_decomposer_node,
     sql_generator_node,
+    sql_validator_node,
     data_executor_node,
     result_analyzer_node,
     chart_generator_node,
@@ -72,18 +80,50 @@ def _route_after_execution(state: AgentState) -> str:
         return "response_builder"
 
 
+def _route_after_validation(state: AgentState) -> str:
+    """
+    条件边：SQL 验证后的路由决策 (Phase B 新增)
+
+    - 验证通过（无 sql_error）→ data_executor（执行）
+    - 验证失败 且 重试次数 < MAX → sql_generator（自我修正，跳过执行）
+    - 验证失败 且 重试次数 >= MAX → response_builder（返回错误）
+    """
+    sql_error = state.get("sql_error", "")
+    retry_count = state.get("sql_retry_count", 0)
+
+    if not sql_error:
+        return "data_executor"
+    elif retry_count < MAX_SQL_RETRIES:
+        logger.info(
+            f"[graph] SQL validation failed (retry {retry_count}/{MAX_SQL_RETRIES}), "
+            f"routing to sql_generator for correction"
+        )
+        return "sql_generator"
+    else:
+        logger.warning(
+            f"[graph] SQL validation exhausted ({MAX_SQL_RETRIES} retries), "
+            f"returning error response"
+        )
+        return "response_builder"
+
+
 def build_agent_graph() -> StateGraph:
     """
-    构建 LangGraph 工作流图。
+    构建 LangGraph 工作流图 (Phase B 增强版)。
 
     流程:
     intent_router → (条件分支)
-      └─ query → query_planner → sql_generator → data_executor → (条件分支)
-                                      ↑                            │
-                                      └── 自我修正循环 ←───────────┘ (失败且 retry < 3)
-                                                                   │
-                                                                   ↓ (成功)
-                                                           result_analyzer → chart_generator → response_builder → END
+      └─ query → query_planner → query_decomposer → sql_generator → sql_validator → (条件分支)
+                                                          ↑                            │
+                                                          └── 验证修正 ←───────────────┘ (验证失败 + retry<3)
+                                                          ↑                            │
+                                                          │                            ↓ (验证通过)
+                                                          │                    data_executor → (条件分支)
+                                                          │                            │
+                                                          └── 执行修正 ←───────────────┘ (执行失败 + retry<3)
+                                                                                       │
+                                                                                       ↓ (成功)
+                                                                               result_analyzer → chart_generator → response_builder → END
       └─ chat/alert/schedule → response_builder → END
     """
     graph = StateGraph(AgentState)
@@ -91,7 +131,9 @@ def build_agent_graph() -> StateGraph:
     # ── 注册所有节点 ──
     graph.add_node("intent_router", intent_router_node)
     graph.add_node("query_planner", query_planner_node)
+    graph.add_node("query_decomposer", query_decomposer_node)   # Phase B 新增
     graph.add_node("sql_generator", sql_generator_node)
+    graph.add_node("sql_validator", sql_validator_node)           # Phase B 新增
     graph.add_node("data_executor", data_executor_node)
     graph.add_node("result_analyzer", result_analyzer_node)
     graph.add_node("chart_generator", chart_generator_node)
@@ -110,9 +152,21 @@ def build_agent_graph() -> StateGraph:
         },
     )
 
-    # ── 固定边: 查询流水线 ──
-    graph.add_edge("query_planner", "sql_generator")
-    graph.add_edge("sql_generator", "data_executor")
+    # ── 固定边: 查询规划 → 查询分解 → SQL 生成 → SQL 验证 ──
+    graph.add_edge("query_planner", "query_decomposer")
+    graph.add_edge("query_decomposer", "sql_generator")
+    graph.add_edge("sql_generator", "sql_validator")
+
+    # ── 条件边: 验证后路由（Phase B 新增）──
+    graph.add_conditional_edges(
+        "sql_validator",
+        _route_after_validation,
+        {
+            "data_executor": "data_executor",
+            "sql_generator": "sql_generator",       # 验证失败 → 修正
+            "response_builder": "response_builder",  # 重试用尽
+        },
+    )
 
     # ── 条件边: 执行后路由（自我修正循环）──
     graph.add_conditional_edges(
@@ -120,7 +174,7 @@ def build_agent_graph() -> StateGraph:
         _route_after_execution,
         {
             "result_analyzer": "result_analyzer",
-            "sql_generator": "sql_generator",      # 自我修正回环
+            "sql_generator": "sql_generator",       # 执行失败 → 修正
             "response_builder": "response_builder",  # 重试用尽
         },
     )

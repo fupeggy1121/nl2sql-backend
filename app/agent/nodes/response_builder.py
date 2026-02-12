@@ -42,18 +42,40 @@ def response_builder_node(state: AgentState) -> dict:
         # ── 数据查询响应 ──
         data = query_result.get("data", [])
         rows_count = query_result.get("rows_count", len(data) if isinstance(data, list) else 0)
+        retry_count = state.get("sql_retry_count", 0)
 
         # 生成摘要
         summary = _generate_summary(user_input, data, rows_count)
 
+        # 构建查询计划
+        plan_info = {
+            "query_intent": intent_data,
+            "generated_sql": sql,
+            "sql_confidence": state.get("sql_confidence", 0.0),
+            "explanation": f"根据您的查询生成了 SQL 并执行",
+        }
+
+        # 如果有自我修正历史，记录到响应中
+        if retry_count > 0:
+            plan_info["self_correction"] = {
+                "retries": retry_count,
+                "note": f"SQL 经过 {retry_count} 次自我修正后成功执行"
+                        if query_result.get("success")
+                        else f"SQL 修正 {retry_count} 次仍然失败",
+            }
+
+        # 如果有查询分解信息，记录
+        decomposition = state.get("query_plan", {}).get("decomposition")
+        if decomposition:
+            plan_info["decomposition"] = {
+                "strategy": decomposition.get("strategy", ""),
+                "steps": len(decomposition.get("sub_queries", [])),
+                "merge_strategy": decomposition.get("merge_strategy", ""),
+            }
+
         response = {
             "success": True,
-            "query_plan": {
-                "query_intent": intent_data,
-                "generated_sql": sql,
-                "sql_confidence": state.get("sql_confidence", 0.0),
-                "explanation": f"根据您的查询生成了 SQL 并执行",
-            },
+            "query_plan": plan_info,
             "query_result": {
                 "success": True,
                 "data": data,
