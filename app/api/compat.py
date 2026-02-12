@@ -30,18 +30,22 @@ router = APIRouter(tags=["Compat Layer"])
 @router.post("/api/query/unified/process")
 async def compat_process_query(request: Request):
     """
-    兼容旧 /process 接口。
+    兼容旧 /process 接口（已支持多轮对话）。
 
-    请求格式（与旧接口相同）:
+    请求格式:
     {
         "natural_language": "查询今天的OEE数据",
         "execution_mode": "execute",  // "explain" or "execute"
+        "session_id": "xxx",           // 可选，传入则启用多轮对话记忆
+        "conversation_history": [],     // 可选，客户端对话历史
         "user_context": {}
     }
 
-    响应格式（与旧接口完全相同）:
+    响应格式:
     {
         "success": true,
+        "session_id": "xxx",           // 返回 session_id，前端应保存用于下次请求
+        "is_followup": false,
         "query_plan": {...},
         "query_result": {...},
         "visualization": {...}
@@ -61,34 +65,45 @@ async def compat_process_query(request: Request):
         if execution_mode not in ("explain", "execute"):
             execution_mode = "explain"
 
+        # 支持多轮对话: 从请求中获取 session_id，没有则生成新的
+        session_id = body.get("session_id") or str(uuid.uuid4())
+        conversation_history = body.get("conversation_history", [])
+
         agent = get_agent_app()
 
-        # 运行 Agent
+        # 运行 Agent（携带 session_id 实现多轮记忆）
         initial_state = {
             "user_input": natural_language,
-            "session_id": str(uuid.uuid4()),
-            "conversation_history": [],
+            "session_id": session_id,
+            "conversation_history": conversation_history,
             "sql_retry_count": 0,
         }
 
+        logger.info(
+            f"[compat/process] session={session_id}, "
+            f"input='{natural_language[:60]}...', mode={execution_mode}"
+        )
+
         if execution_mode == "explain":
-            # explain 模式：只走到 sql_generator，不执行
-            # 为了简化，依然跑完整流水线，只是响应中不包含 query_result.data
             result = await agent.ainvoke(initial_state)
             response_data = result.get("response", {})
+            is_followup = result.get("is_followup", False)
 
-            # 适配旧格式
             return JSONResponse({
                 "success": True,
+                "session_id": session_id,
+                "is_followup": is_followup,
                 "query_plan": response_data.get("query_plan"),
             })
         else:
-            # execute 模式：完整流水线
             result = await agent.ainvoke(initial_state)
             response_data = result.get("response", {})
+            is_followup = result.get("is_followup", False)
 
             return JSONResponse({
                 "success": response_data.get("success", False),
+                "session_id": session_id,
+                "is_followup": is_followup,
                 "query_plan": response_data.get("query_plan"),
                 "query_result": response_data.get("query_result"),
                 "visualization": response_data.get("visualization"),
