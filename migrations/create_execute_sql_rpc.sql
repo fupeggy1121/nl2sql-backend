@@ -19,18 +19,31 @@ AS $$
 DECLARE
     result json;
     trimmed text;
+    first_keyword text;
 BEGIN
     -- 去除前后空白
     trimmed := btrim(query);
 
-    -- 安全检查: 仅允许 SELECT 查询
-    IF upper(left(trimmed, 6)) <> 'SELECT' THEN
-        RAISE EXCEPTION 'Only SELECT queries are allowed (received: %)', left(trimmed, 20);
+    -- 提取第一个关键字（大写）
+    first_keyword := upper(split_part(trimmed, ' ', 1));
+    -- 处理 WITH\n 或 WITH\t 等情况
+    IF first_keyword = '' OR first_keyword IS NULL THEN
+        first_keyword := upper(left(trimmed, 6));
     END IF;
 
-    -- 拒绝危险语句
-    IF trimmed ~* '\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE)\b' THEN
+    -- 安全检查: 仅允许 SELECT 和 WITH (CTE) 查询
+    IF first_keyword NOT IN ('SELECT', 'WITH') THEN
+        RAISE EXCEPTION 'Only SELECT/WITH queries are allowed (received: %)', left(trimmed, 20);
+    END IF;
+
+    -- 拒绝危险语句（排除 CTE 中的 SELECT 子句，仅检测写入/DDL）
+    IF trimmed ~* '\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|GRANT|REVOKE)\b' THEN
         RAISE EXCEPTION 'Write / DDL operations are not permitted';
+    END IF;
+
+    -- CTE 查询必须最终包含 SELECT
+    IF first_keyword = 'WITH' AND trimmed !~* '\bSELECT\b' THEN
+        RAISE EXCEPTION 'WITH (CTE) queries must contain a SELECT statement';
     END IF;
 
     -- 执行并返回 JSON 数组

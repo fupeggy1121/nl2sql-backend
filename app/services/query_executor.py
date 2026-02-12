@@ -166,8 +166,8 @@ class QueryExecutor:
         """
         通过 Supabase 客户端执行查询（回退方案）
         
-        注意：这种方式可能不支持复杂的 WHERE 条件，
-        建议也用PostgreSQL直接连接
+        对于复杂 SQL（CTE/JOIN/窗口函数），优先通过 RPC 执行，
+        无需提取表名。仅简单/聚合查询需要表名走 PostgREST。
         
         Args:
             sql: SQL 查询语句
@@ -183,20 +183,29 @@ class QueryExecutor:
                     'data': []
                 }
             
-            # 从 SQL 中提取表名
+            # ── 复杂 SQL 优先走 RPC，跳过表名提取 ──
+            if self.supabase_client.classify_sql_complexity(sql) == self.supabase_client.SQL_COMPLEXITY_COMPLEX:
+                rpc_result = self.supabase_client._try_execute_via_rpc(sql)
+                if rpc_result and rpc_result.get('success'):
+                    # 缓存成功的结果
+                    if self.cache:
+                        self.cache.set(sql, rpc_result)
+                    return rpc_result
+                logger.warning(f"⚠️ RPC 不可用, 复杂 SQL 降级到 PostgREST (可能失败)")
+            
+            # ── 简单/聚合查询 或 RPC 不可用时 → 需要表名走 PostgREST ──
             table_name = self._extract_table_from_sql(sql)
             
             if not table_name:
                 logger.warning(f"Cannot determine table from SQL: {sql}")
                 return {
                     'success': False,
-                    'error': 'Cannot determine table from SQL statement',
+                    'error': 'Cannot determine table from SQL statement. 复杂查询需要启用 execute_sql RPC 函数。',
                     'data': [],
                     'sql': sql
                 }
             
             logger.info(f"Falling back to Supabase for query on table: {table_name}")
-            logger.warning(f"⚠️ Supabase PostgREST may not support WHERE conditions in this query")
             
             # 调用 Supabase 客户端的 execute_query 方法
             result = self.supabase_client.execute_query(sql, table_name)
