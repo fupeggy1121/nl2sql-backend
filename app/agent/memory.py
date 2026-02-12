@@ -131,30 +131,47 @@ class SessionMemory:
     def is_followup_query(self, current_input: str) -> bool:
         """
         判断当前输入是否是追问/指代查询。
-        检测: "那/那个/上面/上个月/换成/改为/它的/这个表" 等模式。
+        检测: "那/那个/再/也/上面/换成/改为/它的" 等模式。
         """
         if not self.turns:
             return False
 
         followup_patterns = [
-            '那', '那个', '那些', '换成', '改为', '改成',
-            '上面', '上个', '下个', '这个', '它的', '它们',
-            '同样', '也查', '再查', '还有', '另外',
-            '上一个', '刚才', '之前', '前面',
-            '怎么样', '多少', '呢', '吗',
+            # 指代词
+            '那', '那个', '那些', '这个', '这些',
+            '它的', '它们', '其中',
+            # 承接/追加
+            '再', '也', '还', '又',
+            '再查', '再统计', '再看', '再算',
+            '也查', '也统计', '也看', '也算',
+            '还有', '另外', '同样', '帮我',
+            # 修改/替换
+            '换成', '改为', '改成', '换个', '改下',
+            '不要', '去掉', '加上', '加个',
+            # 时间引用
+            '上面', '上个', '下个', '上一个',
+            '刚才', '之前', '前面',
+            # 疑问承接
+            '怎么样', '多少', '呢', '吗', '如何',
+            # 对比/扩展
+            '对比', '比较', '按', '分别',
         ]
         input_lower = current_input.strip()
 
         # 短查询 + 包含指代词 → 大概率是追问
-        if len(input_lower) < 20:
+        if len(input_lower) < 30:
             for p in followup_patterns:
                 if p in input_lower:
                     return True
 
-        # "那XXX呢" 模式
+        # "那XXX呢" / "XXX呢" 模式
         if input_lower.endswith('呢') or input_lower.endswith('吗'):
-            if any(p in input_lower for p in ['那', '这', '上', '它']):
+            if any(p in input_lower for p in ['那', '这', '上', '它', '再', '也']):
                 return True
+
+        # "再统计下XXX的" 模式
+        if input_lower.startswith('再') or input_lower.startswith('也'):
+            return True
 
         return False
 
@@ -275,20 +292,63 @@ class ConversationMemory:
 
     def _resolve_reference(self, current_input: str, last_ctx: Dict) -> str:
         """
-        指代消解 — 将追问中的隐含引用补全。
+        指代消解 — 使用 LLM 将追问中的隐含引用补全为完整独立的查询。
 
         例:
-          上一轮: "查询 carriers 表的数量" → SQL: SELECT COUNT(*) FROM carriers
-          当前: "那上个月呢" → 消解后: "查询 carriers 表上个月的数量"
+          上一轮: "统计颗粒检测站点的在制品数量" → SQL: SELECT COUNT(*)...
+          当前: "再统计下包装站点的" → 消解后: "统计包装站点的在制品数量"
+          当前: "那上个月呢" → 消解后: "统计颗粒检测站点上个月的在制品数量"
           当前: "换成 wafers 表" → 消解后: "查询 wafers 表的数量"
         """
         last_q = last_ctx.get("last_question", "")
         last_sql = last_ctx.get("last_sql", "")
+        last_result = last_ctx.get("last_result_summary", "")
 
         if not last_q:
             return current_input
 
-        # 构建增强输入: 让 LLM 看到上下文
+        logger.info(
+            f"[memory] Resolving reference: '{current_input}' "
+            f"(followup to: '{last_q[:50]}...')"
+        )
+
+        # ── 尝试用 LLM 做指代消解，生成完整独立的查询 ──
+        try:
+            from app.agent.llm import get_agent_llm
+            llm = get_agent_llm()
+
+            prompt = (
+                f"你是 MES 系统的查询助手，用户正在进行多轮对话查询。\n\n"
+                f"上一轮用户的问题: {last_q}\n"
+                f"上一轮生成的 SQL: {last_sql}\n"
+            )
+            if last_result:
+                prompt += f"上一轮查询结果摘要: {last_result}\n"
+            prompt += (
+                f"\n用户当前的追问: {current_input}\n\n"
+                f"请将用户的追问改写为一个完整的、独立的自然语言查询，"
+                f"使其不依赖上下文也能被正确理解。\n"
+                f"要求:\n"
+                f"1. 保留上一轮查询的结构和逻辑（如 JOIN、过滤条件、聚合方式等）\n"
+                f"2. 只替换用户追问中明确要求修改的部分\n"
+                f"3. 只输出改写后的查询语句，不要解释\n"
+                f"4. 使用中文自然语言，不要输出 SQL"
+            )
+
+            response = llm.invoke(prompt)
+            resolved = response.content if hasattr(response, "content") else str(response)
+            resolved = resolved.strip().strip('"').strip("'")
+
+            if resolved and len(resolved) > 5:
+                logger.info(
+                    f"[memory] LLM resolved: '{current_input}' → '{resolved}'"
+                )
+                return resolved
+
+        except Exception as e:
+            logger.warning(f"[memory] LLM reference resolution failed: {e}")
+
+        # ── Fallback: 构建拼接的上下文提示 ──
         resolved = (
             f"[上一个问题: {last_q}]\n"
             f"[上一个SQL: {last_sql}]\n"
@@ -297,8 +357,7 @@ class ConversationMemory:
         )
 
         logger.info(
-            f"[memory] Reference resolution: '{current_input}' "
-            f"(followup to: '{last_q[:50]}...')"
+            f"[memory] Fallback resolution: '{current_input}'"
         )
 
         return resolved
