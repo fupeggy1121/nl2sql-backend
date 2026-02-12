@@ -21,7 +21,6 @@ Flask==3.0.0
 Flask-Cors==4.0.0
 frozenlist==1.8.0
 fsspec==2026.1.0
-gotrue==2.7.0
 gunicorn==21.2.0
 h11==0.16.0
 h2==4.3.0
@@ -64,7 +63,7 @@ packaging==26.0
 pathspec==1.0.4
 platformdirs==4.5.1
 pluggy==1.6.0
-postgrest==0.10.8
+postgrest==2.28.0
 propcache==0.4.1
 psycopg2-binary==2.9.11
 pycodestyle==2.11.1
@@ -83,7 +82,7 @@ pytest==7.4.3
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.0
 PyYAML==6.0.3
-realtime==1.0.6
+realtime==2.28.0
 regex==2026.1.15
 requests==2.32.5
 requests-toolbelt==1.0.0
@@ -94,13 +93,12 @@ socksio==1.0.0
 sortedcontainers==2.4.0
 SQLAlchemy==2.0.23
 starlette==0.38.6
-storage3==0.7.7
+storage3==2.28.0
 StrEnum==0.4.15
 strictyaml==1.7.3
-supabase==2.3.4
-supabase-auth==2.27.2
-supabase-functions==2.27.2
-supafunc==0.3.3
+supabase==2.28.0
+supabase-auth==2.28.0
+supabase-functions==2.28.0
 tenacity==8.5.0
 tiktoken==0.12.0
 tqdm==4.67.2
@@ -112,7 +110,7 @@ uuid_utils==0.14.0
 uvicorn==0.30.0
 uvloop==0.22.1
 watchfiles==1.1.1
-websockets==12.0
+websockets==15.0.1
 Werkzeug==3.1.5
 xxhash==3.6.0
 yarl==1.22.0
