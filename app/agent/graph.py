@@ -1,16 +1,16 @@
 """
-LangGraph 工作流 — AI Agent 的核心决策引擎 (Phase B 增强版)
+LangGraph 工作流 — AI Agent 的核心决策引擎 (Phase C 增强版)
 
 构建一个有向图状态机，包含:
+- 对话记忆加载/保存（多轮对话支持）
 - 意图路由（条件分支）
 - 查询分解（复杂查询拆解为子步骤）
 - SQL 预验证（执行前检查表/列名是否存在）
 - SQL 自我修正循环（验证失败/执行失败 → 重新生成 → 最多重试 3 次）
 
-Phase B 新增:
-- query_decomposer 节点: 复杂查询分解
-- sql_validator 节点: SQL 预验证（表名/列名/语法）
-- 验证失败也可触发自我修正循环
+Phase C 新增:
+- memory_loader 节点: 加载会话上下文 + 指代消解
+- memory_saver 节点: 保存本轮对话到短期/长期记忆
 """
 
 import logging
@@ -18,6 +18,7 @@ from langgraph.graph import StateGraph, END
 
 from app.agent.state import AgentState
 from app.agent.nodes import (
+    memory_loader_node,
     intent_router_node,
     query_planner_node,
     query_decomposer_node,
@@ -27,6 +28,7 @@ from app.agent.nodes import (
     result_analyzer_node,
     chart_generator_node,
     response_builder_node,
+    memory_saver_node,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,10 +111,10 @@ def _route_after_validation(state: AgentState) -> str:
 
 def build_agent_graph() -> StateGraph:
     """
-    构建 LangGraph 工作流图 (Phase B 增强版)。
+    构建 LangGraph 工作流图 (Phase C 增强版)。
 
     流程:
-    intent_router → (条件分支)
+    memory_loader → intent_router → (条件分支)
       └─ query → query_planner → query_decomposer → sql_generator → sql_validator → (条件分支)
                                                           ↑                            │
                                                           └── 验证修正 ←───────────────┘ (验证失败 + retry<3)
@@ -123,24 +125,29 @@ def build_agent_graph() -> StateGraph:
                                                           └── 执行修正 ←───────────────┘ (执行失败 + retry<3)
                                                                                        │
                                                                                        ↓ (成功)
-                                                                               result_analyzer → chart_generator → response_builder → END
-      └─ chat/alert/schedule → response_builder → END
+                                                                               result_analyzer → chart_generator → response_builder → memory_saver → END
+      └─ chat/alert/schedule → response_builder → memory_saver → END
     """
     graph = StateGraph(AgentState)
 
     # ── 注册所有节点 ──
+    graph.add_node("memory_loader", memory_loader_node)       # Phase C 新增
     graph.add_node("intent_router", intent_router_node)
     graph.add_node("query_planner", query_planner_node)
-    graph.add_node("query_decomposer", query_decomposer_node)   # Phase B 新增
+    graph.add_node("query_decomposer", query_decomposer_node)
     graph.add_node("sql_generator", sql_generator_node)
-    graph.add_node("sql_validator", sql_validator_node)           # Phase B 新增
+    graph.add_node("sql_validator", sql_validator_node)
     graph.add_node("data_executor", data_executor_node)
     graph.add_node("result_analyzer", result_analyzer_node)
     graph.add_node("chart_generator", chart_generator_node)
     graph.add_node("response_builder", response_builder_node)
+    graph.add_node("memory_saver", memory_saver_node)         # Phase C 新增
 
-    # ── 入口 ──
-    graph.set_entry_point("intent_router")
+    # ── 入口: memory_loader ──
+    graph.set_entry_point("memory_loader")
+
+    # ── 固定边: 记忆加载 → 意图路由 ──
+    graph.add_edge("memory_loader", "intent_router")
 
     # ── 条件边: 意图路由 ──
     graph.add_conditional_edges(
@@ -157,7 +164,7 @@ def build_agent_graph() -> StateGraph:
     graph.add_edge("query_decomposer", "sql_generator")
     graph.add_edge("sql_generator", "sql_validator")
 
-    # ── 条件边: 验证后路由（Phase B 新增）──
+    # ── 条件边: 验证后路由（Phase B）──
     graph.add_conditional_edges(
         "sql_validator",
         _route_after_validation,
@@ -179,12 +186,13 @@ def build_agent_graph() -> StateGraph:
         },
     )
 
-    # ── 固定边: 分析 → 图表 → 响应 ──
+    # ── 固定边: 分析 → 图表 → 响应 → 记忆保存 ──
     graph.add_edge("result_analyzer", "chart_generator")
     graph.add_edge("chart_generator", "response_builder")
+    graph.add_edge("response_builder", "memory_saver")
 
     # ── 终止 ──
-    graph.add_edge("response_builder", END)
+    graph.add_edge("memory_saver", END)
 
     return graph
 

@@ -26,20 +26,27 @@ INTENT_ROUTE_MAP = {
 
 def intent_router_node(state: AgentState) -> dict:
     """
-    意图路由节点。
-    输入: user_input, conversation_history (可选)
+    意图路由节点 (Phase C 增强)。
+    输入: user_input, resolved_input, is_followup, conversation_history, memory_context
     输出: intent, intent_data, start_time
     """
     user_input = state.get("user_input", "")
+    resolved_input = state.get("resolved_input", "") or user_input
+    is_followup = state.get("is_followup", False)
     conversation_history = state.get("conversation_history", [])
+    memory_context = state.get("memory_context", {})
 
-    logger.info(f"[intent_router] Processing: {user_input[:80]}...")
+    logger.info(
+        f"[intent_router] Processing: {user_input[:80]}... "
+        f"(followup={is_followup})"
+    )
 
-    # 如果有对话历史，将上下文拼接到输入中，帮助意图识别
-    effective_input = user_input
+    # Phase C: 如果是追问，使用消解后的输入
+    effective_input = resolved_input if is_followup else user_input
+
+    # 如果有对话历史，将上下文拼接到输入中
     if conversation_history:
-        # 提取最近 3 轮对话作为上下文
-        recent = conversation_history[-6:]  # 最多 3 轮（user+assistant 各 1 条）
+        recent = conversation_history[-6:]
         context_parts = []
         for msg in recent:
             role = msg.get("role", "user")
@@ -48,7 +55,7 @@ def intent_router_node(state: AgentState) -> dict:
                 context_parts.append(f"[{role}]: {content}")
         if context_parts:
             context_str = "\n".join(context_parts)
-            effective_input = f"对话上下文:\n{context_str}\n\n当前问题: {user_input}"
+            effective_input = f"对话上下文:\n{context_str}\n\n当前问题: {effective_input}"
 
     # 调用意图识别 Tool
     intent_data = classify_intent.invoke({"user_input": effective_input})

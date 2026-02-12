@@ -79,8 +79,9 @@ GRANT USAGE, SELECT ON SEQUENCE table_synonyms_id_seq TO anon, authenticated;
 GRANT USAGE, SELECT ON SEQUENCE unmatched_query_terms_id_seq TO anon, authenticated;
 GRANT USAGE, SELECT ON SEQUENCE synonym_audit_log_id_seq TO anon, authenticated;
 
--- 5. 预置内置同义词 (部分核心映射)
+-- 5. 预置内置同义词 (完整 77 个核心映射，与 table_synonyms.py 一致)
 INSERT INTO table_synonyms (table_name, synonym, source, is_active) VALUES
+    -- carriers (7)
     ('carriers', 'carriers', 'builtin', TRUE),
     ('carriers', 'carrier', 'builtin', TRUE),
     ('carriers', '载体', 'builtin', TRUE),
@@ -88,37 +89,85 @@ INSERT INTO table_synonyms (table_name, synonym, source, is_active) VALUES
     ('carriers', '片篮', 'builtin', TRUE),
     ('carriers', '晶圆载体', 'builtin', TRUE),
     ('carriers', '石英舟', 'builtin', TRUE),
+    -- wafers (7)
     ('wafers', 'wafers', 'builtin', TRUE),
     ('wafers', 'wafer', 'builtin', TRUE),
     ('wafers', '晶圆', 'builtin', TRUE),
     ('wafers', '晶片', 'builtin', TRUE),
     ('wafers', '芯片', 'builtin', TRUE),
+    ('wafers', '硅片', 'builtin', TRUE),
+    ('wafers', '磊晶片', 'builtin', TRUE),
+    -- wafer_inspection_results (6)
     ('wafer_inspection_results', 'wafer_inspection_results', 'builtin', TRUE),
     ('wafer_inspection_results', '检测结果', 'builtin', TRUE),
     ('wafer_inspection_results', '检测数据', 'builtin', TRUE),
     ('wafer_inspection_results', '检验结果', 'builtin', TRUE),
+    ('wafer_inspection_results', '晶圆检测', 'builtin', TRUE),
+    ('wafer_inspection_results', '品质检测', 'builtin', TRUE),
+    -- batches (6)
     ('batches', 'batches', 'builtin', TRUE),
     ('batches', 'batch', 'builtin', TRUE),
     ('batches', '批次', 'builtin', TRUE),
     ('batches', '生产批次', 'builtin', TRUE),
+    ('batches', '批号', 'builtin', TRUE),
+    ('batches', '工单', 'builtin', TRUE),
+    -- equipment (8)
     ('equipment', 'equipment', 'builtin', TRUE),
     ('equipment', 'device', 'builtin', TRUE),
     ('equipment', '设备', 'builtin', TRUE),
     ('equipment', '机器', 'builtin', TRUE),
+    ('equipment', '机台', 'builtin', TRUE),
+    ('equipment', '装置', 'builtin', TRUE),
+    ('equipment', '仪器', 'builtin', TRUE),
+    ('equipment', '工具', 'builtin', TRUE),
+    -- production_records (6)
     ('production_records', 'production_records', 'builtin', TRUE),
     ('production_records', '生产记录', 'builtin', TRUE),
     ('production_records', '生产数据', 'builtin', TRUE),
+    ('production_records', '制造记录', 'builtin', TRUE),
+    ('production_records', '产量记录', 'builtin', TRUE),
+    ('production_records', '产出记录', 'builtin', TRUE),
+    -- process_steps (7)
     ('process_steps', 'process_steps', 'builtin', TRUE),
     ('process_steps', '工艺步骤', 'builtin', TRUE),
     ('process_steps', '工序', 'builtin', TRUE),
+    ('process_steps', '制程', 'builtin', TRUE),
+    ('process_steps', '工艺流程', 'builtin', TRUE),
+    ('process_steps', '站点', 'builtin', TRUE),
+    ('process_steps', '制程步骤', 'builtin', TRUE),
+    -- quality_records (6)
     ('quality_records', 'quality_records', 'builtin', TRUE),
     ('quality_records', '质量记录', 'builtin', TRUE),
     ('quality_records', '品质记录', 'builtin', TRUE),
+    ('quality_records', '品质数据', 'builtin', TRUE),
+    ('quality_records', 'QC记录', 'builtin', TRUE),
+    ('quality_records', '质检记录', 'builtin', TRUE),
+    -- defect_records (7)
     ('defect_records', 'defect_records', 'builtin', TRUE),
     ('defect_records', '缺陷记录', 'builtin', TRUE),
     ('defect_records', '不良记录', 'builtin', TRUE),
+    ('defect_records', '缺陷数据', 'builtin', TRUE),
+    ('defect_records', '异常记录', 'builtin', TRUE),
+    ('defect_records', '不良品记录', 'builtin', TRUE),
+    ('defect_records', 'NG记录', 'builtin', TRUE),
+    -- alarms (7)
     ('alarms', 'alarms', 'builtin', TRUE),
     ('alarms', 'alarm', 'builtin', TRUE),
     ('alarms', '报警', 'builtin', TRUE),
-    ('alarms', '告警', 'builtin', TRUE)
+    ('alarms', '告警', 'builtin', TRUE),
+    ('alarms', '警报', 'builtin', TRUE),
+    ('alarms', '异常警报', 'builtin', TRUE),
+    ('alarms', '设备报警', 'builtin', TRUE),
+    -- recipes (5)
+    ('recipes', 'recipes', 'builtin', TRUE),
+    ('recipes', 'recipe', 'builtin', TRUE),
+    ('recipes', '配方', 'builtin', TRUE),
+    ('recipes', '工艺配方', 'builtin', TRUE),
+    ('recipes', '制程配方', 'builtin', TRUE),
+    -- maintenance_records (5)
+    ('maintenance_records', 'maintenance_records', 'builtin', TRUE),
+    ('maintenance_records', '维护记录', 'builtin', TRUE),
+    ('maintenance_records', '保养记录', 'builtin', TRUE),
+    ('maintenance_records', '维修记录', 'builtin', TRUE),
+    ('maintenance_records', 'PM记录', 'builtin', TRUE)
 ON CONFLICT (table_name, synonym) DO NOTHING;

@@ -44,5 +44,10 @@ class AgentState(TypedDict, total=False):
     response: Dict[str, Any]                     # 最终组装的完整响应
     error: str                                   # 全局错误信息
 
+    # ── 对话记忆 (Phase C) ──
+    memory_context: Dict[str, Any]               # 记忆模块注入的上下文
+    is_followup: bool                            # 是否为追问/指代查询
+    resolved_input: str                          # 指代消解后的输入
+
     # ── 执行时间 ──
     start_time: float                            # 请求开始时间戳

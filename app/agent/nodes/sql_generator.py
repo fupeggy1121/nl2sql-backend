@@ -19,14 +19,22 @@ logger = logging.getLogger(__name__)
 
 def sql_generator_node(state: AgentState) -> dict:
     """
-    SQL 生成节点。
-    输入: user_input, query_plan, sql_error (可选), sql_retry_count (可选)
+    SQL 生成节点 (Phase C 增强)。
+    输入: user_input, resolved_input, is_followup, query_plan, memory_context,
+          sql_error (可选), sql_retry_count (可选)
     输出: sql, sql_confidence, sql_retry_count, rag_context
     """
     user_input = state.get("user_input", "")
+    resolved_input = state.get("resolved_input", "") or user_input
+    is_followup = state.get("is_followup", False)
+    memory_context = state.get("memory_context", {})
     query_plan = state.get("query_plan", {})
     sql_error = state.get("sql_error", "")
     retry_count = state.get("sql_retry_count", 0)
+
+    # Phase C: 追问时使用消解后的输入
+    if is_followup:
+        user_input = resolved_input
 
     # ── 1. 获取 Schema 上下文（RAG）──
     schema_ctx = state.get("rag_context", "")
