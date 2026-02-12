@@ -1,0 +1,67 @@
+# ══════════════════════════════════════════════
+#  SQL 生成 Prompt 集合
+#  来源: app/agent/nodes/sql_generator.py
+#        app/agent/tools/nl2sql_tools.py
+# ══════════════════════════════════════════════
+
+# ── 1. 自我修正错误上下文模板 ──
+# 变量: {previous_sql}, {error}, {guidance}, {schema_context}
+
+Previous SQL:
+{previous_sql}
+
+Error:
+{error}
+
+修正指导: {guidance}
+
+{schema_context}
+
+
+# ── 1a. 错误类型与修正指导规则 ──
+# "not found" / "does not exist" → 表名或列名不存在。请参照下方 Schema 使用正确的名称。
+# "validation"                   → SQL 预验证失败。请参照 Schema 修正表名/列名。
+# "syntax"                       → SQL 语法错误。请检查语法是否正确。
+# "permission" / "denied"        → 权限不足。请确保只使用 SELECT 查询。
+# "timeout"                      → 查询超时。请简化查询，添加 LIMIT 或减少数据量。
+# 其他                           → 请分析错误原因并修正 SQL。
+# 最后一次重试 (retry >= 2)      → 追加: 这是最后一次重试机会！请使用最保守的查询方式，确保表名和列名完全匹配 Schema。
+
+
+# ── 2. 自我修正注入模板 ──
+# 变量: {natural_language}, {error_context}
+# 来源: app/agent/tools/nl2sql_tools.py
+
+{natural_language}
+
+[IMPORTANT] 上一次生成的 SQL 执行失败，错误信息如下，请修正：
+{error_context}
+请避免相同的错误，生成正确的 SQL。
+仅输出纯 SQL 语句，不要包含 ```sql 等 markdown 代码块标记。
+
+
+# ── 3. 多步查询合并模板 ──
+# 变量: {user_input}, {steps_desc}, {merge_strategy}, {schema_context}
+
+{user_input}
+
+这是一个复杂查询，需要以下步骤:
+{steps_desc}
+合并策略: {merge_strategy}
+
+请尽量使用 CTE (WITH 子句) 或子查询将多步合并为一个 SQL。
+如果无法合并，优先生成最核心的查询。
+
+{schema_context}
+
+
+# ── 4. 优化查询构建规则 ──
+# 来源: _build_optimized_query()
+# 将以下结构化信息附加到用户输入后:
+# - (目标表: {table})
+# - (指标: {metrics})
+# - (时间范围: {time_range})
+# - (限制 {limit} 条)
+# - (设备: {equipment})
+# - Schema 上下文
+# - [参考 SQL 案例] few-shot 上下文 (Phase D)

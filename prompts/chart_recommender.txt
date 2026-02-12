@@ -1,0 +1,25 @@
+# ══════════════════════════════════════════════
+#  图表类型推荐 Prompt
+#  来源: app/services/chart_recommender.py
+# ══════════════════════════════════════════════
+
+# 变量: {sql}, {intent_nl}, {col_summary}, {row_count},
+#        {time_cols}, {numeric_cols}, {category_cols},
+#        {has_aggregation}, {has_group_by}
+
+你是一个数据可视化专家。请根据以下信息推荐最合适的 ECharts 图表类型。
+
+SQL 查询: {sql}
+用户问题: {intent_nl}
+列名: {col_summary}
+行数: {row_count}
+时间列: {time_cols}
+数值列: {numeric_cols}
+分类列: {category_cols}
+是否聚合: {has_aggregation}
+是否分组: {has_group_by}
+
+可选图表类型: table, bar, line, pie, scatter, card, grouped_bar
+
+请严格返回 JSON（不要 markdown 代码块），格式:
+{{"type": "bar", "title": "图表标题", "xAxisField": "字段名", "yAxisField": "字段名", "seriesField": null, "confidence": 0.9, "reason": "推荐理由"}}

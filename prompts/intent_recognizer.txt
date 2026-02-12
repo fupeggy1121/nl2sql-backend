@@ -1,0 +1,36 @@
+# ══════════════════════════════════════════════
+#  意图识别 Prompt
+#  来源: app/services/intent_recognizer.py
+# ══════════════════════════════════════════════
+
+# 变量: {intent_descriptions}, {text}
+
+Analyze the user query intent in MES system.
+
+Possible intent types and descriptions:
+{intent_descriptions}
+
+User input: "{text}"
+
+Return analysis result in JSON format (must be valid JSON):
+{{
+    "intent": "intent_type",
+    "confidence": 0.95,
+    "entities": {{
+        "timeRange": "time_range",
+        "metric": "metric"
+    }},
+    "reasoning": "reason_for_judgment"
+}}
+
+
+# ── 意图类型说明 ──
+# intent_descriptions 从 self.intents dict 动态生成:
+# - query_data: 查询数据
+# - chart: 图表生成
+# - alert: 告警查询
+# - schedule: 排程查询
+# - chat: 闲聊/知识问答
+# - explain: 解释说明
+# - knowledge_qa: 知识库问答
+# （具体列表取决于运行时配置）

@@ -1,5 +1,5 @@
 """
-LangGraph 工作流 — AI Agent 的核心决策引擎 (Phase C 增强版)
+LangGraph 工作流 — AI Agent 的核心决策引擎 (Phase D RAG 增强版)
 
 构建一个有向图状态机，包含:
 - 对话记忆加载/保存（多轮对话支持）
@@ -8,9 +8,10 @@ LangGraph 工作流 — AI Agent 的核心决策引擎 (Phase C 增强版)
 - SQL 预验证（执行前检查表/列名是否存在）
 - SQL 自我修正循环（验证失败/执行失败 → 重新生成 → 最多重试 3 次）
 
-Phase C 新增:
-- memory_loader 节点: 加载会话上下文 + 指代消解
-- memory_saver 节点: 保存本轮对话到短期/长期记忆
+Phase D 新增:
+- rag_chat 节点: 基于 RAG 知识库的智能问答
+- query_planner RAG 增强: 使用向量检索获取相关 schema
+- sql_generator RAG 增强: 检索历史 SQL 作为 few-shot
 """
 
 import logging
@@ -29,6 +30,7 @@ from app.agent.nodes import (
     chart_generator_node,
     response_builder_node,
     memory_saver_node,
+    rag_chat_node,          # Phase D 新增
 )
 
 logger = logging.getLogger(__name__)
@@ -43,7 +45,7 @@ def _route_by_intent(state: AgentState) -> str:
     if intent == "query":
         return "query_planner"
     elif intent == "chat":
-        return "response_builder"  # Phase B 会添加 rag_chat 节点
+        return "rag_chat"        # Phase D: 路由到 RAG 问答节点
     elif intent == "alert":
         return "response_builder"  # Phase 后续
     elif intent == "schedule":
@@ -111,11 +113,11 @@ def _route_after_validation(state: AgentState) -> str:
 
 def build_agent_graph() -> StateGraph:
     """
-    构建 LangGraph 工作流图 (Phase C 增强版)。
+    构建 LangGraph 工作流图 (Phase D RAG 增强版)。
 
     流程:
     memory_loader → intent_router → (条件分支)
-      └─ query → query_planner → query_decomposer → sql_generator → sql_validator → (条件分支)
+      └─ query → query_planner(+RAG) → query_decomposer → sql_generator(+RAG few-shot) → sql_validator → (条件分支)
                                                           ↑                            │
                                                           └── 验证修正 ←───────────────┘ (验证失败 + retry<3)
                                                           ↑                            │
@@ -126,12 +128,13 @@ def build_agent_graph() -> StateGraph:
                                                                                        │
                                                                                        ↓ (成功)
                                                                                result_analyzer → chart_generator → response_builder → memory_saver → END
-      └─ chat/alert/schedule → response_builder → memory_saver → END
+      └─ chat → rag_chat → memory_saver → END                    # Phase D 新增
+      └─ alert/schedule → response_builder → memory_saver → END
     """
     graph = StateGraph(AgentState)
 
     # ── 注册所有节点 ──
-    graph.add_node("memory_loader", memory_loader_node)       # Phase C 新增
+    graph.add_node("memory_loader", memory_loader_node)       # Phase C
     graph.add_node("intent_router", intent_router_node)
     graph.add_node("query_planner", query_planner_node)
     graph.add_node("query_decomposer", query_decomposer_node)
@@ -141,7 +144,8 @@ def build_agent_graph() -> StateGraph:
     graph.add_node("result_analyzer", result_analyzer_node)
     graph.add_node("chart_generator", chart_generator_node)
     graph.add_node("response_builder", response_builder_node)
-    graph.add_node("memory_saver", memory_saver_node)         # Phase C 新增
+    graph.add_node("memory_saver", memory_saver_node)         # Phase C
+    graph.add_node("rag_chat", rag_chat_node)                 # Phase D 新增
 
     # ── 入口: memory_loader ──
     graph.set_entry_point("memory_loader")
@@ -155,6 +159,7 @@ def build_agent_graph() -> StateGraph:
         _route_by_intent,
         {
             "query_planner": "query_planner",
+            "rag_chat": "rag_chat",                 # Phase D: chat → rag_chat
             "response_builder": "response_builder",
         },
     )
@@ -190,6 +195,9 @@ def build_agent_graph() -> StateGraph:
     graph.add_edge("result_analyzer", "chart_generator")
     graph.add_edge("chart_generator", "response_builder")
     graph.add_edge("response_builder", "memory_saver")
+
+    # ── Phase D: rag_chat → memory_saver ──
+    graph.add_edge("rag_chat", "memory_saver")
 
     # ── 终止 ──
     graph.add_edge("memory_saver", END)

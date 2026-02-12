@@ -1,7 +1,20 @@
 """
+⚠️ DEPRECATED — Phase E
+
 统一查询API路由
 支持前端的完整查询流程：意图识别 -> SQL生成 -> 执行 -> 结果返回
+
+本模块已被 FastAPI Agent API (app/api/v1/chat.py) 替代。
+仅通过 app/api/compat.py 兼容层保留，供旧前端过渡使用。
+计划在下一个大版本移除。
 """
+
+import warnings
+warnings.warn(
+    "unified_query_routes 已废弃，请迁移到 app.api.v1.chat",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 import logging
 from flask import Blueprint, request, jsonify

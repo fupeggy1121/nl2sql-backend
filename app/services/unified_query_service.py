@@ -1,7 +1,21 @@
 """
+⚠️ DEPRECATED — Phase E
+
 统一查询服务 - 整合意图识别、NL2SQL转换和查询执行
 处理前端发送的自然语言查询，返回SQL和数据结果
+
+本模块已被 LangGraph Agent (app/agent/) 替代。
+新功能请使用 app/api/v1/chat.py -> app/agent/graph.py 流程。
+本模块仅通过 app/api/compat.py 兼容层保留，供旧前端过渡使用。
+计划在下一个大版本移除。
 """
+
+import warnings
+warnings.warn(
+    "unified_query_service 已废弃，请迁移到 app.agent.graph (LangGraph Agent)",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 import logging
 from typing import Optional, Dict, List, Any, Tuple

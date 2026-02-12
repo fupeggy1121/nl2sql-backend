@@ -1,5 +1,9 @@
 """
-应用入口
+⚠️ DEPRECATED — Phase E
+
+旧 Flask 应用入口。新的入口为 app/main.py (FastAPI + uvicorn)。
+保留本文件仅用于本地调试兼容，生产环境请使用:
+    uvicorn app.main:app --host 0.0.0.0 --port $PORT
 """
 import os
 from app import create_app

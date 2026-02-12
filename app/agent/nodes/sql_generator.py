@@ -1,5 +1,5 @@
 """
-sql_generator — SQL 生成节点 (Phase B 增强版)
+sql_generator — SQL 生成节点 (Phase D RAG 增强版)
 
 根据查询计划 + Schema 上下文 + (可选) 错误上下文，调用 LLM 生成 SQL。
 
@@ -7,6 +7,11 @@ sql_generator — SQL 生成节点 (Phase B 增强版)
 - 注入真实 Schema 上下文（RAG），减少幻觉表名/列名
 - 支持多步查询分解的 sub_query 生成
 - 自我修正模式：使用 ChatOpenAI 直接构建修正 prompt，包含错误类型分析
+
+Phase D 新增:
+- 优先使用 RAG 检索的 schema 上下文（由 query_planner 注入）
+- 检索历史 SQL 案例作为 few-shot 参考
+- 当 RAG 不可用时自动降级到 schema_tools
 """
 
 import logging
@@ -36,13 +41,16 @@ def sql_generator_node(state: AgentState) -> dict:
     if is_followup:
         user_input = resolved_input
 
-    # ── 1. 获取 Schema 上下文（RAG）──
+    # ── 1. 获取 Schema 上下文（优先使用 RAG，降级为 schema_tools）──
     schema_ctx = state.get("rag_context", "")
     if not schema_ctx:
-        schema_ctx = get_schema_context.invoke({"user_input": user_input})
+        schema_ctx = _get_schema_context_with_rag(user_input)
+
+    # ── 1.5 Phase D: 检索 SQL few-shot 案例 ──
+    few_shot_context = _get_sql_few_shots(user_input)
 
     # ── 2. 构建优化后的 NL 查询 ──
-    nl_query = _build_optimized_query(user_input, query_plan, schema_ctx)
+    nl_query = _build_optimized_query(user_input, query_plan, schema_ctx, few_shot_context)
 
     # ── 3. 自我修正模式 ──
     error_context = ""
@@ -91,10 +99,10 @@ def sql_generator_node(state: AgentState) -> dict:
 
 
 def _build_optimized_query(
-    user_input: str, query_plan: dict, schema_ctx: str
+    user_input: str, query_plan: dict, schema_ctx: str, few_shot_ctx: str = "",
 ) -> str:
     """
-    结合 query_plan 的结构化信息和 Schema 上下文优化自然语言查询。
+    结合 query_plan 的结构化信息、Schema 上下文和 few-shot 案例优化自然语言查询。
     """
     parts = [user_input]
 
@@ -121,6 +129,10 @@ def _build_optimized_query(
     # 注入 Schema 上下文
     if schema_ctx:
         parts.append(f"\n\n{schema_ctx}")
+
+    # Phase D: 注入 few-shot SQL 案例
+    if few_shot_ctx:
+        parts.append(f"\n\n[参考 SQL 案例]\n{few_shot_ctx}")
 
     return " ".join(parts)
 
@@ -210,3 +222,51 @@ def _generate_multi_step_sql(
         "natural_language": multi_prompt,
         "error_context": "",
     })
+
+
+# ══════════════════════════════════════════════
+#  Phase D: RAG 辅助函数
+# ══════════════════════════════════════════════
+
+def _get_schema_context_with_rag(user_input: str) -> str:
+    """
+    获取 schema 上下文，优先使用 RAG，降级到 schema_tools。
+    """
+    try:
+        from app.agent.tools.rag_tools import rag_search_schema, _rag_available
+
+        if _rag_available():
+            ctx = rag_search_schema.invoke({
+                "query": user_input,
+                "top_k": 4,
+            })
+            if ctx and len(ctx) > 20:
+                logger.info(f"[sql_generator] Using RAG schema context ({len(ctx)} chars)")
+                return ctx
+    except Exception as e:
+        logger.debug(f"[sql_generator] RAG schema lookup failed: {e}")
+
+    # 降级
+    return get_schema_context.invoke({"user_input": user_input})
+
+
+def _get_sql_few_shots(user_input: str) -> str:
+    """
+    Phase D: 检索历史 SQL 案例作为 few-shot 参考。
+    如果 RAG 不可用或无结果，返回空字符串。
+    """
+    try:
+        from app.agent.tools.rag_tools import rag_search_sql_examples, _rag_available
+
+        if _rag_available():
+            examples = rag_search_sql_examples.invoke({
+                "query": user_input,
+                "top_k": 2,
+            })
+            if examples and "用户问题:" in examples:
+                logger.info("[sql_generator] SQL few-shot examples retrieved")
+                return examples
+    except Exception as e:
+        logger.debug(f"[sql_generator] SQL few-shot lookup failed: {e}")
+
+    return ""

@@ -4,7 +4,10 @@ services:
     runtime: python311
     pythonVersion: 3.11.9
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT run:app
+    # Phase E: 切换到 FastAPI + uvicorn（保留 gunicorn 作为注释备选）
+    # 旧命令: gunicorn --bind 0.0.0.0:$PORT run:app
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2
+    healthCheckPath: /health
     envVars:
       - key: FLASK_ENV
         value: production
@@ -20,6 +23,12 @@ services:
         value: deepseek-chat
       - key: LLM_PROVIDER
         value: deepseek
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
       - key: DB_HOST
         sync: false
       - key: DB_PORT

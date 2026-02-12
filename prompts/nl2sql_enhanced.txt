@@ -1,0 +1,52 @@
+# ══════════════════════════════════════════════
+#  增强版 NL→SQL 转换 Prompt
+#  来源: app/services/nl2sql_enhanced.py
+# ══════════════════════════════════════════════
+
+# ── Schema 上下文构建规则 ──
+# _build_enhanced_schema_prompt() 动态构建以下格式:
+#
+# 【数据库 Schema 信息】
+#
+# 表名: {table_name}
+#   中文名: {name_cn}
+#   描述: {description_cn}
+#   Description: {description_en}
+#   业务含义: {business_meaning}
+#   使用场景: {use_case}
+#   列:
+#     - {column_name} ({column_name_cn}): {data_type}
+#       描述: {description_cn}
+#       示例: {example_value}
+
+
+# ── 主 Prompt 模板 ──
+# 变量: {schema_prompt}, {mapping_section}, {natural_language}
+
+{schema_prompt}{mapping_section}
+
+【用户查询】
+{natural_language}
+
+【转换规则】
+1. 使用正确的表名和列名
+2. 如果用户提及中文名称，请根据【中文表名映射】自动映射到对应的英文表名
+3. 例外：如果用户说"载具"，应该映射到"carriers"表；"生产订单"映射到"production_orders"表
+4. 考虑业务含义和使用场景来构建正确的逻辑
+5. 优先使用表中存在的列名
+6. 生成的 SQL 应该是可执行的，使用数据库中实际存在的表名
+
+【输出要求】
+- 仅输出 SQL 语句，不要包含其他文本或解释
+- 如果无法理解查询，返回一个安全的 SELECT 语句
+- 确保 SQL 语法正确
+- 确保表名是从【中文表名映射】中选择的
+
+
+# ── 中文表名映射格式 ──
+# mapping_section 动态构建:
+#
+# 【中文表名映射】
+#   • '{name_cn}' → {table_name}
+#   • '{name_cn}' → {table_name}
+#   ...

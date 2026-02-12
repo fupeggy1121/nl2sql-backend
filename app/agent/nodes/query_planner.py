@@ -1,8 +1,13 @@
 """
-query_planner — 查询规划节点
+query_planner — 查询规划节点 (Phase D RAG 增强版)
 
 "想清楚怎么查"而不是"去查"。
 从意图识别结果提取结构化查询参数，为 SQL 生成做准备。
+
+Phase D 新增:
+- 使用 RAG 向量检索替代全量 schema 加载
+- 检索相关表的 schema 上下文并注入 state
+- 检索历史 SQL 案例作为 few-shot 参考
 """
 
 import logging
@@ -63,8 +68,12 @@ def query_planner_node(state: AgentState) -> dict:
     logger.info(f"[query_planner] Plan: table={query_plan['table']}, "
                 f"metrics={query_plan['metrics']}")
 
+    # ── Phase D: RAG 检索 schema 上下文 ──
+    rag_context = _retrieve_rag_context(effective_input)
+
     return {
         "query_plan": query_plan,
+        "rag_context": rag_context,
     }
 
 
@@ -73,3 +82,34 @@ def _extract_table_from_sql(sql: str) -> str:
     import re
     m = re.search(r'FROM\s+([a-zA-Z_][a-zA-Z0-9_]*)', sql, re.IGNORECASE)
     return m.group(1) if m else ""
+
+
+def _retrieve_rag_context(user_input: str) -> str:
+    """
+    Phase D: 使用 RAG 检索相关 schema 上下文。
+    如果 RAG 不可用，降级到旧的关键词匹配。
+    """
+    try:
+        from app.agent.tools.rag_tools import rag_search, _rag_available
+
+        if _rag_available():
+            # RAG 可用时：检索 schema + 同义词文档
+            context = rag_search.invoke({
+                "query": user_input,
+                "doc_type": "schema",
+                "top_k": 4,
+            })
+            logger.info(f"[query_planner] RAG context retrieved ({len(context)} chars)")
+            return context
+        else:
+            # 降级到旧的 schema_tools
+            from app.agent.tools.schema_tools import get_schema_context
+            return get_schema_context.invoke({"user_input": user_input})
+
+    except Exception as e:
+        logger.warning(f"[query_planner] RAG retrieval failed, using fallback: {e}")
+        try:
+            from app.agent.tools.schema_tools import get_schema_context
+            return get_schema_context.invoke({"user_input": user_input})
+        except Exception:
+            return ""
