@@ -262,7 +262,10 @@ class SupabaseClient:
         try:
             if not self.client:
                 return None
-            response = self.client.rpc('execute_sql', {'query': sql}).execute()
+            # 去除尾部分号 — RPC 会将 SQL 嵌入子查询 FROM (%s) t，
+            # 分号在子查询内属于语法错误
+            sql_clean = sql.rstrip().rstrip(';').rstrip()
+            response = self.client.rpc('execute_sql', {'query': sql_clean}).execute()
             if response.data is not None:
                 # RPC 返回的可能是 JSON 数据
                 data = response.data if isinstance(response.data, list) else [response.data]

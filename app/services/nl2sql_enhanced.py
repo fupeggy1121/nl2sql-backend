@@ -163,6 +163,13 @@ class EnhancedNL2SQLConverter:
         
         prompt = f"""{schema_prompt}{mapping_section}
 
+【业务领域知识（必须参考）】
+- 在制品(WIP)数量：统计 sub_batches 表中 status != 'completed' 的记录，通过 sub_batches.current_station_id = stations.id 关联站点
+  示例: SELECT stations.name, COUNT(sub_batches.id) AS wip_count FROM stations LEFT JOIN sub_batches ON stations.id = sub_batches.current_station_id WHERE stations.name IN ('站点A', '站点B') AND (sub_batches.status IS NULL OR sub_batches.status != 'completed') GROUP BY stations.name
+- 站点(station)相关查询用 stations 表，通过 name 列筛选中文名
+- 批次(batch/sub_batch)当前所在站点用 sub_batches.current_station_id
+- process_route_stations 是工艺路线定义表（定义流程步骤），不是在制品数据
+
 【用户查询】
 {natural_language}
 
@@ -173,12 +180,21 @@ class EnhancedNL2SQLConverter:
 4. 考虑业务含义和使用场景来构建正确的逻辑
 5. 优先使用表中存在的列名
 6. 生成的 SQL 应该是可执行的，使用数据库中实际存在的表名
+7. **重要 SQL 格式限制（必须遵守）**：
+   - 禁止使用 WITH (CTE) 语法
+   - 禁止使用 SELECT 子句中的关联子查询（如 SELECT (SELECT ...) AS col）
+   - 多表查询必须使用 JOIN + GROUP BY 的标准写法
+   - 示例：SELECT t1.name, COUNT(t2.id) FROM t1 LEFT JOIN t2 ON t1.id = t2.fk_id WHERE ... GROUP BY t1.name
+8. SQL 末尾不要添加分号 (;)
+9. 筛选条件（WHERE）中只使用 name 列进行中文名匹配，不要猜测 code 列的英文值
 
 【输出要求】
 - 仅输出 SQL 语句，不要包含其他文本或解释
 - 如果无法理解查询，返回一个安全的 SELECT 语句
 - 确保 SQL 语法正确
-- 确保表名是从【中文表名映射】中选择的"""
+- 确保表名是从【中文表名映射】中选择的
+- 必须使用 JOIN + GROUP BY 格式，不用 CTE 也不用关联子查询
+- 不在 SQL 末尾添加分号"""
         
         return prompt
     
@@ -208,9 +224,9 @@ class EnhancedNL2SQLConverter:
                 
                 if corrected_sql != sql:
                     logger.info(f"✅ SQL corrected: {corrected_sql[:100]}...")
-                    return corrected_sql.strip()
+                    return corrected_sql.strip().rstrip(';').strip()
                 
-                return sql.strip()
+                return sql.strip().rstrip(';').strip()
             else:
                 logger.warning("LLM provider returned None")
                 return self._fallback_parse_nl_to_sql(natural_language)
@@ -294,7 +310,8 @@ class EnhancedNL2SQLConverter:
     def _validate_and_fix_table_names(self, sql: str) -> str:
         """验证和修正SQL中的表名
         
-        检查SQL中使用的表是否存在，如果不存在则尝试修正
+        检查SQL中使用的表是否存在，如果不存在则尝试修正。
+        跳过 CTE（WITH）定义的别名，不将其"修正"为真实表名。
         """
         import re
         
@@ -303,6 +320,19 @@ class EnhancedNL2SQLConverter:
         
         if not valid_table_names:
             return sql
+        
+        # 提取 CTE 别名（WITH name AS ...），避免将其误修正为真实表名
+        cte_aliases = set()
+        cte_pattern = r'\bWITH\b\s+([\w_]+)\s+AS\b'
+        for m in re.finditer(cte_pattern, sql, re.IGNORECASE):
+            cte_aliases.add(m.group(1).lower())
+        # 也匹配逗号分隔的后续 CTE: ), name AS (
+        subsequent_cte = r'\)\s*,\s*([\w_]+)\s+AS\s*\('
+        for m in re.finditer(subsequent_cte, sql, re.IGNORECASE):
+            cte_aliases.add(m.group(1).lower())
+        
+        if cte_aliases:
+            logger.info(f"CTE aliases detected (skipping validation): {cte_aliases}")
         
         # 提取SQL中的表名
         from_pattern = r'FROM\s+([\w_]+)(?:\s|$|;)'
@@ -313,6 +343,9 @@ class EnhancedNL2SQLConverter:
         # 检查FROM子句中的表名
         for match in re.finditer(from_pattern, sql, re.IGNORECASE):
             table_name = match.group(1)
+            # 跳过 CTE 别名
+            if table_name.lower() in cte_aliases:
+                continue
             if table_name.lower() not in [t.lower() for t in valid_table_names]:
                 # 表名不存在，这是一个可能的错误
                 logger.warning(f"Table '{table_name}' not found in schema, attempting to correct...")
@@ -331,6 +364,9 @@ class EnhancedNL2SQLConverter:
         # 检查JOIN子句中的表名
         for match in re.finditer(join_pattern, sql, re.IGNORECASE):
             table_name = match.group(1)
+            # 跳过 CTE 别名
+            if table_name.lower() in cte_aliases:
+                continue
             if table_name.lower() not in [t.lower() for t in valid_table_names]:
                 logger.warning(f"Table '{table_name}' in JOIN not found in schema")
                 corrected_name = self._find_best_matching_table(table_name)

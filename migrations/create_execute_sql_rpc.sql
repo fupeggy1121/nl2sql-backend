@@ -24,6 +24,10 @@ BEGIN
     -- 去除前后空白
     trimmed := btrim(query);
 
+    -- 去除尾部分号（嵌入子查询时分号会导致语法错误）
+    trimmed := rtrim(trimmed, ';');
+    trimmed := btrim(trimmed);
+
     -- 提取第一个关键字（大写）
     first_keyword := upper(split_part(trimmed, ' ', 1));
     -- 处理 WITH\n 或 WITH\t 等情况
@@ -36,13 +40,15 @@ BEGIN
         RAISE EXCEPTION 'Only SELECT/WITH queries are allowed (received: %)', left(trimmed, 20);
     END IF;
 
-    -- 拒绝危险语句（排除 CTE 中的 SELECT 子句，仅检测写入/DDL）
-    IF trimmed ~* '\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|GRANT|REVOKE)\b' THEN
+    -- 拒绝危险语句
+    -- 注意: PostgreSQL POSIX regex 使用 \y 作为单词边界 (不是 \b，\b 在 POSIX 中是退格符)
+    IF trimmed ~* '\y(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|GRANT|REVOKE)\y' THEN
         RAISE EXCEPTION 'Write / DDL operations are not permitted';
     END IF;
 
     -- CTE 查询必须最终包含 SELECT
-    IF first_keyword = 'WITH' AND trimmed !~* '\bSELECT\b' THEN
+    -- 使用 LIKE 而非 regex（避免 \b/\y 兼容性问题）
+    IF first_keyword = 'WITH' AND upper(trimmed) NOT LIKE '%SELECT%' THEN
         RAISE EXCEPTION 'WITH (CTE) queries must contain a SELECT statement';
     END IF;
 

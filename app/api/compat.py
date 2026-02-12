@@ -130,7 +130,7 @@ async def compat_execute_query(request: Request):
     """
     try:
         body = await request.json()
-        sql_query = (body.get("sql") or "").strip()
+        sql_query = (body.get("sql") or "").strip().rstrip(';').strip()
         query_intent_data = body.get("query_intent", {})
 
         if not sql_query:

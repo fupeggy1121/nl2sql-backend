@@ -76,6 +76,10 @@ def sql_generator_node(state: AgentState) -> dict:
     # ── 5. 更新 state ──
     new_retry_count = retry_count + 1 if sql_error else 0
 
+    # ── 5.5 安全处理：去除末尾分号 ──
+    if sql:
+        sql = sql.strip().rstrip(';').strip()
+
     if sql:
         # 置信度计算：首次高，重试递减
         confidence = 0.88 if not sql_error else max(0.5, 0.8 - retry_count * 0.1)
@@ -207,11 +211,26 @@ def _generate_multi_step_sql(
 
     multi_prompt = (
         f"{user_input}\n\n"
-        f"这是一个复杂查询，需要以下步骤:\n"
+        f"这是一个多维度查询，涉及以下方面:\n"
         f"{''.join(steps_desc)}\n"
         f"合并策略: {merge_strategy}\n\n"
-        f"请尽量使用 CTE (WITH 子句) 或子查询将多步合并为一个 SQL。\n"
-        f"如果无法合并，优先生成最核心的查询。\n\n"
+        f"【强制 SQL 格式要求】\n"
+        f"1. 禁止使用 WITH (CTE) 子句\n"
+        f"2. 禁止使用关联子查询（SELECT 中嵌套 SELECT）\n"
+        f"3. 必须使用 JOIN + WHERE ... IN (...) + GROUP BY 模式\n"
+        f"4. 将所有维度合并为一个 SQL 查询，用 WHERE ... IN 筛选多个值\n"
+        f"5. 不要在 SQL 末尾加分号\n"
+        f"6. 中文名称匹配使用 name 列，不要用 code 列\n\n"
+        f"【业务领域知识】\n"
+        f"- 在制品(WIP)数量 = sub_batches 表中 status != 'completed' 的记录，通过 sub_batches.current_station_id = stations.id 关联站点\n"
+        f"- process_route_stations 是工艺路线定义表，不含在制品数据\n\n"
+        f"【标准模板】\n"
+        f"SELECT a.name AS 名称, COUNT(b.id) AS 数量\n"
+        f"FROM 主表 a\n"
+        f"LEFT JOIN 关联表 b ON a.id = b.外键\n"
+        f"WHERE a.name IN ('值1', '值2', '值3')\n"
+        f"GROUP BY a.name\n"
+        f"ORDER BY a.name\n\n"
         f"{schema_ctx}"
     )
 
