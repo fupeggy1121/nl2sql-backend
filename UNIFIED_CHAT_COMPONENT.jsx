@@ -17,7 +17,7 @@ import {
 import { intentRecognizer } from '../services/intentRecognizer';
 import { queryService } from '../services/queryService';
 import { nl2sqlApi } from '../services/nl2sqlApi';
-import { processNaturalLanguageQuery } from '../services/nl2sqlApi_v2';
+import { processNaturalLanguageQuery, executeApprovedQuery } from '../services/nl2sqlApi_v2';
 import { DataVisualization } from './DataVisualization';
 import { FeedbackForm } from './FeedbackForm';
 import { FeedbackStats } from './FeedbackStats';
@@ -217,34 +217,40 @@ export function UnifiedChat({
     setIsProcessing(true);
 
     try {
-      const response = await nl2sqlApi.executeNLQuery(message.sqlSuggestion.originalQuery);
+      // ★ 直接执行已生成的 SQL，而不是重新走 NL2SQL
+      const response = await executeApprovedQuery(
+        message.sqlSuggestion.sql,
+        message.intent
+      );
 
-      if (response.success) {
+      if (response.success && response.query_result?.success) {
+        const qr = response.query_result;
         const resultMessage: Message = {
           id: (Date.now() + 2).toString(),
           type: 'assistant',
-          content: `✅ 查询成功执行，返回 ${response.count || 0} 条数据`,
+          content: `✅ 查询成功执行，返回 ${qr.rows_count || 0} 条数据`,
           timestamp: new Date(),
           queryResult: {
             success: true,
-            data: response.data,
-            rowCount: response.count,
+            data: qr.data,
+            rowCount: qr.rows_count,
           },
-          data: response.data,
-          visualizationType: 'table',
+          data: qr.data,
+          visualizationType: response.visualization?.type || 'table',
         };
 
         setMessages((prev) => [...prev, resultMessage]);
         await addChatMessage(sessionId, resultMessage);
       } else {
+        const errorMsg = response.query_result?.error_message || response.error || '未知错误';
         const errorResultMessage: Message = {
           id: (Date.now() + 2).toString(),
           type: 'assistant',
-          content: `❌ 查询执行失败: ${response.error}`,
+          content: `❌ 查询执行失败: ${errorMsg}`,
           timestamp: new Date(),
           queryResult: {
             success: false,
-            error: response.error,
+            error: errorMsg,
           },
         };
 

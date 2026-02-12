@@ -276,7 +276,7 @@ class SupabaseClient:
                 }
             return None
         except Exception as e:
-            logger.debug(f"RPC execute_sql not available: {str(e)[:100]}")
+            logger.warning(f"RPC execute_sql failed: {str(e)[:200]}")
             return None
     
     def _execute_aggregate_query(
