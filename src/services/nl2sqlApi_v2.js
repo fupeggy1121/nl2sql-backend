@@ -67,6 +67,8 @@ export interface QueryResult {
 
 export interface UnifiedQueryResponse {
   success: boolean;
+  session_id?: string;          // 后端返回的会话ID，前端应保存用于后续追问
+  is_followup?: boolean;         // 是否为追问（后端自动检测）
   query_plan: QueryPlan;
   query_result?: QueryResult;
   error?: string;
@@ -77,23 +79,33 @@ export interface UnifiedQueryResponse {
  * 支持两种模式:
  * - explain: 只返回SQL解释
  * - execute: 直接执行并返回结果
+ *
+ * @param sessionId - 可选，传入已有 session_id 可启用多轮对话记忆。
+ *                     首次查询不传，后续追问传入上次响应返回的 session_id。
  */
 export async function processNaturalLanguageQuery(
   naturalLanguage: string,
   executionMode: 'explain' | 'execute' = 'explain',
-  userContext?: any
+  userContext?: any,
+  sessionId?: string
 ): Promise<UnifiedQueryResponse> {
   try {
+    const payload: any = {
+      natural_language: naturalLanguage,
+      execution_mode: executionMode,
+      user_context: userContext,
+    };
+    // 传入 session_id 启用多轮对话上下文
+    if (sessionId) {
+      payload.session_id = sessionId;
+    }
+
     const response = await fetch(`${UNIFIED_API_URL}/process`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        natural_language: naturalLanguage,
-        execution_mode: executionMode,
-        user_context: userContext
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
@@ -110,9 +122,10 @@ export async function processNaturalLanguageQuery(
 
 /**
  * 只获取SQL解释（不执行）
+ * @param sessionId - 可选会话ID，用于多轮对话追问
  */
-export async function explainQuery(naturalLanguage: string): Promise<UnifiedQueryResponse> {
-  return processNaturalLanguageQuery(naturalLanguage, 'explain');
+export async function explainQuery(naturalLanguage: string, sessionId?: string): Promise<UnifiedQueryResponse> {
+  return processNaturalLanguageQuery(naturalLanguage, 'explain', undefined, sessionId);
 }
 
 /**
@@ -269,10 +282,11 @@ export async function getQueryRecommendations(): Promise<{
 export async function executeQueryWithApproval(
   naturalLanguage: string,
   onSQLReady: (sql: string, explanation: string) => Promise<boolean>,
-  userContext?: any
+  userContext?: any,
+  sessionId?: string
 ): Promise<QueryResult> {
   // 步骤1: 获取SQL解释
-  const explainResponse = await explainQuery(naturalLanguage);
+  const explainResponse = await explainQuery(naturalLanguage, sessionId);
 
   if (!explainResponse.success) {
     throw new Error(explainResponse.error || '查询失败');

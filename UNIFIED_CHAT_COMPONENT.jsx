@@ -17,6 +17,7 @@ import {
 import { intentRecognizer } from '../services/intentRecognizer';
 import { queryService } from '../services/queryService';
 import { nl2sqlApi } from '../services/nl2sqlApi';
+import { processNaturalLanguageQuery } from '../services/nl2sqlApi_v2';
 import { DataVisualization } from './DataVisualization';
 import { FeedbackForm } from './FeedbackForm';
 import { FeedbackStats } from './FeedbackStats';
@@ -76,6 +77,8 @@ export function UnifiedChat({
   const [dbConnected, setDbConnected] = useState(false);
   const [expandedSqlId, setExpandedSqlId] = useState<string | null>(null);
   const [copiedSqlId, setCopiedSqlId] = useState<string | null>(null);
+  // ★ 多轮对话: 保存后端返回的 session_id，追问时回传
+  const [backendSessionId, setBackendSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // 检查数据库连接
@@ -151,41 +154,45 @@ export function UnifiedChat({
     try {
       await addChatMessage(sessionId, userMessage);
 
-      const intent = intentRecognizer.recognizeIntent(input);
-      setCurrentIntent(intent);
+      // ★ 使用新 API（自动多轮对话）: 传入 backendSessionId 启用追问记忆
+      const response = await processNaturalLanguageQuery(
+        input,
+        'execute',
+        undefined,
+        backendSessionId || undefined  // 首次为 null → 后端生成新 session_id
+      );
 
-      if (intent.clarifications.length > 0) {
-        const clarificationMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          type: 'assistant',
-          content: `我理解您想查询相关数据。为了更准确地回答，请确认：\n\n${intent.clarifications.join('\n')}`,
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, clarificationMessage]);
-        await addChatMessage(sessionId, clarificationMessage);
-      } else {
-        // 先生成 AI 响应和 SQL
-        const result = await queryService.executeQuery(intent);
-
-        const messageId = (Date.now() + 1).toString();
-        const assistantMessage: Message = {
-          id: messageId,
-          type: 'assistant',
-          content: result.summary,
-          timestamp: new Date(),
-          data: result.data,
-          visualizationType: result.visualizationType,
-          actions: result.actions,
-          intent: intent,
-          sqlSuggestion: {
-            sql: result.sql || 'SELECT * FROM data;',
-            originalQuery: input,
-          },
-        };
-
-        setMessages((prev) => [...prev, assistantMessage]);
-        await addChatMessage(sessionId, assistantMessage);
+      // ★ 保存后端返回的 session_id，后续追问自动复用
+      if (response.session_id) {
+        setBackendSessionId(response.session_id);
       }
+
+      const queryPlan = response.query_plan || {};
+      const queryResult = response.query_result;
+
+      const messageId = (Date.now() + 1).toString();
+      const assistantMessage: Message = {
+        id: messageId,
+        type: 'assistant',
+        content: queryResult?.summary || queryPlan?.explanation || '查询已完成',
+        timestamp: new Date(),
+        data: queryResult?.data,
+        visualizationType: queryResult?.visualization_type || 'table',
+        actions: queryResult?.actions || [],
+        intent: queryPlan?.query_intent,
+        sqlSuggestion: queryPlan?.generated_sql ? {
+          sql: queryPlan.generated_sql,
+          originalQuery: input,
+        } : undefined,
+        queryResult: queryResult ? {
+          success: queryResult.success,
+          data: queryResult.data,
+          rowCount: queryResult.rows_count,
+        } : undefined,
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+      await addChatMessage(sessionId, assistantMessage);
     } catch (error) {
       console.error('Processing error:', error);
       const errorMessage: Message = {
