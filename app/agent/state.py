@@ -20,6 +20,9 @@ class AgentState(TypedDict, total=False):
     intent: str                                  # 意图分类: query / chat / alert / schedule
     intent_data: Dict[str, Any]                  # 意图识别完整结果（含 entities, confidence 等）
 
+    # ── 语义解析 (Phase 3: 本体引擎) ──
+    semantic_context: Dict[str, Any]             # 本体语义上下文 (SemanticContext.to_dict())
+
     # ── 查询规划 ──
     query_plan: Dict[str, Any]                   # 结构化查询参数（table, metrics, time_range 等）
     rag_context: str                             # RAG 检索到的 schema 上下文

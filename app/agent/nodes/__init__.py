@@ -15,10 +15,12 @@ from app.agent.nodes.chart_generator import chart_generator_node
 from app.agent.nodes.response_builder import response_builder_node
 from app.agent.nodes.memory_saver import memory_saver_node
 from app.agent.nodes.rag_chat import rag_chat_node     # Phase D 新增
+from app.agent.nodes.semantic_resolver import semantic_resolver_node  # Phase 3: 本体引擎
 
 __all__ = [
     "memory_loader_node",
     "intent_router_node",
+    "semantic_resolver_node",
     "query_planner_node",
     "query_decomposer_node",
     "sql_generator_node",

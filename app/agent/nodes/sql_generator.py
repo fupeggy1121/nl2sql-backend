@@ -41,16 +41,24 @@ def sql_generator_node(state: AgentState) -> dict:
     if is_followup:
         user_input = resolved_input
 
-    # ── 1. 获取 Schema 上下文（优先使用 RAG，降级为 schema_tools）──
+    # ── 1. 获取 Schema 上下文（优先使用语义引擎，降级 RAG → schema_tools）──
+    semantic_ctx = state.get("semantic_context", {})
     schema_ctx = state.get("rag_context", "")
     if not schema_ctx:
         schema_ctx = _get_schema_context_with_rag(user_input)
+
+    # Phase 3: 如果语义引擎产出了 schema_snippet，优先使用它（更精准）
+    semantic_snippet = semantic_ctx.get("schema_snippet", "")
+    if semantic_snippet:
+        schema_ctx = _merge_semantic_schema(semantic_snippet, schema_ctx)
 
     # ── 1.5 Phase D: 检索 SQL few-shot 案例 ──
     few_shot_context = _get_sql_few_shots(user_input)
 
     # ── 2. 构建优化后的 NL 查询 ──
-    nl_query = _build_optimized_query(user_input, query_plan, schema_ctx, few_shot_context)
+    nl_query = _build_optimized_query(
+        user_input, query_plan, schema_ctx, few_shot_context, semantic_ctx
+    )
 
     # ── 3. 自我修正模式 ──
     error_context = ""
@@ -66,7 +74,7 @@ def sql_generator_node(state: AgentState) -> dict:
 
     # ── 4. 多步查询处理 ──
     if query_plan.get("is_multi_step") and not sql_error:
-        sql = _generate_multi_step_sql(user_input, query_plan, schema_ctx)
+        sql = _generate_multi_step_sql(user_input, query_plan, schema_ctx, semantic_ctx)
     else:
         sql = generate_sql.invoke({
             "natural_language": nl_query,
@@ -103,10 +111,11 @@ def sql_generator_node(state: AgentState) -> dict:
 
 
 def _build_optimized_query(
-    user_input: str, query_plan: dict, schema_ctx: str, few_shot_ctx: str = "",
+    user_input: str, query_plan: dict, schema_ctx: str,
+    few_shot_ctx: str = "", semantic_ctx: dict = None,
 ) -> str:
     """
-    结合 query_plan 的结构化信息、Schema 上下文和 few-shot 案例优化自然语言查询。
+    结合 query_plan 的结构化信息、Schema 上下文、语义上下文和 few-shot 案例优化自然语言查询。
     """
     parts = [user_input]
 
@@ -129,6 +138,12 @@ def _build_optimized_query(
     equipment = query_plan.get("equipment")
     if equipment:
         parts.append(f"(设备: {equipment})")
+
+    # Phase 3: 注入语义引擎的结构化上下文
+    if semantic_ctx:
+        semantic_section = _format_semantic_context(semantic_ctx)
+        if semantic_section:
+            parts.append(f"\n\n{semantic_section}")
 
     # 注入 Schema 上下文
     if schema_ctx:
@@ -182,7 +197,7 @@ def _build_correction_context(
 
 
 def _generate_multi_step_sql(
-    user_input: str, query_plan: dict, schema_ctx: str
+    user_input: str, query_plan: dict, schema_ctx: str, semantic_ctx: dict = None,
 ) -> str:
     """
     为多步查询生成合并的 SQL。
@@ -209,6 +224,30 @@ def _generate_multi_step_sql(
         hint = sq.get("sql_hint", "")
         steps_desc.append(f"  步骤{step}: {desc}" + (f" (提示: {hint})" if hint else ""))
 
+    # Phase 3: 从语义引擎获取业务规则和过滤条件
+    semantic_rules_section = ""
+    if semantic_ctx:
+        rules = semantic_ctx.get("business_rules", [])
+        filters = semantic_ctx.get("filters", [])
+        joins = semantic_ctx.get("joins", [])
+        rule_lines = []
+        if filters:
+            for f in filters:
+                cond = f.get("physical_condition") or ""
+                desc = f.get("description", "")
+                if cond:
+                    rule_lines.append(f"- {desc}: {cond}")
+        if rules:
+            for r in rules:
+                rule_lines.append(f"- {r.get('name', '')}: {r.get('description', '')}")
+        if joins:
+            rule_lines.append("- JOIN 条件:")
+            for j in joins:
+                for c in j.get("conditions", []):
+                    rule_lines.append(f"    {c['from']} = {c['to']}")
+        if rule_lines:
+            semantic_rules_section = "\\n".join(rule_lines)
+
     multi_prompt = (
         f"{user_input}\n\n"
         f"这是一个多维度查询，涉及以下方面:\n"
@@ -221,10 +260,16 @@ def _generate_multi_step_sql(
         f"4. 将所有维度合并为一个 SQL 查询，用 WHERE ... IN 筛选多个值\n"
         f"5. 不要在 SQL 末尾加分号\n"
         f"6. 中文名称匹配使用 name 列，不要用 code 列\n\n"
-        f"【业务领域知识】\n"
+        f"【业务领域知识（来自语义引擎）】\n"
         f"- 在制品(WIP)数量 = sub_batches 表中 status != 'completed' 的记录，通过 sub_batches.current_station_id = stations.id 关联站点\n"
-        f"- process_route_stations 是工艺路线定义表，不含在制品数据\n\n"
-        f"【标准模板】\n"
+        f"- process_route_stations 是工艺路线定义表，不含在制品数据\n"
+    )
+
+    if semantic_rules_section:
+        multi_prompt += f"{semantic_rules_section}\n"
+
+    multi_prompt += (
+        f"\n【标准模板】\n"
         f"SELECT a.name AS 名称, COUNT(b.id) AS 数量\n"
         f"FROM 主表 a\n"
         f"LEFT JOIN 关联表 b ON a.id = b.外键\n"
@@ -289,3 +334,70 @@ def _get_sql_few_shots(user_input: str) -> str:
         logger.debug(f"[sql_generator] SQL few-shot lookup failed: {e}")
 
     return ""
+
+
+# ══════════════════════════════════════════════
+#  Phase 3: 语义引擎辅助函数
+# ══════════════════════════════════════════════
+
+def _merge_semantic_schema(semantic_snippet: str, rag_schema: str) -> str:
+    """
+    合并语义引擎的精准 schema 片段与 RAG/schema_tools 的通用 schema。
+    语义引擎的片段放在最前面（最相关），RAG 作为补充。
+    """
+    parts = ["[语义引擎推荐 Schema（高优先级）]", semantic_snippet]
+    if rag_schema:
+        parts.append("")
+        parts.append("[补充 Schema 上下文]")
+        parts.append(rag_schema)
+    return "\n".join(parts)
+
+
+def _format_semantic_context(semantic_ctx: dict) -> str:
+    """
+    将 SemanticContext dict 格式化为 LLM 可读的文本段落。
+    """
+    if not semantic_ctx:
+        return ""
+
+    lines = ["[语义引擎分析结果]"]
+
+    # 匹配的逻辑类
+    classes = semantic_ctx.get("matched_classes", [])
+    if classes:
+        class_strs = [
+            f"{c['label_cn']}→{c.get('physical_table', '虚拟')}"
+            for c in classes
+        ]
+        lines.append(f"涉及实体: {', '.join(class_strs)}")
+
+    # JOIN 条件
+    joins = semantic_ctx.get("joins", [])
+    if joins:
+        lines.append("关联路径:")
+        for j in joins:
+            for c in j.get("conditions", []):
+                lines.append(f"  {c['from']} = {c['to']}")
+
+    # 过滤条件
+    filters = semantic_ctx.get("filters", [])
+    if filters:
+        lines.append("语义过滤:")
+        for f in filters:
+            cond = f.get("physical_condition")
+            if cond:
+                lines.append(f"  {f.get('description', '')}: {cond}")
+            elif f.get("physical_values"):
+                vals = ", ".join(f"'{v}'" for v in f["physical_values"])
+                tbl = f.get("applies_to_table", "?")
+                col = f.get("applies_to_column", "?")
+                lines.append(f"  {f.get('description', '')}: {tbl}.{col} IN ({vals})")
+
+    # 业务规则
+    rules = semantic_ctx.get("business_rules", [])
+    if rules:
+        lines.append("业务规则提醒:")
+        for r in rules:
+            lines.append(f"  ⚠ {r.get('name', '')}: {r.get('description', '')}")
+
+    return "\n".join(lines) if len(lines) > 1 else ""

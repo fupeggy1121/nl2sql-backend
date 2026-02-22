@@ -21,6 +21,7 @@ from app.agent.state import AgentState
 from app.agent.nodes import (
     memory_loader_node,
     intent_router_node,
+    semantic_resolver_node,   # Phase 3: 本体引擎
     query_planner_node,
     query_decomposer_node,
     sql_generator_node,
@@ -43,7 +44,7 @@ def _route_by_intent(state: AgentState) -> str:
     """条件边：根据意图路由到不同分支"""
     intent = state.get("intent", "query")
     if intent == "query":
-        return "query_planner"
+        return "semantic_resolver"   # Phase 3: 先经语义解析
     elif intent == "chat":
         return "rag_chat"        # Phase D: 路由到 RAG 问答节点
     elif intent == "alert":
@@ -51,7 +52,7 @@ def _route_by_intent(state: AgentState) -> str:
     elif intent == "schedule":
         return "response_builder"  # Phase 后续
     else:
-        return "query_planner"
+        return "semantic_resolver"   # Phase 3: 默认也经语义解析
 
 
 def _route_after_execution(state: AgentState) -> str:
@@ -113,22 +114,22 @@ def _route_after_validation(state: AgentState) -> str:
 
 def build_agent_graph() -> StateGraph:
     """
-    构建 LangGraph 工作流图 (Phase D RAG 增强版)。
+    构建 LangGraph 工作流图 (Phase 3: 语义引擎增强版)。
 
     流程:
     memory_loader → intent_router → (条件分支)
-      └─ query → query_planner(+RAG) → query_decomposer → sql_generator(+RAG few-shot) → sql_validator → (条件分支)
-                                                          ↑                            │
-                                                          └── 验证修正 ←───────────────┘ (验证失败 + retry<3)
-                                                          ↑                            │
-                                                          │                            ↓ (验证通过)
-                                                          │                    data_executor → (条件分支)
-                                                          │                            │
-                                                          └── 执行修正 ←───────────────┘ (执行失败 + retry<3)
-                                                                                       │
-                                                                                       ↓ (成功)
-                                                                               result_analyzer → chart_generator → response_builder → memory_saver → END
-      └─ chat → rag_chat → memory_saver → END                    # Phase D 新增
+      └─ query → semantic_resolver(Phase3) → query_planner(+RAG) → query_decomposer → sql_generator(+语义上下文) → sql_validator → (条件分支)
+                                                                  ↑                            │
+                                                                  └── 验证修正 ←───────────────┘ (验证失败 + retry<3)
+                                                                  ↑                            │
+                                                                  │                            ↓ (验证通过)
+                                                                  │                    data_executor → (条件分支)
+                                                                  │                            │
+                                                                  └── 执行修正 ←───────────────┘ (执行失败 + retry<3)
+                                                                                               │
+                                                                                               ↓ (成功)
+                                                                                       result_analyzer → chart_generator → response_builder → memory_saver → END
+      └─ chat → rag_chat → memory_saver → END
       └─ alert/schedule → response_builder → memory_saver → END
     """
     graph = StateGraph(AgentState)
@@ -136,6 +137,7 @@ def build_agent_graph() -> StateGraph:
     # ── 注册所有节点 ──
     graph.add_node("memory_loader", memory_loader_node)       # Phase C
     graph.add_node("intent_router", intent_router_node)
+    graph.add_node("semantic_resolver", semantic_resolver_node)  # Phase 3: 本体引擎
     graph.add_node("query_planner", query_planner_node)
     graph.add_node("query_decomposer", query_decomposer_node)
     graph.add_node("sql_generator", sql_generator_node)
@@ -158,13 +160,14 @@ def build_agent_graph() -> StateGraph:
         "intent_router",
         _route_by_intent,
         {
-            "query_planner": "query_planner",
+            "semantic_resolver": "semantic_resolver",  # Phase 3: query → 语义解析
             "rag_chat": "rag_chat",                 # Phase D: chat → rag_chat
             "response_builder": "response_builder",
         },
     )
 
-    # ── 固定边: 查询规划 → 查询分解 → SQL 生成 → SQL 验证 ──
+    # ── 固定边: 语义解析 → 查询规划 → 查询分解 → SQL 生成 → SQL 验证 ──
+    graph.add_edge("semantic_resolver", "query_planner")  # Phase 3
     graph.add_edge("query_planner", "query_decomposer")
     graph.add_edge("query_decomposer", "sql_generator")
     graph.add_edge("sql_generator", "sql_validator")
