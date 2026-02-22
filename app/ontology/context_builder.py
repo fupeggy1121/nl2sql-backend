@@ -73,6 +73,8 @@ class ResolvedFilter:
     physical_values: Optional[List[str]] = None
     applies_to_table: Optional[str] = None
     applies_to_column: Optional[str] = None
+    count_target_table: Optional[str] = None   # e.g. "wafers" — COUNT 的目标表
+    count_target_column: Optional[str] = None  # e.g. "id" — COUNT 的目标列
 
 
 @dataclass
@@ -141,6 +143,11 @@ class SemanticContext:
                     lines.append(
                         f"  WHERE {f.applies_to_table}.{f.applies_to_column} IN ({vals})  -- {f.description}"
                     )
+                # 标注 COUNT 目标（关键：WIP 统计 Wafer 而非 Sublot）
+                if f.count_target_table:
+                    lines.append(
+                        f"  -- ⚠ COUNT target: {f.count_target_table}.{f.count_target_column} (NOT {f.applies_to_table})"
+                    )
         if self.recursive:
             lines.append("")
             lines.append("-- Recursive CTE (batch/lot tree)")
@@ -189,6 +196,8 @@ class SemanticContext:
                     "physical_values": f.physical_values,
                     "applies_to_table": f.applies_to_table,
                     "applies_to_column": f.applies_to_column,
+                    "count_target_table": f.count_target_table,
+                    "count_target_column": f.count_target_column,
                 }
                 for f in self.filters
             ],
@@ -524,6 +533,8 @@ class SemanticContextBuilder:
                         physical_values=vm.physical_values,
                         applies_to_table=vm.applies_to_table,
                         applies_to_column=vm.applies_to_column,
+                        count_target_table=vm.count_target_table,
+                        count_target_column=vm.count_target_column,
                     ))
         return results
 

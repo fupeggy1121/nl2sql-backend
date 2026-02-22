@@ -76,6 +76,9 @@ class ValueMapping:
     physical_condition: Optional[str] = None
     applies_to_table: Optional[str] = None
     applies_to_column: Optional[str] = None
+    count_target_table: Optional[str] = None   # COUNT 的目标表 (e.g. "wafers")
+    count_target_column: Optional[str] = None  # COUNT 的目标列 (e.g. "id")
+    join_path: Optional[str] = None            # JOIN 路径描述
     note: Optional[str] = None
 
 
@@ -238,6 +241,9 @@ class MappingDictionary:
                     physical_condition=val_data.get("physical_condition"),
                     applies_to_table=val_data.get("applies_to_table"),
                     applies_to_column=val_data.get("applies_to_column"),
+                    count_target_table=val_data.get("count_target_table"),
+                    count_target_column=val_data.get("count_target_column"),
+                    join_path=val_data.get("join_path"),
                     note=val_data.get("note"),
                 )
                 self._value_map[domain][val_key] = vm

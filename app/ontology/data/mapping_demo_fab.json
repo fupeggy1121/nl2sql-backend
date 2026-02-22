@@ -306,11 +306,14 @@
   "value_mappings": {
     "semi:WaferState": {
       "WIP": {
-        "description": "在制品 — 未完成生产的Wafer实例（WIP是状态标记/形容词，不是独立对象）",
+        "description": "在制品 — 未完成生产的Wafer实例。统计WIP数量时COUNT对象是wafers表(Wafer实例)，不是sub_batches",
         "physical_condition": "sub_batches.status != 'completed'",
         "applies_to_table": "sub_batches",
         "applies_to_column": "status",
-        "note": "Wafer的WIP状态在物理层通过sub_batches的status字段体现"
+        "count_target_table": "wafers",
+        "count_target_column": "id",
+        "join_path": "wafers.batch_id = batches.id → sub_batches.batch_id = batches.id → sub_batches.current_station_id = stations.id",
+        "note": "WIP是Wafer实例的状态属性。统计WIP数量=COUNT(wafers.id)，通过wafers→batches→sub_batches路径获取状态过滤条件"
       },
       "Completed": {
         "description": "已完成生产",
@@ -469,11 +472,11 @@
     {
       "id": "wip_count",
       "name": "在制品(WIP)数量统计",
-      "description": "WIP是Wafer实例上的动态状态属性（形容词），不是独立对象。统计WIP数量时，查询sub_batches中status != 'completed'的记录，按station分组。",
+      "description": "WIP统计的是Wafer(晶圆)实例数量，不是sub_batches数量。WIP状态通过sub_batches.status != 'completed'过滤，但COUNT对象必须是wafers.id。JOIN路径: wafers→batches(batch_id=id)→sub_batches(batch_id)→stations(current_station_id=id)",
       "semantic_pattern": "COUNT + WIP + Station",
-      "physical_sql_template": "SELECT s.name AS station_name, COUNT(*) AS wip_count FROM sub_batches sb JOIN stations s ON sb.current_station_id = s.id WHERE sb.status != 'completed' GROUP BY s.name ORDER BY wip_count DESC",
-      "involved_tables": ["sub_batches", "stations"],
-      "involved_relations": ["semi:containsSublot", "semi:atStation"]
+      "physical_sql_template": "SELECT s.name AS station_name, COUNT(w.id) AS wip_count FROM wafers w JOIN batches b ON w.batch_id = b.id JOIN sub_batches sb ON sb.batch_id = b.id JOIN stations s ON sb.current_station_id = s.id WHERE sb.status != 'completed' GROUP BY s.name ORDER BY wip_count DESC",
+      "involved_tables": ["wafers", "batches", "sub_batches", "stations"],
+      "involved_relations": ["semi:belongsToLot", "semi:containsSublot", "semi:atStation"]
     },
     {
       "id": "chinese_name_filter",
