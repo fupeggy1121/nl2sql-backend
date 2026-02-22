@@ -1,5 +1,5 @@
 """
-本体语义 API — 血缘可视化 + 语义解析
+本体语义 API — 血缘可视化 + 语义解析 + TTL 版本管理
 
 提供：
   GET  /api/v1/ontology/summary   — 本体 & 映射统计概览
@@ -9,17 +9,32 @@
   GET  /api/v1/ontology/recursive — 获取递归 CTE SQL
   GET  /api/v1/ontology/values    — 列出所有值域
   POST /api/v1/ontology/reload    — 热重载 TTL/mapping JSON（无需重启）
+  GET  /api/v1/ontology/ttl       — 获取当前 TTL 文件内容
+  POST /api/v1/ontology/ttl/upload — 上传新 TTL 文件（自带版本管理）
+  GET  /api/v1/ontology/ttl/versions — 版本历史列表
+  GET  /api/v1/ontology/ttl/versions/{version} — 获取历史版本 TTL 内容
+  POST /api/v1/ontology/ttl/rollback/{version} — 回滚到指定版本
 """
 
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
 from app.ontology.context_builder import SemanticContextBuilder, build_semantic_context
 from app.ontology.loader import get_ontology, load_ontology
 from app.ontology.mapping import get_mapping, load_mapping
+from app.ontology.version_manager import (
+    get_current_ttl,
+    list_versions,
+    get_version_content,
+    get_version_detail,
+    save_new_version,
+    rollback_to_version,
+    diff_versions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +262,111 @@ async def reload_ontology_and_mapping() -> Dict[str, Any]:
     except Exception as e:
         logger.error("Hot-reload failed: %s", e)
         raise HTTPException(500, f"重载失败: {e}")
+
+
+# ── TTL 文件版本管理端点 ──
+
+
+@router.get("/ttl")
+async def get_ttl_content():
+    """获取当前 TTL 文件内容（text/turtle）"""
+    try:
+        content = get_current_ttl()
+        return PlainTextResponse(content, media_type="text/turtle")
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+
+
+@router.post("/ttl/upload")
+async def upload_ttl(
+    file: UploadFile = File(..., description="TTL 文件"),
+    message: str = Form("", description="版本说明"),
+    author: str = Form("web-ui", description="上传者"),
+) -> Dict[str, Any]:
+    """
+    上传新 TTL 文件。
+
+    自动备份当前版本 → 写入新文件 → 触发热重载。
+    """
+    if not file.filename.endswith((".ttl", ".turtle")):
+        raise HTTPException(400, "仅支持 .ttl / .turtle 文件")
+
+    content = await file.read()
+    try:
+        ttl_text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(400, "文件编码必须为 UTF-8")
+
+    # 基本校验：至少包含 @prefix 或 owl:Ontology
+    if "@prefix" not in ttl_text and "owl:Ontology" not in ttl_text:
+        raise HTTPException(400, "文件不像是有效的 Turtle 本体文件")
+
+    try:
+        entry = save_new_version(ttl_text, message=message, author=author)
+    except Exception as e:
+        logger.error("TTL upload failed: %s", e)
+        raise HTTPException(500, f"保存失败: {e}")
+
+    return {
+        "success": True,
+        "message": f"已保存为版本 {entry['version']}，热重载完成",
+        "version": entry,
+    }
+
+
+@router.get("/ttl/versions")
+async def get_ttl_versions() -> Dict[str, Any]:
+    """获取版本历史列表（最新在前）"""
+    versions = list_versions()
+    return {
+        "total": len(versions),
+        "versions": versions,
+    }
+
+
+@router.get("/ttl/versions/{version}")
+async def get_ttl_version_content(version: int):
+    """获取指定版本的 TTL 内容"""
+    content = get_version_content(version)
+    if content is None:
+        raise HTTPException(404, f"版本 {version} 不存在")
+    detail = get_version_detail(version)
+    return {
+        "version": detail,
+        "content": content,
+    }
+
+
+@router.post("/ttl/rollback/{version}")
+async def rollback_ttl(version: int) -> Dict[str, Any]:
+    """回滚到指定版本（创建新版本记录，恢复历史内容）"""
+    detail = get_version_detail(version)
+    if detail is None:
+        raise HTTPException(404, f"版本 {version} 不存在")
+
+    try:
+        entry = rollback_to_version(version)
+    except Exception as e:
+        logger.error("Rollback to version %d failed: %s", version, e)
+        raise HTTPException(500, f"回滚失败: {e}")
+
+    return {
+        "success": True,
+        "message": f"已回滚到版本 {version}，生成新版本 {entry['version']}",
+        "version": entry,
+    }
+
+
+@router.get("/ttl/diff")
+async def diff_ttl_versions(
+    v1: int = Query(..., description="版本1"),
+    v2: int = Query(..., description="版本2"),
+) -> Dict[str, Any]:
+    """对比两个版本的差异统计"""
+    try:
+        return diff_versions(v1, v2)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
 
 
 # ── 工具函数 ──

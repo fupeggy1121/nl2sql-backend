@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SEMI MES Ontology Viewer</title>
+<script src="https://cdn.jsdelivr.net/npm/rdflib@2.2.35/dist/rdflib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+/* Header */
+.header { background: #1e293b; border-bottom: 1px solid #334155; padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+.header h1 { font-size: 18px; color: #38bdf8; white-space: nowrap; }
+.header .controls { display: flex; gap: 8px; align-items: center; }
+.btn { background: #334155; color: #e2e8f0; border: 1px solid #475569; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all .15s; white-space: nowrap; }
+.btn:hover { background: #475569; }
+.btn.active { background: #0ea5e9; border-color: #0ea5e9; color: #fff; }
+.btn.primary { background: #0ea5e9; border-color: #0ea5e9; color: #fff; }
+.btn.primary:hover { background: #0284c7; }
+.btn.danger { background: #dc2626; border-color: #dc2626; color: #fff; }
+.btn.danger:hover { background: #b91c1c; }
+.btn.success { background: #16a34a; border-color: #16a34a; color: #fff; }
+.btn.success:hover { background: #15803d; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.stats { margin-left: auto; font-size: 13px; color: #94a3b8; display: flex; gap: 14px; }
+.stats span { white-space: nowrap; }
+.stats b { color: #38bdf8; }
+
+/* Main layout */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* Left panel */
+.left-panel { width: 300px; min-width: 300px; background: #1e293b; border-right: 1px solid #334155; display: flex; flex-direction: column; overflow: hidden; }
+.panel-section { padding: 12px 14px; border-bottom: 1px solid #334155; }
+.panel-section h3 { font-size: 13px; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; display: flex; align-items: center; justify-content: space-between; }
+.search-input { width: 100%; padding: 7px 10px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 13px; outline: none; }
+.search-input:focus { border-color: #0ea5e9; }
+.search-input::placeholder { color: #64748b; }
+
+/* Edge toggles */
+.edge-toggles label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; padding: 3px 0; }
+.edge-toggles input[type="checkbox"] { accent-color: #0ea5e9; }
+
+/* Module filters */
+.module-filters { flex: 1; overflow-y: auto; padding: 10px 14px; }
+.module-filters label { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; padding: 2px 0; }
+.module-filters input[type="checkbox"] { accent-color: #0ea5e9; }
+.module-color { display: inline-block; width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.module-count { color: #64748b; margin-left: auto; font-size: 11px; }
+
+/* Detail panel */
+.detail-panel { padding: 12px 14px; border-top: 1px solid #334155; max-height: 40%; overflow-y: auto; flex-shrink: 0; }
+.detail-panel h3 { font-size: 13px; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
+.detail-panel .class-name { font-size: 16px; font-weight: 700; color: #38bdf8; margin-bottom: 4px; }
+.detail-panel .class-label { font-size: 13px; color: #cbd5e1; margin-bottom: 2px; }
+.detail-panel .class-comment { font-size: 12px; color: #94a3b8; margin-bottom: 8px; line-height: 1.4; }
+.detail-section { margin-bottom: 8px; }
+.detail-section h4 { font-size: 12px; color: #64748b; margin-bottom: 4px; }
+.detail-section .item { font-size: 12px; color: #cbd5e1; padding: 1px 0; cursor: pointer; }
+.detail-section .item:hover { color: #38bdf8; }
+.detail-section .prop-item { font-size: 12px; color: #a78bfa; padding: 1px 0; }
+.detail-section .dp-item { font-size: 12px; color: #fbbf24; padding: 1px 0; }
+.detail-placeholder { font-size: 13px; color: #475569; font-style: italic; padding: 20px 0; text-align: center; }
+
+/* Canvas */
+.canvas { flex: 1; position: relative; overflow: hidden; }
+.canvas svg { width: 100%; height: 100%; }
+
+/* Tooltip */
+.tooltip { position: absolute; background: #1e293b; border: 1px solid #475569; border-radius: 6px; padding: 8px 12px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 100; max-width: 280px; }
+.tooltip .tt-name { color: #38bdf8; font-weight: 600; }
+.tooltip .tt-label { color: #cbd5e1; }
+
+/* Right panel - Version History */
+.right-panel { width: 0; background: #1e293b; border-left: 1px solid #334155; display: flex; flex-direction: column; overflow: hidden; transition: width .25s ease; }
+.right-panel.open { width: 360px; min-width: 360px; }
+.right-panel .panel-header { padding: 12px 16px; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.right-panel .panel-header h3 { font-size: 14px; color: #e2e8f0; margin: 0; }
+.close-btn { background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+.close-btn:hover { color: #e2e8f0; background: #334155; }
+
+/* Version list */
+.version-list { flex: 1; overflow-y: auto; padding: 8px; }
+.version-card { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-bottom: 8px; cursor: pointer; transition: all .15s; }
+.version-card:hover { border-color: #475569; background: #1a2440; }
+.version-card.active { border-color: #0ea5e9; background: #0c1a30; }
+.version-card .v-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.version-card .v-num { font-size: 14px; font-weight: 600; color: #38bdf8; }
+.version-card .v-badge { font-size: 10px; padding: 2px 6px; border-radius: 10px; background: #334155; color: #94a3b8; }
+.version-card .v-badge.current { background: #065f46; color: #34d399; }
+.version-card .v-msg { font-size: 12px; color: #cbd5e1; margin-bottom: 4px; }
+.version-card .v-meta { font-size: 11px; color: #64748b; display: flex; gap: 12px; }
+.version-card .v-actions { display: flex; gap: 6px; margin-top: 8px; }
+.version-card .v-actions .btn { padding: 4px 10px; font-size: 11px; }
+
+/* Upload overlay */
+.upload-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.85); z-index: 300; display: none; align-items: center; justify-content: center; }
+.upload-overlay.show { display: flex; }
+.upload-modal { background: #1e293b; border: 1px solid #475569; border-radius: 12px; padding: 24px; width: 480px; max-width: 90vw; }
+.upload-modal h2 { font-size: 18px; color: #e2e8f0; margin-bottom: 16px; }
+.upload-modal .form-group { margin-bottom: 16px; }
+.upload-modal label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
+.upload-modal input[type="text"], .upload-modal textarea { width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; color: #e2e8f0; font-size: 13px; outline: none; }
+.upload-modal input[type="text"]:focus, .upload-modal textarea:focus { border-color: #0ea5e9; }
+.upload-modal textarea { height: 80px; resize: vertical; }
+.upload-drop-zone { border: 2px dashed #475569; border-radius: 8px; padding: 32px; text-align: center; cursor: pointer; transition: all .15s; }
+.upload-drop-zone:hover, .upload-drop-zone.dragover { border-color: #0ea5e9; background: rgba(14,165,233,.05); }
+.upload-drop-zone .icon { font-size: 32px; margin-bottom: 8px; }
+.upload-drop-zone .text { font-size: 13px; color: #94a3b8; }
+.upload-drop-zone .filename { font-size: 14px; color: #38bdf8; font-weight: 600; margin-top: 8px; }
+.upload-modal .btn-row { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* Toast notifications */
+.toast-container { position: fixed; top: 60px; right: 20px; z-index: 400; display: flex; flex-direction: column; gap: 8px; }
+.toast { padding: 10px 16px; border-radius: 8px; font-size: 13px; animation: toastIn .3s ease; min-width: 250px; max-width: 400px; }
+.toast.success { background: #065f46; color: #34d399; border: 1px solid #047857; }
+.toast.error { background: #7f1d1d; color: #fca5a5; border: 1px solid #991b1b; }
+.toast.info { background: #1e3a5f; color: #93c5fd; border: 1px solid #1e40af; }
+@keyframes toastIn { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* Loading overlay */
+.loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(15,23,42,.85); z-index: 200; font-size: 16px; color: #94a3b8; gap: 12px; }
+.loading.hidden { display: none; }
+.spinner { width: 36px; height: 36px; border: 3px solid #334155; border-top-color: #0ea5e9; border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🔬 SEMI MES Ontology Viewer</h1>
+  <div class="controls">
+    <button class="btn primary" id="btnUpload" title="上传新 TTL">⬆ 上传 TTL</button>
+    <button class="btn" id="btnReload" title="从服务器重新加载">🔄 刷新</button>
+    <button class="btn" id="btnLocalLoad" title="本地预览（不上传）">📂 本地预览</button>
+    <input type="file" id="localFileInput" accept=".ttl,.turtle" style="display:none">
+    <button class="btn" id="btnVersions" title="版本历史">📋 版本历史</button>
+    <button class="btn" id="btnReset" title="重置视图">⊙ 重置视图</button>
+  </div>
+  <div class="stats" id="stats"></div>
+</div>
+
+<div class="main">
+  <div class="left-panel">
+    <div class="panel-section">
+      <h3>Search</h3>
+      <input class="search-input" id="searchInput" placeholder="搜索类名 / 标签...">
+    </div>
+    <div class="panel-section edge-toggles">
+      <h3>Edge Display</h3>
+      <label><input type="checkbox" id="toggleSubclass" checked> subClassOf (虚线)</label>
+      <label><input type="checkbox" id="toggleObjProp" checked> ObjectProperty (实线)</label>
+    </div>
+    <div class="panel-section" style="flex-shrink:0">
+      <h3>Modules</h3>
+    </div>
+    <div class="module-filters" id="moduleFilters"></div>
+    <div class="detail-panel" id="detailPanel">
+      <div class="detail-placeholder">点击节点查看详情</div>
+    </div>
+  </div>
+
+  <div class="canvas" id="canvas">
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <span>正在加载本体...</span>
+    </div>
+    <div class="tooltip" id="tooltip"></div>
+  </div>
+
+  <div class="right-panel" id="rightPanel">
+    <div class="panel-header">
+      <h3>📋 版本历史</h3>
+      <button class="close-btn" id="btnCloseVersions">✕</button>
+    </div>
+    <div class="version-list" id="versionList">
+      <div class="detail-placeholder">加载中...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Upload Modal -->
+<div class="upload-overlay" id="uploadOverlay">
+  <div class="upload-modal">
+    <h2>⬆ 上传新 TTL 文件</h2>
+    <div class="form-group">
+      <div class="upload-drop-zone" id="dropZone">
+        <div class="icon">📄</div>
+        <div class="text">拖拽 .ttl 文件到此处，或点击选择</div>
+        <div class="filename" id="uploadFilename" style="display:none"></div>
+      </div>
+      <input type="file" id="uploadFileInput" accept=".ttl,.turtle" style="display:none">
+    </div>
+    <div class="form-group">
+      <label>版本说明</label>
+      <textarea id="uploadMessage" placeholder="描述本次修改内容..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>作者</label>
+      <input type="text" id="uploadAuthor" value="web-ui" placeholder="上传者名称">
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="btnCancelUpload">取消</button>
+      <button class="btn primary" id="btnSubmitUpload" disabled>上传并应用</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ---- Config ----
+  const API_BASE = window.location.origin + '/api/v1/ontology';
+
+  // ---- Module color scheme ----
+  const MODULE_COLORS = {
+    Agent: '#3b82f6', Authorization: '#60a5fa', Product: '#22c55e',
+    Material: '#4ade80', Equipment: '#f97316', Lot: '#ef4444',
+    Wafer: '#f87171', Carrier: '#ec4899', Route: '#06b6d4',
+    Process: '#22d3ee', Recipe: '#67e8f9', ProductionOrder: '#a855f7',
+    Warehouse: '#8b5cf6', Bill: '#a78bfa', Accessory: '#14b8a6',
+    Classification: '#84cc16', Dictionary: '#a3e635', DataModel: '#eab308',
+    DynamicPage: '#facc15', DCPlan: '#fbbf24', Record: '#fb923c',
+    Configuration: '#94a3b8', Code: '#6366f1', FormTemplate: '#e879f9',
+  };
+  const TOP_MODULES = Object.keys(MODULE_COLORS);
+  const SEMI_NS = 'http://www.semanticweb.org/semi-mes/ontology#';
+
+  // ---- State ----
+  let classes = [], classMap = {}, objectProps = [], dataProps = [];
+  let nodes = [], links = [];
+  let simulation, svg, g, linkG, nodeG, labelG, zoom;
+  let selectedNode = null;
+  let moduleVisibility = {};
+  let showSubclass = true, showObjProp = true;
+  let uploadFile = null;
+
+  // ---- Helpers ----
+  function localName(uri) {
+    if (!uri) return '';
+    const i = Math.max(uri.lastIndexOf('#'), uri.lastIndexOf('/'));
+    return i >= 0 ? uri.substring(i + 1) : uri;
+  }
+  function getLabelText(labels, lang) {
+    if (!labels || !labels.length) return '';
+    const m = labels.find(l => l.lang === lang);
+    return m ? m.value : labels[0].value;
+  }
+  function showToast(msg, type = 'info') {
+    const c = document.getElementById('toastContainer');
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.textContent = msg;
+    c.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3500);
+  }
+  function formatTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  function formatBytes(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+    return (b / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  // ---- Parse TTL ----
+  function parseTTL(ttlText) {
+    const store = $rdf.graph();
+    const baseURI = 'http://www.semanticweb.org/semi-mes/ontology';
+    try {
+      $rdf.parse(ttlText, store, baseURI, 'text/turtle');
+    } catch (e) {
+      console.error('Parse error:', e);
+      showToast('TTL 解析失败: ' + e.message, 'error');
+      document.getElementById('loading').classList.add('hidden');
+      return;
+    }
+
+    const OWL = $rdf.Namespace('http://www.w3.org/2002/07/owl#');
+    const RDFS = $rdf.Namespace('http://www.w3.org/2000/01/rdf-schema#');
+    const RDF = $rdf.Namespace('http://www.w3.org/1999/02/22-rdf-syntax-ns#');
+
+    const classStmts = store.statementsMatching(null, RDF('type'), OWL('Class'));
+    classes = []; classMap = {};
+
+    classStmts.forEach(st => {
+      const uri = st.subject.value;
+      if (uri.startsWith('_:') || !uri.startsWith(SEMI_NS)) return;
+      const ln = localName(uri);
+      const labels = store.statementsMatching(st.subject, RDFS('label'), null)
+        .map(s => ({ value: s.object.value, lang: s.object.lang || 'en' }));
+      const comments = store.statementsMatching(st.subject, RDFS('comment'), null)
+        .map(s => ({ value: s.object.value, lang: s.object.lang || 'en' }));
+      const subClassOfs = store.statementsMatching(st.subject, RDFS('subClassOf'), null)
+        .filter(s => s.object.termType === 'NamedNode' && s.object.value.startsWith(SEMI_NS))
+        .map(s => s.object.value);
+      const cls = { uri, localName: ln, labels, comments, parentUris: subClassOfs, module: null };
+      classes.push(cls);
+      classMap[uri] = cls;
+    });
+
+    function resolveModule(cls, visited) {
+      if (cls.module) return cls.module;
+      if (visited.has(cls.uri)) return null;
+      visited.add(cls.uri);
+      if (TOP_MODULES.includes(cls.localName)) { cls.module = cls.localName; return cls.module; }
+      for (const pu of cls.parentUris) {
+        const parent = classMap[pu];
+        if (parent) { const mod = resolveModule(parent, visited); if (mod) { cls.module = mod; return mod; } }
+      }
+      return null;
+    }
+    classes.forEach(cls => resolveModule(cls, new Set()));
+    classes.forEach(cls => { if (!cls.module) cls.module = cls.localName; });
+
+    objectProps = [];
+    store.statementsMatching(null, RDF('type'), OWL('ObjectProperty')).forEach(st => {
+      const uri = st.subject.value;
+      if (!uri.startsWith(SEMI_NS)) return;
+      const ln = localName(uri);
+      const labels = store.statementsMatching(st.subject, RDFS('label'), null)
+        .map(s => ({ value: s.object.value, lang: s.object.lang || 'en' }));
+      const domains = store.statementsMatching(st.subject, RDFS('domain'), null)
+        .filter(s => s.object.termType === 'NamedNode').map(s => s.object.value);
+      const ranges = store.statementsMatching(st.subject, RDFS('range'), null)
+        .filter(s => s.object.termType === 'NamedNode' && s.object.value.startsWith(SEMI_NS)).map(s => s.object.value);
+      objectProps.push({ uri, localName: ln, labels, domainUri: domains[0] || null, rangeUri: ranges[0] || null });
+    });
+
+    dataProps = [];
+    store.statementsMatching(null, RDF('type'), OWL('DatatypeProperty')).forEach(st => {
+      const uri = st.subject.value;
+      if (!uri.startsWith(SEMI_NS)) return;
+      const ln = localName(uri);
+      const labels = store.statementsMatching(st.subject, RDFS('label'), null)
+        .map(s => ({ value: s.object.value, lang: s.object.lang || 'en' }));
+      const domains = store.statementsMatching(st.subject, RDFS('domain'), null)
+        .filter(s => s.object.termType === 'NamedNode').map(s => s.object.value);
+      const ranges = store.statementsMatching(st.subject, RDFS('range'), null)
+        .map(s => localName(s.object.value));
+      dataProps.push({ uri, localName: ln, labels, domainUri: domains[0] || null, rangeType: ranges[0] || 'string' });
+    });
+
+    document.getElementById('stats').innerHTML =
+      `<span>Classes: <b>${classes.length}</b></span>` +
+      `<span>Object Props: <b>${objectProps.length}</b></span>` +
+      `<span>Data Props: <b>${dataProps.length}</b></span>`;
+
+    buildGraph();
+  }
+
+  // ---- Build graph ----
+  function buildGraph() {
+    const childCount = {};
+    classes.forEach(cls => { cls.parentUris.forEach(pu => { childCount[pu] = (childCount[pu] || 0) + 1; }); });
+
+    nodes = classes.map(cls => ({
+      id: cls.uri, localName: cls.localName, labels: cls.labels, comments: cls.comments,
+      module: cls.module, parentUris: cls.parentUris,
+      childCount: childCount[cls.uri] || 0,
+      radius: Math.max(6, Math.min(20, 6 + (childCount[cls.uri] || 0) * 1.5)),
+      color: MODULE_COLORS[cls.module] || '#64748b', visible: true,
+    }));
+
+    const nodeIds = new Set(nodes.map(n => n.id));
+    links = [];
+    classes.forEach(cls => {
+      cls.parentUris.forEach(pu => {
+        if (nodeIds.has(pu)) links.push({ source: cls.uri, target: pu, type: 'subClassOf', label: 'subClassOf' });
+      });
+    });
+    objectProps.forEach(op => {
+      if (op.domainUri && op.rangeUri && nodeIds.has(op.domainUri) && nodeIds.has(op.rangeUri))
+        links.push({ source: op.domainUri, target: op.rangeUri, type: 'objectProperty', label: op.localName });
+    });
+
+    buildModuleFilters();
+    initVisualization();
+  }
+
+  // ---- Module filters ----
+  function buildModuleFilters() {
+    const moduleCounts = {};
+    nodes.forEach(n => { moduleCounts[n.module] = (moduleCounts[n.module] || 0) + 1; });
+    const sorted = Object.keys(moduleCounts).sort((a, b) => moduleCounts[b] - moduleCounts[a]);
+    sorted.forEach(m => { moduleVisibility[m] = true; });
+    const container = document.getElementById('moduleFilters');
+    container.innerHTML = '';
+
+    const allLabel = document.createElement('label');
+    allLabel.style.marginBottom = '6px'; allLabel.style.fontWeight = '600';
+    const allCb = document.createElement('input');
+    allCb.type = 'checkbox'; allCb.checked = true;
+    allCb.addEventListener('change', () => {
+      sorted.forEach(m => { moduleVisibility[m] = allCb.checked; });
+      container.querySelectorAll('input[data-module]').forEach(cb => { cb.checked = allCb.checked; });
+      applyFilters();
+    });
+    allLabel.append(allCb, ' 全选');
+    container.appendChild(allLabel);
+
+    sorted.forEach(m => {
+      const label = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = true; cb.dataset.module = m;
+      cb.addEventListener('change', () => { moduleVisibility[m] = cb.checked; applyFilters(); });
+      const dot = document.createElement('span');
+      dot.className = 'module-color'; dot.style.background = MODULE_COLORS[m] || '#64748b';
+      const cnt = document.createElement('span');
+      cnt.className = 'module-count'; cnt.textContent = moduleCounts[m];
+      label.append(cb, dot, ' ' + m + ' ', cnt);
+      container.appendChild(label);
+    });
+  }
+
+  function applyFilters() {
+    const term = document.getElementById('searchInput').value.toLowerCase().trim();
+    nodes.forEach(n => {
+      let v = moduleVisibility[n.module] !== false;
+      if (v && term) {
+        v = n.localName.toLowerCase().includes(term) || n.labels.some(l => l.value.toLowerCase().includes(term));
+      }
+      n.visible = v;
+    });
+    updateVisibility();
+  }
+
+  function updateVisibility() {
+    const visibleIds = new Set(nodes.filter(n => n.visible).map(n => n.id));
+    nodeG.selectAll('.node-group').attr('display', d => d.visible ? null : 'none');
+    labelG.selectAll('.node-label').attr('display', d => d.visible ? null : 'none');
+    linkG.selectAll('.link').attr('display', d => {
+      const sId = typeof d.source === 'object' ? d.source.id : d.source;
+      const tId = typeof d.target === 'object' ? d.target.id : d.target;
+      if (!visibleIds.has(sId) || !visibleIds.has(tId)) return 'none';
+      if (d.type === 'subClassOf' && !showSubclass) return 'none';
+      if (d.type === 'objectProperty' && !showObjProp) return 'none';
+      return null;
+    });
+  }
+
+  // ---- Visualization ----
+  function initVisualization() {
+    document.getElementById('loading').classList.add('hidden');
+    const container = document.getElementById('canvas');
+    const width = container.clientWidth, height = container.clientHeight;
+    d3.select('#canvas svg').remove();
+
+    svg = d3.select('#canvas').append('svg').attr('width', width).attr('height', height);
+    const defs = svg.append('defs');
+    defs.append('marker').attr('id', 'arrow-op').attr('viewBox', '0 0 10 6').attr('refX', 10).attr('refY', 3)
+      .attr('markerWidth', 8).attr('markerHeight', 6).attr('orient', 'auto')
+      .append('path').attr('d', 'M0,0 L10,3 L0,6 Z').attr('fill', '#64748b');
+    defs.append('marker').attr('id', 'arrow-sc').attr('viewBox', '0 0 10 6').attr('refX', 10).attr('refY', 3)
+      .attr('markerWidth', 8).attr('markerHeight', 6).attr('orient', 'auto')
+      .append('path').attr('d', 'M0,0 L10,3 L0,6 Z').attr('fill', '#475569');
+
+    zoom = d3.zoom().scaleExtent([0.1, 5]).on('zoom', e => g.attr('transform', e.transform));
+    svg.call(zoom);
+    g = svg.append('g');
+    linkG = g.append('g').attr('class', 'links');
+    nodeG = g.append('g').attr('class', 'nodes');
+    labelG = g.append('g').attr('class', 'labels');
+
+    linkG.selectAll('.link').data(links).join('line').attr('class', 'link')
+      .attr('stroke', d => d.type === 'subClassOf' ? '#475569' : '#64748b')
+      .attr('stroke-width', d => d.type === 'subClassOf' ? 1 : 1.5)
+      .attr('stroke-dasharray', d => d.type === 'subClassOf' ? '4,3' : null)
+      .attr('marker-end', d => d.type === 'subClassOf' ? 'url(#arrow-sc)' : 'url(#arrow-op)')
+      .attr('opacity', 0.6);
+
+    const nodeGroups = nodeG.selectAll('.node-group').data(nodes, d => d.id).join('g')
+      .attr('class', 'node-group').style('cursor', 'pointer')
+      .call(d3.drag().on('start', dragStart).on('drag', dragging).on('end', dragEnd))
+      .on('click', (e, d) => { e.stopPropagation(); selectNode(d); })
+      .on('mouseover', (e, d) => showTip(e, d))
+      .on('mousemove', e => moveTip(e))
+      .on('mouseout', hideTip);
+
+    nodeGroups.append('circle').attr('r', d => d.radius).attr('fill', d => d.color)
+      .attr('stroke', '#0f172a').attr('stroke-width', 1.5).attr('opacity', 0.9);
+
+    labelG.selectAll('.node-label').data(nodes, d => d.id).join('text')
+      .attr('class', 'node-label').attr('text-anchor', 'middle')
+      .attr('dy', d => d.radius + 12).attr('font-size', 10)
+      .attr('fill', '#94a3b8').attr('pointer-events', 'none')
+      .text(d => d.localName);
+
+    svg.on('click', () => selectNode(null));
+
+    simulation = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).id(d => d.id).distance(100).strength(0.3))
+      .force('charge', d3.forceManyBody().strength(-300))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collide', d3.forceCollide().radius(d => d.radius + 10))
+      .force('x', d3.forceX(width / 2).strength(0.03))
+      .force('y', d3.forceY(height / 2).strength(0.03))
+      .on('tick', ticked);
+
+    function ticked() {
+      linkG.selectAll('.link')
+        .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => {
+          const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+          const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+          const r = (typeof d.target === 'object' ? d.target.radius : 8) + 4;
+          return d.target.x - (dx/dist)*r;
+        })
+        .attr('y2', d => {
+          const dx = d.target.x - d.source.x, dy = d.target.y - d.source.y;
+          const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+          const r = (typeof d.target === 'object' ? d.target.radius : 8) + 4;
+          return d.target.y - (dy/dist)*r;
+        });
+      nodeG.selectAll('.node-group').attr('transform', d => `translate(${d.x},${d.y})`);
+      labelG.selectAll('.node-label').attr('x', d => d.x).attr('y', d => d.y);
+    }
+  }
+
+  function dragStart(e, d) { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }
+  function dragging(e, d) { d.fx = e.x; d.fy = e.y; }
+  function dragEnd(e, d) { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }
+
+  function showTip(e, d) {
+    const tt = document.getElementById('tooltip');
+    const en = getLabelText(d.labels, 'en'), zh = getLabelText(d.labels, 'zh');
+    tt.innerHTML = `<div class="tt-name">${d.localName}</div>` +
+      (en ? `<div class="tt-label">${en}</div>` : '') +
+      (zh ? `<div class="tt-label">${zh}</div>` : '');
+    tt.style.opacity = '1'; moveTip(e);
+  }
+  function moveTip(e) {
+    const tt = document.getElementById('tooltip');
+    const r = document.getElementById('canvas').getBoundingClientRect();
+    tt.style.left = (e.clientX - r.left + 12) + 'px';
+    tt.style.top = (e.clientY - r.top + 12) + 'px';
+  }
+  function hideTip() { document.getElementById('tooltip').style.opacity = '0'; }
+
+  function selectNode(d) {
+    selectedNode = d;
+    nodeG.selectAll('.node-group circle')
+      .attr('stroke', n => n === d ? '#fff' : '#0f172a')
+      .attr('stroke-width', n => n === d ? 3 : 1.5);
+    linkG.selectAll('.link')
+      .attr('opacity', l => {
+        if (!d) return 0.6;
+        const s = typeof l.source === 'object' ? l.source.id : l.source;
+        const t = typeof l.target === 'object' ? l.target.id : l.target;
+        return (s === d.id || t === d.id) ? 1 : 0.15;
+      })
+      .attr('stroke-width', l => {
+        if (!d) return l.type === 'subClassOf' ? 1 : 1.5;
+        const s = typeof l.source === 'object' ? l.source.id : l.source;
+        const t = typeof l.target === 'object' ? l.target.id : l.target;
+        return (s === d.id || t === d.id) ? 2.5 : (l.type === 'subClassOf' ? 1 : 1.5);
+      });
+    nodeG.selectAll('.node-group circle').attr('opacity', n => {
+      if (!d) return 0.9;
+      if (n === d) return 1;
+      return links.some(l => {
+        const s = typeof l.source === 'object' ? l.source.id : l.source;
+        const t = typeof l.target === 'object' ? l.target.id : l.target;
+        return (s === d.id && t === n.id) || (t === d.id && s === n.id);
+      }) ? 0.9 : 0.2;
+    });
+    labelG.selectAll('.node-label').attr('opacity', n => {
+      if (!d) return 1;
+      if (n === d) return 1;
+      return links.some(l => {
+        const s = typeof l.source === 'object' ? l.source.id : l.source;
+        const t = typeof l.target === 'object' ? l.target.id : l.target;
+        return (s === d.id && t === n.id) || (t === d.id && s === n.id);
+      }) ? 1 : 0.15;
+    });
+    updateDetailPanel(d);
+  }
+
+  function updateDetailPanel(d) {
+    const panel = document.getElementById('detailPanel');
+    if (!d) { panel.innerHTML = '<div class="detail-placeholder">点击节点查看详情</div>'; return; }
+    const enL = getLabelText(d.labels, 'en'), zhL = getLabelText(d.labels, 'zh');
+    const enC = getLabelText(d.comments, 'en'), zhC = getLabelText(d.comments, 'zh');
+    let html = `<div class="class-name">${d.localName}</div>`;
+    if (enL) html += `<div class="class-label">EN: ${enL}</div>`;
+    if (zhL) html += `<div class="class-label">ZH: ${zhL}</div>`;
+    if (enC) html += `<div class="class-comment">${enC}</div>`;
+    if (zhC) html += `<div class="class-comment">${zhC}</div>`;
+    html += `<div class="class-label" style="color:#64748b">Module: ${d.module}</div>`;
+
+    const parents = d.parentUris.map(pu => classMap[pu]).filter(Boolean);
+    if (parents.length) {
+      html += `<div class="detail-section"><h4>父类 (subClassOf)</h4>`;
+      parents.forEach(p => { html += `<div class="item" data-uri="${p.uri}">${p.localName}</div>`; });
+      html += `</div>`;
+    }
+    const children = classes.filter(c => c.parentUris.includes(d.id));
+    if (children.length) {
+      html += `<div class="detail-section"><h4>子类 (${children.length})</h4>`;
+      children.forEach(c => { html += `<div class="item" data-uri="${c.uri}">${c.localName}</div>`; });
+      html += `</div>`;
+    }
+    const outP = objectProps.filter(op => op.domainUri === d.id);
+    if (outP.length) {
+      html += `<div class="detail-section"><h4>出向 ObjectProperty</h4>`;
+      outP.forEach(op => {
+        const rn = classMap[op.rangeUri] ? classMap[op.rangeUri].localName : localName(op.rangeUri || '');
+        html += `<div class="prop-item">${op.localName} → ${rn}</div>`;
+      });
+      html += `</div>`;
+    }
+    const inP = objectProps.filter(op => op.rangeUri === d.id);
+    if (inP.length) {
+      html += `<div class="detail-section"><h4>入向 ObjectProperty</h4>`;
+      inP.forEach(op => {
+        const dn = classMap[op.domainUri] ? classMap[op.domainUri].localName : localName(op.domainUri || '');
+        html += `<div class="prop-item">${dn} → ${op.localName}</div>`;
+      });
+      html += `</div>`;
+    }
+    const dps = dataProps.filter(dp => dp.domainUri === d.id);
+    if (dps.length) {
+      html += `<div class="detail-section"><h4>Data Properties</h4>`;
+      dps.forEach(dp => { html += `<div class="dp-item">${dp.localName} : ${dp.rangeType}</div>`; });
+      html += `</div>`;
+    }
+
+    panel.innerHTML = html;
+    panel.querySelectorAll('.item[data-uri]').forEach(el => {
+      el.addEventListener('click', () => {
+        const node = nodes.find(n => n.id === el.dataset.uri);
+        if (node) {
+          selectNode(node);
+          const t = d3.zoomTransform(svg.node());
+          svg.transition().duration(500).call(zoom.transform,
+            d3.zoomIdentity.translate(-node.x * t.k + svg.node().clientWidth/2, -node.y * t.k + svg.node().clientHeight/2).scale(t.k));
+        }
+      });
+    });
+  }
+
+  // ---- API calls ----
+  async function loadFromServer() {
+    document.getElementById('loading').classList.remove('hidden');
+    try {
+      const resp = await fetch(API_BASE + '/ttl');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const ttl = await resp.text();
+      parseTTL(ttl);
+      showToast('从服务器加载 TTL 成功', 'success');
+    } catch (e) {
+      console.error('Load from server failed:', e);
+      document.getElementById('loading').innerHTML =
+        `<div style="text-align:center"><div style="margin-bottom:12px">无法从服务器加载 TTL</div>` +
+        `<div style="font-size:13px;color:#64748b">${e.message}</div>` +
+        `<div style="margin-top:16px"><button class="btn" onclick="document.getElementById('localFileInput').click()">📂 本地加载文件</button></div></div>`;
+    }
+  }
+
+  async function loadVersions() {
+    const list = document.getElementById('versionList');
+    list.innerHTML = '<div class="detail-placeholder">加载中...</div>';
+    try {
+      const resp = await fetch(API_BASE + '/ttl/versions');
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      renderVersionList(data.versions);
+    } catch (e) {
+      list.innerHTML = `<div class="detail-placeholder">加载失败: ${e.message}</div>`;
+    }
+  }
+
+  function renderVersionList(versions) {
+    const list = document.getElementById('versionList');
+    if (!versions.length) {
+      list.innerHTML = '<div class="detail-placeholder">暂无版本历史<br><small style="color:#475569">上传第一个 TTL 文件后自动创建</small></div>';
+      return;
+    }
+    const maxV = Math.max(...versions.map(v => v.version));
+    list.innerHTML = versions.map(v => `
+      <div class="version-card ${v.version === maxV ? 'active' : ''}" data-version="${v.version}">
+        <div class="v-header">
+          <span class="v-num">v${v.version}</span>
+          ${v.version === maxV ? '<span class="v-badge current">当前</span>' : '<span class="v-badge">历史</span>'}
+        </div>
+        <div class="v-msg">${escapeHtml(v.message || '')}</div>
+        <div class="v-meta">
+          <span>🕐 ${formatTime(v.timestamp)}</span>
+          <span>👤 ${escapeHtml(v.author || '')}</span>
+          <span>📦 ${formatBytes(v.size_bytes || 0)}</span>
+        </div>
+        <div class="v-actions">
+          <button class="btn" onclick="viewVersion(${v.version})">👁 查看</button>
+          ${v.version !== maxV ? `<button class="btn danger" onclick="rollbackVersion(${v.version})">⏪ 回滚</button>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function escapeHtml(s) {
+    const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+  }
+
+  window.viewVersion = async function(version) {
+    document.getElementById('loading').classList.remove('hidden');
+    try {
+      const resp = await fetch(API_BASE + `/ttl/versions/${version}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      parseTTL(data.content);
+      showToast(`正在预览版本 v${version}`, 'info');
+    } catch (e) {
+      showToast('加载版本失败: ' + e.message, 'error');
+      document.getElementById('loading').classList.add('hidden');
+    }
+  };
+
+  window.rollbackVersion = async function(version) {
+    if (!confirm(`确定要回滚到版本 v${version} 吗？\n\n将创建新版本记录并恢复历史内容。`)) return;
+    try {
+      const resp = await fetch(API_BASE + `/ttl/rollback/${version}`, { method: 'POST' });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      showToast(data.message, 'success');
+      loadFromServer();
+      loadVersions();
+    } catch (e) {
+      showToast('回滚失败: ' + e.message, 'error');
+    }
+  };
+
+  // ---- Upload ----
+  function openUploadModal() {
+    uploadFile = null;
+    document.getElementById('uploadFilename').style.display = 'none';
+    document.getElementById('uploadMessage').value = '';
+    document.getElementById('uploadAuthor').value = 'web-ui';
+    document.getElementById('btnSubmitUpload').disabled = true;
+    document.getElementById('uploadOverlay').classList.add('show');
+  }
+
+  function closeUploadModal() {
+    document.getElementById('uploadOverlay').classList.remove('show');
+    uploadFile = null;
+  }
+
+  function handleUploadFile(file) {
+    if (!file || (!file.name.endsWith('.ttl') && !file.name.endsWith('.turtle'))) {
+      showToast('请选择 .ttl 或 .turtle 文件', 'error');
+      return;
+    }
+    uploadFile = file;
+    const fn = document.getElementById('uploadFilename');
+    fn.textContent = `✅ ${file.name} (${formatBytes(file.size)})`;
+    fn.style.display = 'block';
+    document.getElementById('btnSubmitUpload').disabled = false;
+  }
+
+  async function submitUpload() {
+    if (!uploadFile) return;
+    const btn = document.getElementById('btnSubmitUpload');
+    btn.disabled = true;
+    btn.textContent = '上传中...';
+
+    const form = new FormData();
+    form.append('file', uploadFile);
+    form.append('message', document.getElementById('uploadMessage').value);
+    form.append('author', document.getElementById('uploadAuthor').value || 'web-ui');
+
+    try {
+      const resp = await fetch(API_BASE + '/ttl/upload', { method: 'POST', body: form });
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.detail || `HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      showToast(data.message, 'success');
+      closeUploadModal();
+      loadFromServer();
+      if (document.getElementById('rightPanel').classList.contains('open')) loadVersions();
+    } catch (e) {
+      showToast('上传失败: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '上传并应用';
+    }
+  }
+
+  // ---- Event handlers ----
+  document.getElementById('btnUpload').addEventListener('click', openUploadModal);
+  document.getElementById('btnCancelUpload').addEventListener('click', closeUploadModal);
+  document.getElementById('btnSubmitUpload').addEventListener('click', submitUpload);
+
+  const dropZone = document.getElementById('dropZone');
+  dropZone.addEventListener('click', () => document.getElementById('uploadFileInput').click());
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); handleUploadFile(e.dataTransfer.files[0]); });
+  document.getElementById('uploadFileInput').addEventListener('change', e => handleUploadFile(e.target.files[0]));
+
+  document.getElementById('uploadOverlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('uploadOverlay')) closeUploadModal();
+  });
+
+  document.getElementById('btnReload').addEventListener('click', loadFromServer);
+
+  document.getElementById('btnLocalLoad').addEventListener('click', () => {
+    document.getElementById('localFileInput').click();
+  });
+  document.getElementById('localFileInput').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    document.getElementById('loading').classList.remove('hidden');
+    const reader = new FileReader();
+    reader.onload = ev => parseTTL(ev.target.result);
+    reader.readAsText(file);
+  });
+
+  document.getElementById('btnVersions').addEventListener('click', () => {
+    const panel = document.getElementById('rightPanel');
+    const open = panel.classList.toggle('open');
+    if (open) loadVersions();
+  });
+  document.getElementById('btnCloseVersions').addEventListener('click', () => {
+    document.getElementById('rightPanel').classList.remove('open');
+  });
+
+  document.getElementById('btnReset').addEventListener('click', () => {
+    if (svg) {
+      svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+    }
+    selectNode(null);
+  });
+
+  document.getElementById('searchInput').addEventListener('input', applyFilters);
+  document.getElementById('toggleSubclass').addEventListener('change', e => { showSubclass = e.target.checked; updateVisibility(); });
+  document.getElementById('toggleObjProp').addEventListener('change', e => { showObjProp = e.target.checked; updateVisibility(); });
+
+  // ---- Auto-load from server ----
+  loadFromServer();
+
+})();
+</script>
+</body>
+</html>

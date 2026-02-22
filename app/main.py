@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 # ── 日志配置 ──
@@ -78,6 +79,19 @@ def _register_routes(app: FastAPI):
     # 旧 API 兼容层
     from app.api.compat import router as compat_router
     app.include_router(compat_router)
+
+    # ── 静态文件 & 页面路由 ──
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+
+    @app.get("/viewer")
+    async def ontology_viewer():
+        """本体可视化查看器"""
+        return FileResponse(
+            os.path.join(static_dir, "ontology-viewer.html"),
+            media_type="text/html",
+        )
+
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
     # 健康检查
     @app.get("/health")
