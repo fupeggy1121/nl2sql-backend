@@ -1,0 +1,383 @@
+{
+  "version": "2026-V2",
+  "customer": "Demo_Fab",
+  "description": "半导体CIM本体→Supabase物理表映射字典",
+
+  "object_mappings": [
+    {
+      "logic_class": "semi:Wafer",
+      "physical_table": "wafers",
+      "primary_key": "id",
+      "label_cn": "晶圆",
+      "display_column": "wafer_id_code",
+      "properties": {
+        "semi:hasState": "status"
+      },
+      "key_columns": ["id", "wafer_id_code", "batch_id", "initial_product_version", "created_at"]
+    },
+    {
+      "logic_class": "semi:ProductionLot",
+      "physical_table": "batches",
+      "primary_key": "id",
+      "label_cn": "批次",
+      "display_column": "batch_code",
+      "properties": {
+        "semi:hasState": "status"
+      },
+      "key_columns": ["id", "batch_code", "product_code", "product_name", "total_qty", "good_qty", "defect_qty", "status", "current_station_code", "current_station_name", "equipment_code", "equipment_name", "recipe_code"]
+    },
+    {
+      "logic_class": "semi:Sublot",
+      "physical_table": "sub_batches",
+      "primary_key": "id",
+      "label_cn": "子批次",
+      "display_column": "sub_batch_code",
+      "properties": {
+        "semi:hasState": "status"
+      },
+      "key_columns": ["id", "batch_id", "sub_batch_code", "current_carrier_id", "current_station_id", "total_qty", "good_qty", "defect_qty", "status"]
+    },
+    {
+      "logic_class": "semi:ProcessStation",
+      "physical_table": "stations",
+      "primary_key": "id",
+      "label_cn": "工艺站点",
+      "display_column": "name",
+      "properties": {},
+      "key_columns": ["id", "code", "name", "description", "workshop", "station_type", "processing_unit", "status"]
+    },
+    {
+      "logic_class": "semi:Equipment",
+      "physical_table": "equipment",
+      "primary_key": "id",
+      "label_cn": "设备",
+      "display_column": "name",
+      "properties": {
+        "semi:hasState": "status",
+        "semi:isQualified": null
+      },
+      "key_columns": ["id", "name", "code", "equipment_group_id", "description", "recipe_id"]
+    },
+    {
+      "logic_class": "semi:Carrier",
+      "physical_table": "carriers",
+      "primary_key": "id",
+      "label_cn": "载具",
+      "display_column": "carrier_code",
+      "properties": {
+        "semi:hasState": "status"
+      },
+      "key_columns": ["id", "carrier_code", "capacity", "status"]
+    },
+    {
+      "logic_class": "semi:Route",
+      "physical_table": "process_routes",
+      "primary_key": "id",
+      "label_cn": "工艺路线",
+      "display_column": "name",
+      "properties": {},
+      "key_columns": ["id", "code", "name", "description", "version", "status", "path_type"]
+    },
+    {
+      "logic_class": "semi:ProductModel",
+      "physical_table": "products",
+      "primary_key": "supabase_id",
+      "label_cn": "产品",
+      "display_column": "product_name",
+      "properties": {},
+      "key_columns": ["supabase_id", "id", "product_code", "product_name", "product_category", "product_type", "customer_name", "status", "main_process_route_id"]
+    },
+    {
+      "logic_class": "semi:ProductionOrder",
+      "physical_table": "production_orders",
+      "primary_key": "id",
+      "label_cn": "生产工单",
+      "display_column": "order_number",
+      "properties": {
+        "semi:hasState": "status"
+      },
+      "key_columns": ["id", "order_type", "order_number", "plan_name", "product_ref_id", "product_name", "target_quantity", "current_progress", "status", "priority"]
+    },
+    {
+      "logic_class": "semi:BOM",
+      "physical_table": "product_boms",
+      "primary_key": "id",
+      "label_cn": "物料清单",
+      "display_column": "template_name",
+      "properties": {},
+      "key_columns": ["id", "template_name", "template_code", "product_type", "version", "bom_items", "total_amount"]
+    },
+    {
+      "logic_class": "semi:Recipe",
+      "physical_table": null,
+      "primary_key": null,
+      "label_cn": "配方",
+      "display_column": null,
+      "virtual": true,
+      "properties": {},
+      "note": "无独立物理表，作为代码/ID引用存在于 batches.recipe_code、stations.recipe_id、equipment.recipe_id",
+      "key_columns": []
+    },
+    {
+      "logic_class": "semi:Material",
+      "physical_table": null,
+      "primary_key": null,
+      "label_cn": "物料",
+      "display_column": null,
+      "virtual": true,
+      "embedded_in": "product_boms.bom_items",
+      "properties": {},
+      "note": "无独立物理表，物料信息嵌入在 product_boms.bom_items (jsonb) 中",
+      "key_columns": []
+    },
+    {
+      "logic_class": "semi:ProcessConstraint",
+      "physical_table": null,
+      "primary_key": null,
+      "label_cn": "工艺约束",
+      "display_column": null,
+      "virtual": true,
+      "properties": {},
+      "note": "中间类，约束信息分散在 products.process_stations (jsonb) 和 stations.parameter_group_ids 中",
+      "key_columns": []
+    },
+    {
+      "logic_class": "semi:Action",
+      "physical_table": null,
+      "primary_key": null,
+      "label_cn": "生产动作",
+      "display_column": null,
+      "virtual": true,
+      "properties": {},
+      "note": "待扩展 — 操作记录散布在各表状态变更中",
+      "key_columns": []
+    }
+  ],
+
+  "relation_mappings": [
+    {
+      "logic_relation": "semi:belongsToLot",
+      "description": "Wafer 属于哪个 Lot(批次)",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "wafers",
+        "source_key": "batch_id",
+        "target_table": "batches",
+        "target_key": "id"
+      }
+    },
+    {
+      "logic_relation": "semi:belongsToSublot",
+      "description": "Wafer 属于哪个 Sublot(子批次)，通过桥接表",
+      "strategy": "JoinTable",
+      "join_logic": {
+        "bridge_table": "wafer_carrier_contents",
+        "source_key": "wafer_id",
+        "target_key": "sub_batch_id",
+        "source_table": "wafers",
+        "source_pk": "id",
+        "target_table": "sub_batches",
+        "target_pk": "id"
+      }
+    },
+    {
+      "logic_relation": "semi:locatedInSlot",
+      "description": "Wafer 位于哪个载具槽位，通过桥接表",
+      "strategy": "JoinTable",
+      "join_logic": {
+        "bridge_table": "wafer_carrier_contents",
+        "source_key": "wafer_id",
+        "target_key": "carrier_id",
+        "source_table": "wafers",
+        "source_pk": "id",
+        "target_table": "carriers",
+        "target_pk": "id"
+      }
+    },
+    {
+      "logic_relation": "semi:atStation",
+      "description": "Wafer 当前所处工序 — 通过 sub_batches 的 current_station_id",
+      "strategy": "Indirect",
+      "join_logic": {
+        "path": [
+          {"from_table": "wafers", "from_key": "batch_id", "to_table": "batches", "to_key": "id"},
+          {"from_table": "batches", "from_key": "id", "to_table": "sub_batches", "to_key": "batch_id"},
+          {"from_table": "sub_batches", "from_key": "current_station_id", "to_table": "stations", "to_key": "id"}
+        ]
+      }
+    },
+    {
+      "logic_relation": "semi:basedOnOrder",
+      "description": "Lot(批次) 基于哪个 ProductionOrder(工单)",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "batches",
+        "source_key": "product_code",
+        "target_table": "production_orders",
+        "target_key": "product_ref_id",
+        "note": "逻辑外键：batches 通过 product_code 与 production_orders 关联"
+      }
+    },
+    {
+      "logic_relation": "semi:containsSublot",
+      "description": "Lot(批次) 包含哪些 Sublot(子批次)",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "batches",
+        "source_key": "id",
+        "target_table": "sub_batches",
+        "target_key": "batch_id"
+      }
+    },
+    {
+      "logic_relation": "semi:isCarriedBy",
+      "description": "Sublot 由哪个载具承载",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "sub_batches",
+        "source_key": "current_carrier_id",
+        "target_table": "carriers",
+        "target_key": "id"
+      }
+    },
+    {
+      "logic_relation": "semi:usesRoute",
+      "description": "ProductModel 使用哪条工艺路线",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "products",
+        "source_key": "main_process_route_id",
+        "target_table": "process_routes",
+        "target_key": "id"
+      }
+    },
+    {
+      "logic_relation": "semi:consistsOfStation",
+      "description": "Route 包含哪些工序节点（有序）",
+      "strategy": "JoinTable",
+      "join_logic": {
+        "bridge_table": "process_route_stations",
+        "source_key": "route_id",
+        "target_key": "station_id",
+        "source_table": "process_routes",
+        "source_pk": "id",
+        "target_table": "stations",
+        "target_pk": "id",
+        "order_by": "sequence"
+      }
+    },
+    {
+      "logic_relation": "semi:definesRequirementFor",
+      "description": "ProductionOrder 定义了哪个产品的规格需求",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "production_orders",
+        "source_key": "product_ref_id",
+        "target_table": "products",
+        "target_key": "supabase_id"
+      }
+    },
+    {
+      "logic_relation": "semi:hasParentLot",
+      "description": "Lot 的父批次（递归追溯）",
+      "strategy": "Recursive",
+      "join_logic": {
+        "table": "batches",
+        "self_key": "id",
+        "parent_key": "parent_batch_id",
+        "max_depth": 20,
+        "note": "需要 WITH RECURSIVE CTE；parent_batch_id 字段可能需要确认是否存在"
+      }
+    },
+    {
+      "logic_relation": "semi:requiresEquipment",
+      "description": "ProcessStation 要求哪些设备",
+      "strategy": "Denormalized",
+      "join_logic": {
+        "source_table": "stations",
+        "jsonb_column": "equipment_group_ids",
+        "target_table": "equipment",
+        "target_key": "equipment_group_id",
+        "note": "stations.equipment_group_ids 是 jsonb 数组，存储 equipment_group 的 ID"
+      }
+    }
+  ],
+
+  "value_mappings": {
+    "semi:WaferState": {
+      "WIP": {
+        "description": "在制品 — 未完成生产的Wafer实例（WIP是状态标记/形容词，不是独立对象）",
+        "physical_condition": "sub_batches.status != 'completed'",
+        "applies_to_table": "sub_batches",
+        "applies_to_column": "status",
+        "note": "Wafer的WIP状态在物理层通过sub_batches的status字段体现"
+      },
+      "Completed": {
+        "description": "已完成生产",
+        "physical_values": ["completed"],
+        "applies_to_table": "sub_batches",
+        "applies_to_column": "status"
+      },
+      "Hold": {
+        "description": "暂停/Hold 状态",
+        "physical_condition": "batches.is_hold = true",
+        "applies_to_table": "batches",
+        "applies_to_column": "is_hold"
+      }
+    },
+    "semi:BatchStatus": {
+      "Active": {
+        "physical_values": ["active", "in_progress", "processing"],
+        "applies_to_table": "batches",
+        "applies_to_column": "status"
+      },
+      "Completed": {
+        "physical_values": ["completed"],
+        "applies_to_table": "batches",
+        "applies_to_column": "status"
+      }
+    },
+    "semi:CarrierStatus": {
+      "Clean": {
+        "physical_values": ["clean", "available"],
+        "applies_to_table": "carriers",
+        "applies_to_column": "status"
+      },
+      "Contaminated": {
+        "physical_values": ["dirty", "contaminated", "needs_cleaning"],
+        "applies_to_table": "carriers",
+        "applies_to_column": "status"
+      }
+    }
+  },
+
+  "business_rules": [
+    {
+      "id": "wip_count",
+      "name": "在制品(WIP)数量统计",
+      "description": "WIP是Wafer实例上的动态状态属性（形容词），不是独立对象。统计WIP数量时，查询sub_batches中status != 'completed'的记录，按station分组。",
+      "semantic_pattern": "COUNT + WIP + Station",
+      "physical_sql_template": "SELECT s.name AS station_name, COUNT(*) AS wip_count FROM sub_batches sb JOIN stations s ON sb.current_station_id = s.id WHERE sb.status != 'completed' GROUP BY s.name ORDER BY wip_count DESC",
+      "involved_tables": ["sub_batches", "stations"],
+      "involved_relations": ["semi:containsSublot", "semi:atStation"]
+    },
+    {
+      "id": "chinese_name_filter",
+      "name": "中文名过滤规则",
+      "description": "对工站、设备按中文名过滤时，使用 name 字段（中文显示名），而不是 code 字段（英文编码）",
+      "applies_to": ["stations.name", "equipment.name", "products.product_name"]
+    },
+    {
+      "id": "batch_station_denormalized",
+      "name": "批次-工站反范式",
+      "description": "batches 表直接存储了 current_station_code 和 current_station_name（反范式），查询批次当前工站时可直接取字段而无需 JOIN stations",
+      "applies_to": ["batches.current_station_code", "batches.current_station_name"]
+    },
+    {
+      "id": "route_vs_wip",
+      "name": "工艺路线定义表 vs WIP数据",
+      "description": "process_route_stations 是工艺路线定义表（定义了路线包含哪些工序及顺序），NOT WIP数据。查询在制品数量不应使用此表。",
+      "warning_tables": ["process_route_stations"]
+    }
+  ]
+}

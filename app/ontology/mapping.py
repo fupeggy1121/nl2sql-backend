@@ -1,0 +1,410 @@
+"""
+映射字典模块 (MappingDictionary)
+
+加载 mapping_demo_fab.json，提供：
+  - 逻辑类 → 物理表/主键/列 的正向查找
+  - 关系 → 物理 JOIN 条件的翻译
+  - 语义值 → 物理 SQL 条件的转换
+  - 业务规则查询
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from app.ontology.config import ONTOLOGY_DATA_DIR, SEMI_NS
+
+# --------------------------------------------------------------------- #
+# Data classes
+# --------------------------------------------------------------------- #
+
+@dataclass
+class PhysicalTable:
+    """一个本体类对应的物理表描述"""
+    logic_class: str          # e.g. "semi:Wafer"
+    table_name: Optional[str] # None when virtual
+    primary_key: Optional[str]
+    label_cn: str
+    display_column: Optional[str]
+    key_columns: List[str] = field(default_factory=list)
+    properties: Dict[str, Optional[str]] = field(default_factory=dict)
+    virtual: bool = False
+    embedded_in: Optional[str] = None
+    note: Optional[str] = None
+
+
+@dataclass
+class JoinCondition:
+    """一条 JOIN 路径"""
+    from_table: str
+    from_key: str
+    to_table: str
+    to_key: str
+
+
+@dataclass
+class RelationMapping:
+    """一条本体关系 → 物理 JOIN 映射"""
+    logic_relation: str          # e.g. "semi:belongsToLot"
+    description: str
+    strategy: str                # ForeignKey / JoinTable / Indirect / Recursive / Denormalized
+    join_conditions: List[JoinCondition] = field(default_factory=list)
+    bridge_table: Optional[str] = None
+    order_by: Optional[str] = None
+    note: Optional[str] = None
+
+
+@dataclass
+class ValueMapping:
+    """语义值 → 物理值条件"""
+    semantic_value: str
+    description: str = ""
+    physical_values: Optional[List[str]] = None
+    physical_condition: Optional[str] = None
+    applies_to_table: Optional[str] = None
+    applies_to_column: Optional[str] = None
+    note: Optional[str] = None
+
+
+@dataclass
+class BusinessRule:
+    """业务规则"""
+    id: str
+    name: str
+    description: str
+    semantic_pattern: Optional[str] = None
+    physical_sql_template: Optional[str] = None
+    involved_tables: List[str] = field(default_factory=list)
+    involved_relations: List[str] = field(default_factory=list)
+    applies_to: List[str] = field(default_factory=list)
+    warning_tables: List[str] = field(default_factory=list)
+
+
+# --------------------------------------------------------------------- #
+# MappingDictionary
+# --------------------------------------------------------------------- #
+
+_MAPPING_FILE = ONTOLOGY_DATA_DIR / "mapping_demo_fab.json"
+
+_cached_mapping: Optional["MappingDictionary"] = None
+
+
+class MappingDictionary:
+    """
+    映射字典 — 将本体层概念映射到物理数据库层。
+
+    提供四大核心能力：
+      1. get_physical_table(logic_class)  — 逻辑类 → 物理表
+      2. get_join_path(relation)           — 关系 → JOIN 条件链
+      3. map_value(domain, value)          — 语义值 → SQL 条件
+      4. get_business_rules(context)       — 上下文相关业务规则
+    """
+
+    def __init__(self, mapping_file: Optional[Path] = None):
+        self._file = mapping_file or _MAPPING_FILE
+        self._raw: Dict[str, Any] = {}
+
+        # 索引结构
+        self._table_by_class: Dict[str, PhysicalTable] = {}      # "semi:Wafer" → PhysicalTable
+        self._table_by_label: Dict[str, PhysicalTable] = {}      # "晶圆" → PhysicalTable
+        self._table_by_physical: Dict[str, PhysicalTable] = {}   # "wafers" → PhysicalTable
+        self._relation_map: Dict[str, RelationMapping] = {}      # "semi:belongsToLot" → RelationMapping
+        self._value_map: Dict[str, Dict[str, ValueMapping]] = {} # "semi:WaferState" -> {"WIP": ValueMapping}
+        self._business_rules: List[BusinessRule] = []
+
+        self._load()
+
+    # ----------------------------------------------------------------- #
+    # Loading
+    # ----------------------------------------------------------------- #
+
+    def _load(self) -> None:
+        with open(self._file, "r", encoding="utf-8") as f:
+            self._raw = json.load(f)
+
+        self._parse_object_mappings(self._raw.get("object_mappings", []))
+        self._parse_relation_mappings(self._raw.get("relation_mappings", []))
+        self._parse_value_mappings(self._raw.get("value_mappings", {}))
+        self._parse_business_rules(self._raw.get("business_rules", []))
+
+    def _parse_object_mappings(self, items: List[Dict]) -> None:
+        for item in items:
+            pt = PhysicalTable(
+                logic_class=item["logic_class"],
+                table_name=item.get("physical_table"),
+                primary_key=item.get("primary_key"),
+                label_cn=item.get("label_cn", ""),
+                display_column=item.get("display_column"),
+                key_columns=item.get("key_columns", []),
+                properties=item.get("properties", {}),
+                virtual=item.get("virtual", False),
+                embedded_in=item.get("embedded_in"),
+                note=item.get("note"),
+            )
+            self._table_by_class[pt.logic_class] = pt
+            if pt.label_cn:
+                self._table_by_label[pt.label_cn] = pt
+            if pt.table_name:
+                self._table_by_physical[pt.table_name] = pt
+
+    def _parse_relation_mappings(self, items: List[Dict]) -> None:
+        for item in items:
+            strategy = item.get("strategy", "ForeignKey")
+            jl = item.get("join_logic", {})
+            conditions: List[JoinCondition] = []
+            bridge: Optional[str] = None
+            order_by: Optional[str] = None
+
+            if strategy == "ForeignKey":
+                conditions.append(JoinCondition(
+                    from_table=jl["source_table"],
+                    from_key=jl["source_key"],
+                    to_table=jl["target_table"],
+                    to_key=jl["target_key"],
+                ))
+            elif strategy == "JoinTable":
+                bridge = jl.get("bridge_table")
+                order_by = jl.get("order_by")
+                # bridge → source
+                conditions.append(JoinCondition(
+                    from_table=jl.get("source_table", ""),
+                    from_key=jl.get("source_pk", "id"),
+                    to_table=bridge or "",
+                    to_key=jl.get("source_key", ""),
+                ))
+                # bridge → target
+                conditions.append(JoinCondition(
+                    from_table=bridge or "",
+                    from_key=jl.get("target_key", ""),
+                    to_table=jl.get("target_table", ""),
+                    to_key=jl.get("target_pk", "id"),
+                ))
+            elif strategy == "Indirect":
+                for step in jl.get("path", []):
+                    conditions.append(JoinCondition(
+                        from_table=step["from_table"],
+                        from_key=step["from_key"],
+                        to_table=step["to_table"],
+                        to_key=step["to_key"],
+                    ))
+            elif strategy in ("Recursive", "Denormalized"):
+                # 保留原始 join_logic，不做 JOIN 链拆解
+                pass
+
+            rm = RelationMapping(
+                logic_relation=item["logic_relation"],
+                description=item.get("description", ""),
+                strategy=strategy,
+                join_conditions=conditions,
+                bridge_table=bridge,
+                order_by=order_by,
+                note=jl.get("note"),
+            )
+            self._relation_map[rm.logic_relation] = rm
+
+    def _parse_value_mappings(self, data: Dict[str, Dict]) -> None:
+        for domain, values in data.items():
+            self._value_map[domain] = {}
+            for val_key, val_data in values.items():
+                vm = ValueMapping(
+                    semantic_value=val_key,
+                    description=val_data.get("description", ""),
+                    physical_values=val_data.get("physical_values"),
+                    physical_condition=val_data.get("physical_condition"),
+                    applies_to_table=val_data.get("applies_to_table"),
+                    applies_to_column=val_data.get("applies_to_column"),
+                    note=val_data.get("note"),
+                )
+                self._value_map[domain][val_key] = vm
+
+    def _parse_business_rules(self, items: List[Dict]) -> None:
+        for item in items:
+            br = BusinessRule(
+                id=item["id"],
+                name=item.get("name", ""),
+                description=item.get("description", ""),
+                semantic_pattern=item.get("semantic_pattern"),
+                physical_sql_template=item.get("physical_sql_template"),
+                involved_tables=item.get("involved_tables", []),
+                involved_relations=item.get("involved_relations", []),
+                applies_to=item.get("applies_to", []),
+                warning_tables=item.get("warning_tables", []),
+            )
+            self._business_rules.append(br)
+
+    # ----------------------------------------------------------------- #
+    # 1. 逻辑类 → 物理表
+    # ----------------------------------------------------------------- #
+
+    def get_physical_table(self, logic_class: str) -> Optional[PhysicalTable]:
+        """
+        根据本体类URI查找物理表。
+
+        Args:
+            logic_class: 如 "semi:Wafer" 或完整URI
+        """
+        # 先精确匹配
+        if logic_class in self._table_by_class:
+            return self._table_by_class[logic_class]
+        # 尝试添加 semi: 前缀
+        prefixed = f"semi:{logic_class}" if not logic_class.startswith("semi:") else logic_class
+        return self._table_by_class.get(prefixed)
+
+    def get_table_by_label(self, label_cn: str) -> Optional[PhysicalTable]:
+        """根据中文标签查找物理表"""
+        return self._table_by_label.get(label_cn)
+
+    def get_table_by_physical_name(self, table_name: str) -> Optional[PhysicalTable]:
+        """根据物理表名反向查找"""
+        return self._table_by_physical.get(table_name)
+
+    def list_all_tables(self) -> List[PhysicalTable]:
+        """返回所有映射条目（含虚拟类）"""
+        return list(self._table_by_class.values())
+
+    def list_physical_tables(self) -> List[PhysicalTable]:
+        """返回所有有物理表的映射条目（排除虚拟类）"""
+        return [t for t in self._table_by_class.values() if not t.virtual]
+
+    # ----------------------------------------------------------------- #
+    # 2. 关系 → JOIN 条件
+    # ----------------------------------------------------------------- #
+
+    def get_join_path(self, relation: str) -> Optional[RelationMapping]:
+        """
+        根据本体关系URI查找物理JOIN映射。
+
+        Args:
+            relation: 如 "semi:belongsToLot"
+        """
+        if relation in self._relation_map:
+            return self._relation_map[relation]
+        prefixed = f"semi:{relation}" if not relation.startswith("semi:") else relation
+        return self._relation_map.get(prefixed)
+
+    def get_join_between_tables(self, source_table: str, target_table: str) -> List[RelationMapping]:
+        """
+        查找连接两张物理表的所有关系映射。
+
+        Returns:
+            匹配的 RelationMapping 列表
+        """
+        results = []
+        for rm in self._relation_map.values():
+            tables_in_path = set()
+            for jc in rm.join_conditions:
+                tables_in_path.add(jc.from_table)
+                tables_in_path.add(jc.to_table)
+            if rm.bridge_table:
+                tables_in_path.add(rm.bridge_table)
+            if source_table in tables_in_path and target_table in tables_in_path:
+                results.append(rm)
+        return results
+
+    def list_all_relations(self) -> List[RelationMapping]:
+        """返回所有关系映射"""
+        return list(self._relation_map.values())
+
+    # ----------------------------------------------------------------- #
+    # 3. 语义值 → SQL 条件
+    # ----------------------------------------------------------------- #
+
+    def map_value(self, domain: str, semantic_value: str) -> Optional[ValueMapping]:
+        """
+        将语义值映射到物理 SQL 条件。
+
+        Args:
+            domain: 值域，如 "semi:WaferState"
+            semantic_value: 语义值，如 "WIP"
+        """
+        domain_map = self._value_map.get(domain)
+        if domain_map is None:
+            # 尝试加前缀
+            prefixed = f"semi:{domain}" if not domain.startswith("semi:") else domain
+            domain_map = self._value_map.get(prefixed)
+        if domain_map is None:
+            return None
+        return domain_map.get(semantic_value)
+
+    def get_wip_condition(self) -> Optional[ValueMapping]:
+        """快捷方法：获取 WIP（在制品）的物理过滤条件"""
+        return self.map_value("semi:WaferState", "WIP")
+
+    def list_value_domains(self) -> List[str]:
+        """返回所有值域名"""
+        return list(self._value_map.keys())
+
+    def list_values_in_domain(self, domain: str) -> Dict[str, ValueMapping]:
+        """返回某个域下的所有值映射"""
+        return self._value_map.get(domain, {})
+
+    # ----------------------------------------------------------------- #
+    # 4. 业务规则
+    # ----------------------------------------------------------------- #
+
+    def get_business_rules(self, involved_tables: Optional[List[str]] = None) -> List[BusinessRule]:
+        """
+        获取业务规则。如果指定了表名，只返回相关规则。
+
+        Args:
+            involved_tables: 物理表名列表。None 返回全部规则。
+        """
+        if involved_tables is None:
+            return list(self._business_rules)
+
+        table_set = set(involved_tables)
+        result = []
+        for br in self._business_rules:
+            all_tables = set(br.involved_tables) | set(br.applies_to) | set(br.warning_tables)
+            # 展开 "table.column" 为 "table"
+            expanded = set()
+            for t in all_tables:
+                expanded.add(t.split(".")[0])
+            if expanded & table_set:
+                result.append(br)
+        return result
+
+    def get_rule_by_id(self, rule_id: str) -> Optional[BusinessRule]:
+        """根据ID获取单条业务规则"""
+        for br in self._business_rules:
+            if br.id == rule_id:
+                return br
+        return None
+
+    # ----------------------------------------------------------------- #
+    # Summary
+    # ----------------------------------------------------------------- #
+
+    def summary(self) -> Dict[str, Any]:
+        physical_count = sum(1 for t in self._table_by_class.values() if not t.virtual)
+        virtual_count = sum(1 for t in self._table_by_class.values() if t.virtual)
+        return {
+            "version": self._raw.get("version", "unknown"),
+            "customer": self._raw.get("customer", "unknown"),
+            "object_mappings_total": len(self._table_by_class),
+            "physical_tables": physical_count,
+            "virtual_classes": virtual_count,
+            "relation_mappings": len(self._relation_map),
+            "value_domains": len(self._value_map),
+            "business_rules": len(self._business_rules),
+        }
+
+
+# --------------------------------------------------------------------- #
+# Module-level convenience functions
+# --------------------------------------------------------------------- #
+
+def load_mapping(mapping_file: Optional[Path] = None, force_reload: bool = False) -> MappingDictionary:
+    """加载映射字典（带缓存）"""
+    global _cached_mapping
+    if _cached_mapping is None or force_reload:
+        _cached_mapping = MappingDictionary(mapping_file)
+    return _cached_mapping
+
+
+def get_mapping() -> MappingDictionary:
+    """获取已缓存的映射字典实例"""
+    return load_mapping()
