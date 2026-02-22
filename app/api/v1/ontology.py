@@ -8,6 +8,7 @@
   POST /api/v1/ontology/resolve   — 自然语言 → SemanticContext
   GET  /api/v1/ontology/recursive — 获取递归 CTE SQL
   GET  /api/v1/ontology/values    — 列出所有值域
+  POST /api/v1/ontology/reload    — 热重载 TTL/mapping JSON（无需重启）
 """
 
 import logging
@@ -17,8 +18,8 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.ontology.context_builder import SemanticContextBuilder, build_semantic_context
-from app.ontology.loader import get_ontology
-from app.ontology.mapping import get_mapping
+from app.ontology.loader import get_ontology, load_ontology
+from app.ontology.mapping import get_mapping, load_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +224,29 @@ async def list_value_domains() -> Dict[str, Any]:
             for k, v in values.items()
         }
     return {"domains_count": len(result), "domains": result}
+
+
+@router.post("/reload")
+async def reload_ontology_and_mapping() -> Dict[str, Any]:
+    """
+    热重载 TTL 本体 + mapping JSON，无需重启服务。
+
+    从磁盘重新读取文件，刷新内存缓存，返回最新统计摘要。
+    """
+    try:
+        ontology = load_ontology(force_reload=True)
+        mapping = load_mapping(force_reload=True)
+        logger.info("Hot-reload complete: ontology=%s, mapping=%s",
+                     ontology.summary(), mapping.summary())
+        return {
+            "success": True,
+            "message": "TTL 本体和 mapping JSON 已重新加载",
+            "ontology": ontology.summary(),
+            "mapping": mapping.summary(),
+        }
+    except Exception as e:
+        logger.error("Hot-reload failed: %s", e)
+        raise HTTPException(500, f"重载失败: {e}")
 
 
 # ── 工具函数 ──

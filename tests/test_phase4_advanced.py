@@ -384,6 +384,14 @@ class TestOntologyAPIEndpoints:
         assert "semi:EquipmentStatus" in data["domains"]
         assert "semi:OrderPriority" in data["domains"]
 
+    def test_reload_endpoint(self, client):
+        resp = client.post("/api/v1/ontology/reload")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["ontology"]["classes"] >= 10
+        assert data["mapping"]["value_domains"] >= 9
+
 
 # ================================================================== #
 #  Part E: 新业务规则
