@@ -56,6 +56,16 @@ class RelationMapping:
     order_by: Optional[str] = None
     note: Optional[str] = None
 
+@dataclass
+class RecursiveMapping:
+    """递归自关联描述（如 hasParentLot）"""
+    logic_relation: str       # e.g. "semi:hasParentLot"
+    table: str                # e.g. "batches"
+    self_key: str             # e.g. "id"
+    parent_key: str           # e.g. "parent_batch_id"
+    max_depth: int = 20
+    description: str = ""
+    note: Optional[str] = None
 
 @dataclass
 class ValueMapping:
@@ -112,6 +122,7 @@ class MappingDictionary:
         self._table_by_label: Dict[str, PhysicalTable] = {}      # "晶圆" → PhysicalTable
         self._table_by_physical: Dict[str, PhysicalTable] = {}   # "wafers" → PhysicalTable
         self._relation_map: Dict[str, RelationMapping] = {}      # "semi:belongsToLot" → RelationMapping
+        self._recursive_map: Dict[str, RecursiveMapping] = {}    # "semi:hasParentLot" → RecursiveMapping
         self._value_map: Dict[str, Dict[str, ValueMapping]] = {} # "semi:WaferState" -> {"WIP": ValueMapping}
         self._business_rules: List[BusinessRule] = []
 
@@ -192,7 +203,18 @@ class MappingDictionary:
                     ))
             elif strategy in ("Recursive", "Denormalized"):
                 # 保留原始 join_logic，不做 JOIN 链拆解
-                pass
+                # Recursive 策略额外构建 RecursiveMapping 索引
+                if strategy == "Recursive":
+                    rec = RecursiveMapping(
+                        logic_relation=item["logic_relation"],
+                        table=jl.get("table", ""),
+                        self_key=jl.get("self_key", "id"),
+                        parent_key=jl.get("parent_key", ""),
+                        max_depth=jl.get("max_depth", 20),
+                        description=item.get("description", ""),
+                        note=jl.get("note"),
+                    )
+                    self._recursive_map[rec.logic_relation] = rec
 
             rm = RelationMapping(
                 logic_relation=item["logic_relation"],
@@ -375,6 +397,90 @@ class MappingDictionary:
         return None
 
     # ----------------------------------------------------------------- #
+    # 5. 递归追溯 CTE 编译
+    # ----------------------------------------------------------------- #
+
+    def get_recursive_mapping(self, relation: str) -> Optional[RecursiveMapping]:
+        """获取递归关系映射"""
+        if relation in self._recursive_map:
+            return self._recursive_map[relation]
+        prefixed = f"semi:{relation}" if not relation.startswith("semi:") else relation
+        return self._recursive_map.get(prefixed)
+
+    def list_recursive_relations(self) -> List[RecursiveMapping]:
+        """返回所有递归关系映射"""
+        return list(self._recursive_map.values())
+
+    def compile_recursive_cte(
+        self,
+        relation: str,
+        anchor_condition: Optional[str] = None,
+        select_columns: Optional[List[str]] = None,
+        cte_alias: str = "lot_tree",
+        include_depth: bool = True,
+    ) -> Optional[str]:
+        """
+        将递归关系编译为 WITH RECURSIVE CTE SQL 片段。
+
+        Args:
+            relation: 本体关系，如 "semi:hasParentLot"
+            anchor_condition: 锚定条件，如 "batch_code = 'B001'"。None 则查全部根节点。
+            select_columns: 要投影的列。None 则返回全表列。
+            cte_alias: CTE 名称，默认 "lot_tree"
+            include_depth: 是否添加递归深度列
+
+        Returns:
+            完整的 WITH RECURSIVE ... SELECT 语句，或 None
+        """
+        rec = self.get_recursive_mapping(relation)
+        if rec is None:
+            return None
+
+        table = rec.table
+        self_key = rec.self_key
+        parent_key = rec.parent_key
+        max_depth = rec.max_depth
+
+        # 决定 SELECT 列
+        if select_columns:
+            cols = ", ".join(select_columns)
+            anchor_cols = ", ".join(f"t.{c}" for c in select_columns)
+            recursive_cols = ", ".join(f"t.{c}" for c in select_columns)
+        else:
+            cols = "t.*"
+            anchor_cols = "t.*"
+            recursive_cols = "t.*"
+
+        depth_col = ", 1 AS lvl" if include_depth else ""
+        depth_inc = ", tree.lvl + 1" if include_depth else ""
+        depth_filter = f"\n  AND tree.lvl < {max_depth}" if include_depth else ""
+
+        # 锚定条件
+        if anchor_condition:
+            anchor_where = f"WHERE {anchor_condition}"
+        else:
+            anchor_where = f"WHERE t.{parent_key} IS NULL"
+
+        order_clause = "\nORDER BY lvl;" if include_depth else ";"
+
+        cte = f"""WITH RECURSIVE {cte_alias} AS (
+  -- 锚定查询: 起始节点
+  SELECT {anchor_cols}{depth_col}
+  FROM {table} t
+  {anchor_where}
+
+  UNION ALL
+
+  -- 递归查询: 沿 {parent_key} 向下/向上追溯
+  SELECT {recursive_cols}{depth_inc}
+  FROM {table} t
+  INNER JOIN {cte_alias} tree ON t.{parent_key} = tree.{self_key}{depth_filter}
+)
+SELECT * FROM {cte_alias}{order_clause}"""
+
+        return cte
+
+    # ----------------------------------------------------------------- #
     # Summary
     # ----------------------------------------------------------------- #
 
@@ -388,6 +494,7 @@ class MappingDictionary:
             "physical_tables": physical_count,
             "virtual_classes": virtual_count,
             "relation_mappings": len(self._relation_map),
+            "recursive_relations": len(self._recursive_map),
             "value_domains": len(self._value_map),
             "business_rules": len(self._business_rules),
         }

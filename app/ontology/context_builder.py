@@ -25,6 +25,7 @@ from app.ontology.mapping import (
     JoinCondition,
     MappingDictionary,
     PhysicalTable,
+    RecursiveMapping,
     RelationMapping,
     ValueMapping,
     get_mapping,
@@ -75,12 +76,25 @@ class ResolvedFilter:
 
 
 @dataclass
+class ResolvedRecursive:
+    """递归追溯解析结果 — WITH RECURSIVE CTE 片段"""
+    logic_relation: str             # e.g. "semi:hasParentLot"
+    table: str                      # e.g. "batches"
+    self_key: str
+    parent_key: str
+    max_depth: int
+    cte_sql: str                    # 编译好的 WITH RECURSIVE SQL
+    description: str = ""
+
+
+@dataclass
 class SemanticContext:
     """语义解析的最终上下文 — 传递给 SQL 编译器"""
     user_query: str
     matched_classes: List[MatchedClass] = field(default_factory=list)
     joins: List[ResolvedJoin] = field(default_factory=list)
     filters: List[ResolvedFilter] = field(default_factory=list)
+    recursive: List[ResolvedRecursive] = field(default_factory=list)
     business_rules: List[BusinessRule] = field(default_factory=list)
 
     # 快捷属性
@@ -127,6 +141,12 @@ class SemanticContext:
                     lines.append(
                         f"  WHERE {f.applies_to_table}.{f.applies_to_column} IN ({vals})  -- {f.description}"
                     )
+        if self.recursive:
+            lines.append("")
+            lines.append("-- Recursive CTE (batch/lot tree)")
+            for r in self.recursive:
+                lines.append(f"  -- {r.description}")
+                lines.append(r.cte_sql)
         return "\n".join(lines)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -172,6 +192,18 @@ class SemanticContext:
                 }
                 for f in self.filters
             ],
+            "recursive": [
+                {
+                    "logic_relation": r.logic_relation,
+                    "table": r.table,
+                    "self_key": r.self_key,
+                    "parent_key": r.parent_key,
+                    "max_depth": r.max_depth,
+                    "cte_sql": r.cte_sql,
+                    "description": r.description,
+                }
+                for r in self.recursive
+            ],
             "business_rules": [
                 {"id": br.id, "name": br.name, "description": br.description}
                 for br in self.business_rules
@@ -216,11 +248,27 @@ _CLASS_SYNONYMS: Dict[str, str] = {
 
 
 # --------------------------------------------------------------------- #
+# Recursive / tree traversal trigger keywords
+# --------------------------------------------------------------------- #
+
+_RECURSIVE_KEYWORDS: Dict[str, str] = {
+    "父批次": "semi:hasParentLot",
+    "母批次": "semi:hasParentLot",
+    "批次树": "semi:hasParentLot",
+    "追溯": "semi:hasParentLot",
+    "批次层级": "semi:hasParentLot",
+    "parent lot": "semi:hasParentLot",
+    "lot tree": "semi:hasParentLot",
+}
+
+
+# --------------------------------------------------------------------- #
 # Keyword dictionary for value mapping triggers
 # --------------------------------------------------------------------- #
 
 # 中文关键词 → (语义域, 语义值)
 _VALUE_KEYWORDS: Dict[str, Tuple[str, str]] = {
+    # ── WaferState (sub_batches.status) ──
     "在制品": ("semi:WaferState", "WIP"),
     "wip": ("semi:WaferState", "WIP"),
     "在制": ("semi:WaferState", "WIP"),
@@ -228,9 +276,47 @@ _VALUE_KEYWORDS: Dict[str, Tuple[str, str]] = {
     "完工": ("semi:WaferState", "Completed"),
     "hold": ("semi:WaferState", "Hold"),
     "暂停": ("semi:WaferState", "Hold"),
+
+    # ── CarrierStatus ──
     "污染": ("semi:CarrierStatus", "Contaminated"),
     "脏": ("semi:CarrierStatus", "Contaminated"),
     "清洁": ("semi:CarrierStatus", "Clean"),
+
+    # ── EquipmentStatus (Phase 4) ──
+    "运行中": ("semi:EquipmentStatus", "Running"),
+    "running": ("semi:EquipmentStatus", "Running"),
+    "空闲": ("semi:EquipmentStatus", "Idle"),
+    "idle": ("semi:EquipmentStatus", "Idle"),
+    "待机": ("semi:EquipmentStatus", "Idle"),
+    "维护": ("semi:EquipmentStatus", "Maintenance"),
+    "保养": ("semi:EquipmentStatus", "Maintenance"),
+    "pm": ("semi:EquipmentStatus", "Maintenance"),
+    "宕机": ("semi:EquipmentStatus", "Down"),
+    "故障": ("semi:EquipmentStatus", "Down"),
+    "down": ("semi:EquipmentStatus", "Down"),
+
+    # ── OrderStatus (Phase 4) ──
+    "工单进行中": ("semi:OrderStatus", "Active"),
+    "工单完成": ("semi:OrderStatus", "Completed"),
+    "工单取消": ("semi:OrderStatus", "Cancelled"),
+
+    # ── OrderPriority (Phase 4) ──
+    "紧急": ("semi:OrderPriority", "High"),
+    "高优先级": ("semi:OrderPriority", "High"),
+    "urgent": ("semi:OrderPriority", "High"),
+    "中优先级": ("semi:OrderPriority", "Medium"),
+    "低优先级": ("semi:OrderPriority", "Low"),
+
+    # ── StationStatus (Phase 4) ──
+    "工站停用": ("semi:StationStatus", "Inactive"),
+    "工站维护": ("semi:StationStatus", "Maintenance"),
+
+    # ── RouteStatus (Phase 4) ──
+    "路线停用": ("semi:RouteStatus", "Inactive"),
+
+    # ── ProductStatus (Phase 4) ──
+    "停产": ("semi:ProductStatus", "Inactive"),
+    "在产": ("semi:ProductStatus", "Active"),
 }
 
 
@@ -286,6 +372,16 @@ class SemanticContextBuilder:
                 "Matched %d value filters: %s",
                 len(filters),
                 [(f.semantic_domain, f.semantic_value) for f in filters],
+            )
+
+        # Step 2.5: 递归追溯检测
+        recursive = self._match_recursive(user_query)
+        ctx.recursive = recursive
+        if recursive:
+            logger.info(
+                "Matched %d recursive patterns: %s",
+                len(recursive),
+                [r.logic_relation for r in recursive],
             )
 
         # Step 3: 路径发现 + JOIN 翻译
@@ -429,6 +525,43 @@ class SemanticContextBuilder:
                         applies_to_table=vm.applies_to_table,
                         applies_to_column=vm.applies_to_column,
                     ))
+        return results
+
+    # ----------------------------------------------------------------- #
+    # Step 2.5: 递归追溯关键词 → CTE
+    # ----------------------------------------------------------------- #
+
+    def _match_recursive(self, query: str) -> List[ResolvedRecursive]:
+        """检测查询中是否涉及递归追溯关键词，自动编译 CTE"""
+        results: List[ResolvedRecursive] = []
+        seen_relations: Set[str] = set()
+        query_lower = query.lower()
+
+        for keyword, relation in _RECURSIVE_KEYWORDS.items():
+            if keyword in query_lower and relation not in seen_relations:
+                seen_relations.add(relation)
+                rec = self._mapping.get_recursive_mapping(relation)
+                if rec is None:
+                    continue
+
+                # 编译 CTE
+                cte_sql = self._mapping.compile_recursive_cte(
+                    relation=relation,
+                    anchor_condition=None,  # 默认查全部根节点
+                    select_columns=None,
+                    include_depth=True,
+                )
+                if cte_sql:
+                    results.append(ResolvedRecursive(
+                        logic_relation=relation,
+                        table=rec.table,
+                        self_key=rec.self_key,
+                        parent_key=rec.parent_key,
+                        max_depth=rec.max_depth,
+                        cte_sql=cte_sql,
+                        description=rec.description,
+                    ))
+
         return results
 
     # ----------------------------------------------------------------- #

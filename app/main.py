@@ -71,6 +71,10 @@ def _register_routes(app: FastAPI):
     from app.api.v1.llm_provider import router as llm_provider_router
     app.include_router(llm_provider_router)
 
+    # 本体语义 API (Phase 4)
+    from app.api.v1.ontology import router as ontology_router
+    app.include_router(ontology_router)
+
     # 旧 API 兼容层
     from app.api.compat import router as compat_router
     app.include_router(compat_router)

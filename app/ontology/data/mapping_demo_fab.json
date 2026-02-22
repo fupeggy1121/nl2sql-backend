@@ -348,6 +348,120 @@
         "applies_to_table": "carriers",
         "applies_to_column": "status"
       }
+    },
+    "semi:EquipmentStatus": {
+      "Running": {
+        "description": "设备运行中",
+        "physical_values": ["running", "processing"],
+        "applies_to_table": "equipment",
+        "applies_to_column": "status"
+      },
+      "Idle": {
+        "description": "设备空闲",
+        "physical_values": ["idle", "standby"],
+        "applies_to_table": "equipment",
+        "applies_to_column": "status"
+      },
+      "Maintenance": {
+        "description": "设备维护/保养中",
+        "physical_values": ["maintenance", "pm"],
+        "applies_to_table": "equipment",
+        "applies_to_column": "status"
+      },
+      "Down": {
+        "description": "设备宕机/故障",
+        "physical_values": ["down", "fault", "error"],
+        "applies_to_table": "equipment",
+        "applies_to_column": "status"
+      }
+    },
+    "semi:OrderStatus": {
+      "Active": {
+        "description": "工单进行中",
+        "physical_values": ["active", "in_progress", "processing"],
+        "applies_to_table": "production_orders",
+        "applies_to_column": "status"
+      },
+      "Completed": {
+        "description": "工单已完成",
+        "physical_values": ["completed", "done"],
+        "applies_to_table": "production_orders",
+        "applies_to_column": "status"
+      },
+      "Cancelled": {
+        "description": "工单已取消",
+        "physical_values": ["cancelled", "canceled"],
+        "applies_to_table": "production_orders",
+        "applies_to_column": "status"
+      }
+    },
+    "semi:OrderPriority": {
+      "High": {
+        "description": "高优先级/紧急工单",
+        "physical_values": ["high", "urgent"],
+        "applies_to_table": "production_orders",
+        "applies_to_column": "priority"
+      },
+      "Medium": {
+        "description": "中优先级工单",
+        "physical_values": ["medium", "normal"],
+        "applies_to_table": "production_orders",
+        "applies_to_column": "priority"
+      },
+      "Low": {
+        "description": "低优先级工单",
+        "physical_values": ["low"],
+        "applies_to_table": "production_orders",
+        "applies_to_column": "priority"
+      }
+    },
+    "semi:StationStatus": {
+      "Active": {
+        "description": "工站启用中",
+        "physical_values": ["active", "enabled"],
+        "applies_to_table": "stations",
+        "applies_to_column": "status"
+      },
+      "Inactive": {
+        "description": "工站停用",
+        "physical_values": ["inactive", "disabled"],
+        "applies_to_table": "stations",
+        "applies_to_column": "status"
+      },
+      "Maintenance": {
+        "description": "工站维护中",
+        "physical_values": ["maintenance"],
+        "applies_to_table": "stations",
+        "applies_to_column": "status"
+      }
+    },
+    "semi:RouteStatus": {
+      "Active": {
+        "description": "工艺路线启用",
+        "physical_values": ["active", "released"],
+        "applies_to_table": "process_routes",
+        "applies_to_column": "status"
+      },
+      "Inactive": {
+        "description": "工艺路线停用/草稿",
+        "physical_values": ["inactive", "draft", "obsolete"],
+        "applies_to_table": "process_routes",
+        "applies_to_column": "status"
+      }
+    },
+    "semi:ProductStatus": {
+      "Active": {
+        "description": "产品在产",
+        "physical_values": ["active", "in_production"],
+        "applies_to_table": "products",
+        "applies_to_column": "status"
+      },
+      "Inactive": {
+        "description": "产品停产",
+        "physical_values": ["inactive", "discontinued", "eol"],
+        "applies_to_table": "products",
+        "applies_to_column": "status"
+      }
     }
   },
 
@@ -378,6 +492,29 @@
       "name": "工艺路线定义表 vs WIP数据",
       "description": "process_route_stations 是工艺路线定义表（定义了路线包含哪些工序及顺序），NOT WIP数据。查询在制品数量不应使用此表。",
       "warning_tables": ["process_route_stations"]
+    },
+    {
+      "id": "equipment_utilization",
+      "name": "设备稼动率统计",
+      "description": "统计设备利用率时，按 equipment.status 中 running 状态占比计算。分组维度通常为 equipment_group_id 或按关联工站分组。",
+      "semantic_pattern": "设备利用率 + Equipment",
+      "involved_tables": ["equipment"],
+      "involved_relations": ["semi:requiresEquipment"]
+    },
+    {
+      "id": "order_priority_filter",
+      "name": "工单优先级过滤",
+      "description": "工单优先级字段为 production_orders.priority，取值范围含 high/medium/low/urgent。紧急工单对应 priority IN ('high','urgent')。",
+      "semantic_pattern": "紧急 + 工单",
+      "involved_tables": ["production_orders"]
+    },
+    {
+      "id": "recursive_parent_lot",
+      "name": "批次树追溯",
+      "description": "批次有层级关系（母批次/子批次），通过 batches.parent_batch_id 自关联。追溯完整批次树需使用 WITH RECURSIVE CTE。",
+      "semantic_pattern": "父批次 + 追溯 + 批次树",
+      "involved_tables": ["batches"],
+      "involved_relations": ["semi:hasParentLot"]
     }
   ]
 }
