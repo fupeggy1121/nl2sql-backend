@@ -1,0 +1,193 @@
+@prefix semi: <http://www.semanticweb.org/semi-mes/ontology#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+### ==========================================
+### 1. 核心类定义 (Classes)
+### ==========================================
+
+semi:Wafer a owl:Class ; 
+    rdfs:label "晶圆(Wafer)" ;
+    rdfs:comment "不可变的最小物理实体标识，全生命周期身份稳定的核心锚点。" .
+
+semi:Material a owl:Class ; 
+    rdfs:label "物料" ;
+    rdfs:comment "价值的物理载体，包括原料、辅料、备件、产品。" .
+
+semi:ProductModel a owl:Class ; 
+    rdfs:label "产品模型" ;
+    rdfs:comment "目标状态(What)与转换约束(How)的规则总成。" .
+
+semi:BOM a owl:Class ; 
+    rdfs:label "物料清单(BOM)" ;
+    rdfs:comment "物料资源的结构逻辑，定义用什么做。" .
+
+semi:Route a owl:Class ; 
+    rdfs:label "工艺路径" ;
+    rdfs:comment "制造导航地图，定义物料流转的受控路径。" .
+
+semi:ProcessStation a owl:Class ; 
+    rdfs:label "工艺站点(工序)" ;
+    rdfs:comment "最小生产控制单元，物料状态转换的场所。" .
+
+semi:ProcessConstraint a owl:Class ;
+    rdfs:label "工艺约束" ;
+    rdfs:comment "中间类：用于注入产品模型在特定工序下的具体执行规范。" .
+
+semi:ProductionOrder a owl:Class ; 
+    rdfs:label "生产工单" ;
+    rdfs:comment "企业下发的生产指令，连接经营层与执行层。" .
+
+semi:ProductionLot a owl:Class ; 
+    rdfs:label "生产批次(Lot)" ;
+    rdfs:comment "管理调度的基本单元，承载生产管理核心信息。" .
+
+semi:Sublot a owl:Class ; 
+    rdfs:label "子批次(Sublot)" ;
+    rdfs:comment "受载具物理约束下的批次分组投影。" .
+
+semi:Equipment a owl:Class ; 
+    rdfs:label "设备" ;
+    rdfs:comment "价值转换的执行者，生产过程中最大的变量源。" .
+
+semi:Recipe a owl:Class ; 
+    rdfs:label "配方(Recipe)" ;
+    rdfs:comment "工艺知识的参数化封装，指导设备如何做。" .
+
+semi:Carrier a owl:Class ; 
+    rdfs:label "载具" ;
+    rdfs:comment "物理流转的承载工具，设备与物料的物理接口。" .
+
+semi:Action a owl:Class ; 
+    rdfs:label "生产动作/操作" ;
+    rdfs:comment "驱动物料或设备状态跳转的逻辑单元，如拆批、返工、转档等。" .
+
+### ==========================================
+### 2. 核心有机关联 (Object Properties)
+### ==========================================
+
+# 2.1 Wafer 核心状态向量 (物理实体锚点)
+semi:belongsToLot a owl:ObjectProperty ;
+    rdfs:domain semi:Wafer ; rdfs:range semi:ProductionLot ;
+    rdfs:label "属于批次" .
+
+semi:belongsToSublot a owl:ObjectProperty ;
+    rdfs:domain semi:Wafer ; rdfs:range semi:Sublot ;
+    rdfs:label "属于子批次" .
+
+semi:locatedInSlot a owl:ObjectProperty ;
+    rdfs:domain semi:Wafer ; rdfs:range semi:Carrier ;
+    rdfs:label "位于载具槽位" .
+
+semi:atStation a owl:ObjectProperty ;
+    rdfs:domain semi:Wafer ; rdfs:range semi:ProcessStation ;
+    rdfs:label "当前所处工序(位置向量)" .
+
+semi:currentlyFollowsModel a owl:ObjectProperty ;
+    rdfs:domain semi:Wafer ; rdfs:range semi:ProductModel ;
+    rdfs:label "遵循产品模型(目标向量)" .
+
+semi:currentlyOnRoute a owl:ObjectProperty ;
+    rdfs:domain semi:Wafer ; rdfs:range semi:Route ;
+    rdfs:label "当前工艺路径(导航向量)" .
+
+# 2.2 生产管理层级 (Management Hierarchy)
+semi:basedOnOrder a owl:ObjectProperty ;
+    rdfs:domain semi:ProductionLot ; rdfs:range semi:ProductionOrder ;
+    rdfs:label "基于工单创建" .
+
+semi:definesRequirementFor a owl:ObjectProperty ;
+    rdfs:domain semi:ProductionOrder ; rdfs:range semi:ProductModel ;
+    rdfs:label "定义产品规格需求" .
+
+semi:containsSublot a owl:ObjectProperty ;
+    rdfs:domain semi:ProductionLot ; rdfs:range semi:Sublot ;
+    rdfs:label "包含子批次分组" .
+
+semi:isCarriedBy a owl:ObjectProperty ;
+    rdfs:domain semi:Sublot ; rdfs:range semi:Carrier ;
+    rdfs:label "由载具承载" .
+
+# 2.3 工艺约束注入逻辑 (Core Decoupling Logic)
+semi:usesRoute a owl:ObjectProperty ;
+    rdfs:domain semi:ProductModel ; rdfs:range semi:Route ;
+    rdfs:label "使用工艺路径模板" .
+
+semi:consistsOfStation a owl:ObjectProperty ;
+    rdfs:domain semi:Route ; rdfs:range semi:ProcessStation ;
+    rdfs:label "包含工序节点" .
+
+semi:hasConstraint a owl:ObjectProperty ;
+    rdfs:domain semi:ProductModel ; rdfs:range semi:ProcessConstraint ;
+    rdfs:label "注入工艺约束" .
+
+semi:appliesAtStation a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessConstraint ; rdfs:range semi:ProcessStation ;
+    rdfs:label "应用于特定工序" .
+
+semi:specifiesRecipe a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessConstraint ; rdfs:range semi:Recipe ;
+    rdfs:label "在该工序指定配方" .
+
+# 2.4 设备、物料与 BOM 关联
+semi:requiresEquipment a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessStation ; rdfs:range semi:Equipment ;
+    rdfs:label "要求设备执行" .
+
+semi:hostsRecipe a owl:ObjectProperty ;
+    rdfs:domain semi:Equipment ; rdfs:range semi:Recipe ;
+    rdfs:label "物理驻留配方" .
+
+semi:hasBOM a owl:ObjectProperty ;
+    rdfs:domain semi:ProductModel ; rdfs:range semi:BOM ;
+    rdfs:label "关联BOM定义" .
+
+semi:anchoredAtStation a owl:ObjectProperty ;
+    rdfs:domain semi:BOM ; rdfs:range semi:ProcessStation ;
+    rdfs:label "物料消耗锚定工序" .
+
+semi:consumesMaterial a owl:ObjectProperty ;
+    rdfs:domain semi:BOM ; rdfs:range semi:Material ;
+    rdfs:label "定义消耗物料清单" .
+
+# 2.5 动作驱动与跳转 (Action Logic)
+semi:hasInput a owl:ObjectProperty ;
+    rdfs:domain semi:Action ; rdfs:range [ owl:unionOf (semi:ProductionLot semi:Wafer) ] ;
+    rdfs:label "动作输入" .
+
+semi:hasOutput a owl:ObjectProperty ;
+    rdfs:domain semi:Action ; rdfs:range [ owl:unionOf (semi:ProductionLot semi:Wafer) ] ;
+    rdfs:label "动作输出" .
+
+semi:modifiesStateVector a owl:ObjectProperty ;
+    rdfs:domain semi:Action ; rdfs:label "修改状态向量" ;
+    rdfs:comment "Action驱动Wafer状态机跳转，修改如atStation或currentlyOnRoute等动态指针。" .
+
+semi:hasParentLot a owl:ObjectProperty ;
+    rdfs:domain semi:ProductionLot ; rdfs:range semi:ProductionLot ;
+    rdfs:label "父批次(溯源)" .
+
+### ==========================================
+### 3. 数据属性与元数据 (Data & Metadata)
+### ==========================================
+
+semi:hasState a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:Wafer semi:Equipment semi:Carrier) ] ;
+    rdfs:range xsd:string ;
+    rdfs:label "状态标记" .
+
+semi:isQualified a owl:DatatypeProperty ;
+    rdfs:domain semi:Equipment ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "认证状态(Qual)" .
+
+semi:hasControlLimit a owl:DatatypeProperty ;
+    rdfs:domain semi:ProcessConstraint ;
+    rdfs:range xsd:string ;
+    rdfs:label "制程卡控界限" .
+
+# 底层解耦元数据
+semi:isMappedToTable a owl:AnnotationProperty ; rdfs:label "映射物理表" .
+semi:isMappedToField a owl:AnnotationProperty ; rdfs:label "映射物理字段" .
