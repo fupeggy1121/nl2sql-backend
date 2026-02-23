@@ -264,6 +264,79 @@ async def reload_ontology_and_mapping() -> Dict[str, Any]:
         raise HTTPException(500, f"重载失败: {e}")
 
 
+@router.get("/graph")
+async def get_graph_data() -> Dict[str, Any]:
+    """
+    返回 D3 力导向图所需的 nodes + links JSON 数据。
+
+    nodes: [{ id, label, comment, type, group }]
+      type: "class" | "dataProperty"
+      group: 用于颜色分组（首字母模块名或所属域）
+
+    links: [{ source, target, label, type }]
+      type: "objectProperty" | "dataPropertyEdge" | "subClassOf"
+    """
+    ontology = get_ontology()
+    nodes = []
+    links = []
+    node_ids = set()
+
+    # ── 类节点 ──
+    for uri, cls in ontology.classes.items():
+        # 分组: 取类名首字母作为简单模块分组
+        short = uri.replace("semi:", "")
+        group = short[0].upper() if short else "?"
+        nodes.append({
+            "id": uri,
+            "label": cls.label or short,
+            "comment": cls.comment or "",
+            "type": "class",
+            "group": group,
+        })
+        node_ids.add(uri)
+
+    # ── 对象属性 (关系) → links ──
+    for uri, rel in ontology.relations.items():
+        if rel.domain_uri and rel.range_uri:
+            links.append({
+                "source": rel.domain_uri,
+                "target": rel.range_uri,
+                "label": rel.label or uri.replace("semi:", ""),
+                "uri": uri,
+                "type": "objectProperty",
+            })
+
+    # ── 数据属性 → 小节点 + edge ──
+    for uri, prop in ontology.data_properties.items():
+        short = uri.replace("semi:", "")
+        prop_node_id = f"dp:{uri}"
+        nodes.append({
+            "id": prop_node_id,
+            "label": prop.label or short,
+            "comment": prop.comment or "",
+            "type": "dataProperty",
+            "group": "DP",
+            "rangeType": prop.range_type,
+        })
+        node_ids.add(prop_node_id)
+        # 从每个 domain 类 → 数据属性节点
+        for d_uri in prop.domain_uris:
+            if d_uri in ontology.classes:
+                links.append({
+                    "source": d_uri,
+                    "target": prop_node_id,
+                    "label": prop.label or short,
+                    "uri": uri,
+                    "type": "dataPropertyEdge",
+                })
+
+    return {
+        "nodes": nodes,
+        "links": links,
+        "stats": ontology.summary(),
+    }
+
+
 # ── TTL 文件版本管理端点 ──
 
 

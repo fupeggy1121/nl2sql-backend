@@ -4,26 +4,49 @@
  * 用于 Bolt.new 前端集成。
  *
  * 功能：
- *   - 嵌入后端 ontology-viewer 页面（D3 力导向图）
+ *   - D3 力导向图渲染本体（纯 JSON 数据，无 iframe）
+ *   - 节点搜索 / 类型筛选
  *   - 版本历史面板（查看 / 回滚）
  *   - TTL 文件上传弹窗
  *   - 一键刷新 / 热重载
  *
- * 依赖: lucide-react (已在项目中使用)
+ * 依赖: lucide-react, d3 (需要安装: npm i d3 @types/d3)
  *
  * 使用方式:
  *   import OntologyViewer from './OntologyViewer';
  *   <OntologyViewer />
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Upload, RefreshCw, History, RotateCcw, Eye, X,
-  FileText, Clock, User, HardDrive, ChevronRight,
+  FileText, Clock, User, HardDrive, Search,
   AlertCircle, CheckCircle, Info, Loader2
 } from 'lucide-react';
-import { ontologyApi, getViewerUrl } from '../services/ontologyApi';
+import { ontologyApi } from '../services/ontologyApi';
+import * as d3 from 'd3';
 
 // ─── Types ────────────────────────────────────
+
+interface GraphNode extends d3.SimulationNodeDatum {
+  id: string;
+  label: string;
+  comment: string;
+  type: 'class' | 'dataProperty';
+  group: string;
+  rangeType?: string;
+}
+
+interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
+  label: string;
+  uri?: string;
+  type: 'objectProperty' | 'dataPropertyEdge' | 'subClassOf';
+}
+
+interface GraphData {
+  nodes: GraphNode[];
+  links: GraphLink[];
+  stats: { classes: number; relations: number; data_properties: number };
+}
 
 interface Version {
   version: number;
@@ -40,13 +63,36 @@ interface Toast {
   type: 'success' | 'error' | 'info';
 }
 
+// ─── Color palette for groups ─────────────────
+const GROUP_COLORS: Record<string, string> = {};
+const PALETTE = [
+  '#38bdf8', '#f472b6', '#a78bfa', '#34d399', '#fbbf24',
+  '#fb923c', '#f87171', '#818cf8', '#22d3ee', '#a3e635',
+  '#c084fc', '#2dd4bf', '#e879f9', '#60a5fa',
+];
+let colorIdx = 0;
+function getGroupColor(group: string): string {
+  if (!GROUP_COLORS[group]) {
+    GROUP_COLORS[group] = PALETTE[colorIdx % PALETTE.length];
+    colorIdx++;
+  }
+  return GROUP_COLORS[group];
+}
+
 // ─── Main Component ───────────────────────────
 
 export default function OntologyViewer() {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const simulationRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null);
 
   // State
+  const [graphData, setGraphData] = useState<GraphData | null>(null);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphError, setGraphError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showDataProps, setShowDataProps] = useState(false);
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [showVersionPanel, setShowVersionPanel] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [versions, setVersions] = useState<Version[]>([]);
@@ -55,7 +101,6 @@ export default function OntologyViewer() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadMessage, setUploadMessage] = useState('');
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [summary, setSummary] = useState<any>(null);
 
   // ─── Toast ──────────────────────────────────
   const addToast = useCallback((message: string, type: Toast['type'] = 'info') => {
@@ -64,13 +109,18 @@ export default function OntologyViewer() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
-  // ─── Data fetching ──────────────────────────
-  const loadSummary = useCallback(async () => {
+  // ─── Load graph data ───────────────────────
+  const loadGraph = useCallback(async () => {
+    setGraphLoading(true);
+    setGraphError(null);
     try {
-      const data = await ontologyApi.getSummary();
-      setSummary(data);
+      const data = await ontologyApi.getGraph();
+      setGraphData(data);
     } catch (e: any) {
-      console.error('Load summary failed:', e);
+      setGraphError(e.message);
+      console.error('Load graph failed:', e);
+    } finally {
+      setGraphLoading(false);
     }
   }, []);
 
@@ -86,32 +136,183 @@ export default function OntologyViewer() {
     }
   }, [addToast]);
 
-  useEffect(() => {
-    loadSummary();
-  }, [loadSummary]);
+  useEffect(() => { loadGraph(); }, [loadGraph]);
 
   useEffect(() => {
     if (showVersionPanel) loadVersions();
   }, [showVersionPanel, loadVersions]);
 
-  // ─── Actions ────────────────────────────────
-  const refreshViewer = useCallback(() => {
-    if (iframeRef.current) {
-      iframeRef.current.src = getViewerUrl();
-    }
-    loadSummary();
-    addToast('已刷新', 'info');
-  }, [loadSummary, addToast]);
+  // ─── Filtered data ─────────────────────────
+  const filteredData = useMemo(() => {
+    if (!graphData) return null;
+    let nodes = graphData.nodes;
+    let links = graphData.links;
 
+    // 过滤数据属性
+    if (!showDataProps) {
+      nodes = nodes.filter(n => n.type !== 'dataProperty');
+      links = links.filter(l => l.type !== 'dataPropertyEdge');
+    }
+
+    // 搜索高亮（不过滤节点，只标记）
+    return { nodes, links, stats: graphData.stats };
+  }, [graphData, showDataProps]);
+
+  // ─── D3 Force Graph ────────────────────────
+  useEffect(() => {
+    if (!filteredData || !svgRef.current) return;
+
+    const svg = d3.select(svgRef.current);
+    const width = svgRef.current.clientWidth || 900;
+    const height = svgRef.current.clientHeight || 600;
+
+    // Clear previous
+    svg.selectAll('*').remove();
+
+    // Deep copy to avoid D3 mutating state
+    const nodes: GraphNode[] = filteredData.nodes.map(n => ({ ...n }));
+    const links: GraphLink[] = filteredData.links.map(l => ({ ...l }));
+
+    // Container with zoom
+    const g = svg.append('g');
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.1, 4])
+      .on('zoom', (event) => g.attr('transform', event.transform));
+    svg.call(zoom);
+
+    // Arrow marker
+    svg.append('defs').selectAll('marker')
+      .data(['arrow'])
+      .join('marker')
+      .attr('id', 'arrow')
+      .attr('viewBox', '0 -5 10 10')
+      .attr('refX', 25)
+      .attr('refY', 0)
+      .attr('markerWidth', 6)
+      .attr('markerHeight', 6)
+      .attr('orient', 'auto')
+      .append('path')
+      .attr('d', 'M0,-5L10,0L0,5')
+      .attr('fill', '#475569');
+
+    // Simulation
+    const simulation = d3.forceSimulation<GraphNode>(nodes)
+      .force('link', d3.forceLink<GraphNode, GraphLink>(links).id(d => d.id).distance(120))
+      .force('charge', d3.forceManyBody().strength(-300))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collision', d3.forceCollide().radius(30));
+
+    simulationRef.current = simulation;
+
+    // Links
+    const link = g.append('g')
+      .selectAll('line')
+      .data(links)
+      .join('line')
+      .attr('stroke', d => d.type === 'objectProperty' ? '#475569' : '#334155')
+      .attr('stroke-width', d => d.type === 'objectProperty' ? 1.5 : 1)
+      .attr('stroke-dasharray', d => d.type === 'dataPropertyEdge' ? '4,3' : 'none')
+      .attr('marker-end', 'url(#arrow)');
+
+    // Link labels
+    const linkLabel = g.append('g')
+      .selectAll('text')
+      .data(links)
+      .join('text')
+      .text(d => d.label)
+      .attr('font-size', 9)
+      .attr('fill', '#64748b')
+      .attr('text-anchor', 'middle')
+      .style('pointer-events', 'none');
+
+    // Nodes
+    const node = g.append('g')
+      .selectAll<SVGGElement, GraphNode>('g')
+      .data(nodes)
+      .join('g')
+      .call(d3.drag<SVGGElement, GraphNode>()
+        .on('start', (event, d) => {
+          if (!event.active) simulation.alphaTarget(0.3).restart();
+          d.fx = d.x; d.fy = d.y;
+        })
+        .on('drag', (event, d) => {
+          d.fx = event.x; d.fy = event.y;
+        })
+        .on('end', (event, d) => {
+          if (!event.active) simulation.alphaTarget(0);
+          d.fx = null; d.fy = null;
+        })
+      )
+      .on('click', (_event, d) => setSelectedNode(d));
+
+    // Node circles
+    node.append('circle')
+      .attr('r', d => d.type === 'class' ? 18 : 10)
+      .attr('fill', d => d.type === 'class' ? getGroupColor(d.group) : '#334155')
+      .attr('stroke', d => {
+        if (searchTerm && d.label.toLowerCase().includes(searchTerm.toLowerCase())) {
+          return '#fbbf24';
+        }
+        return d.type === 'class' ? '#1e293b' : '#475569';
+      })
+      .attr('stroke-width', d =>
+        searchTerm && d.label.toLowerCase().includes(searchTerm.toLowerCase()) ? 3 : 2
+      )
+      .attr('opacity', d => d.type === 'class' ? 0.9 : 0.7);
+
+    // Node labels
+    node.append('text')
+      .text(d => d.label.length > 12 ? d.label.slice(0, 12) + '…' : d.label)
+      .attr('dy', d => d.type === 'class' ? 30 : 20)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', d => d.type === 'class' ? 11 : 9)
+      .attr('fill', d => d.type === 'class' ? '#e2e8f0' : '#94a3b8')
+      .style('pointer-events', 'none');
+
+    // Tick
+    simulation.on('tick', () => {
+      link
+        .attr('x1', d => (d.source as GraphNode).x!)
+        .attr('y1', d => (d.source as GraphNode).y!)
+        .attr('x2', d => (d.target as GraphNode).x!)
+        .attr('y2', d => (d.target as GraphNode).y!);
+
+      linkLabel
+        .attr('x', d => ((d.source as GraphNode).x! + (d.target as GraphNode).x!) / 2)
+        .attr('y', d => ((d.source as GraphNode).y! + (d.target as GraphNode).y!) / 2 - 4);
+
+      node.attr('transform', d => `translate(${d.x},${d.y})`);
+    });
+
+    // Fit to view after stabilization
+    simulation.on('end', () => {
+      const bounds = (g.node() as SVGGElement)?.getBBox();
+      if (bounds && bounds.width > 0) {
+        const scale = Math.min(
+          width / (bounds.width + 80),
+          height / (bounds.height + 80),
+          1.5
+        );
+        const tx = width / 2 - (bounds.x + bounds.width / 2) * scale;
+        const ty = height / 2 - (bounds.y + bounds.height / 2) * scale;
+        svg.transition().duration(500)
+          .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+      }
+    });
+
+    return () => { simulation.stop(); };
+  }, [filteredData, searchTerm]);
+
+  // ─── Actions ────────────────────────────────
   const handleReload = useCallback(async () => {
     try {
       await ontologyApi.reload();
-      refreshViewer();
+      await loadGraph();
       addToast('热重载完成', 'success');
     } catch (e: any) {
       addToast('热重载失败: ' + e.message, 'error');
     }
-  }, [refreshViewer, addToast]);
+  }, [loadGraph, addToast]);
 
   const handleUpload = useCallback(async () => {
     if (!uploadFile) return;
@@ -122,31 +323,30 @@ export default function OntologyViewer() {
       setShowUploadModal(false);
       setUploadFile(null);
       setUploadMessage('');
-      refreshViewer();
+      await loadGraph();
       if (showVersionPanel) loadVersions();
     } catch (e: any) {
       addToast('上传失败: ' + e.message, 'error');
     } finally {
       setUploading(false);
     }
-  }, [uploadFile, uploadMessage, refreshViewer, showVersionPanel, loadVersions, addToast]);
+  }, [uploadFile, uploadMessage, loadGraph, showVersionPanel, loadVersions, addToast]);
 
   const handleRollback = useCallback(async (version: number) => {
     if (!confirm(`确定回滚到版本 v${version}？\n将创建新版本记录并恢复历史内容。`)) return;
     try {
       const data = await ontologyApi.rollback(version);
       addToast(data.message || `已回滚到 v${version}`, 'success');
-      refreshViewer();
+      await loadGraph();
       loadVersions();
     } catch (e: any) {
       addToast('回滚失败: ' + e.message, 'error');
     }
-  }, [refreshViewer, loadVersions, addToast]);
+  }, [loadGraph, loadVersions, addToast]);
 
   const handleViewVersion = useCallback(async (version: number) => {
     try {
       const data = await ontologyApi.getVersion(version);
-      // 通过 postMessage 传给 iframe，或直接打开新窗口
       const blob = new Blob([data.content], { type: 'text/turtle' });
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
@@ -182,21 +382,40 @@ export default function OntologyViewer() {
             <FileText size={20} />
             本体可视化
           </h2>
-          {summary && (
+          {graphData?.stats && (
             <div style={styles.statsRow}>
               <span style={styles.stat}>
-                类: <b style={styles.statValue}>{summary.ontology?.classes ?? '-'}</b>
+                类: <b style={styles.statValue}>{graphData.stats.classes}</b>
               </span>
               <span style={styles.stat}>
-                关系: <b style={styles.statValue}>{summary.ontology?.relations ?? '-'}</b>
+                关系: <b style={styles.statValue}>{graphData.stats.relations}</b>
               </span>
               <span style={styles.stat}>
-                映射: <b style={styles.statValue}>{summary.mapping?.object_mappings ?? '-'}</b>
+                数据属性: <b style={styles.statValue}>{graphData.stats.data_properties}</b>
               </span>
             </div>
           )}
         </div>
         <div style={styles.toolbarRight}>
+          {/* Search */}
+          <div style={styles.searchWrap}>
+            <Search size={13} style={{ color: '#64748b' }} />
+            <input
+              style={styles.searchInput}
+              placeholder="搜索节点..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <label style={styles.toggleLabel}>
+            <input
+              type="checkbox"
+              checked={showDataProps}
+              onChange={e => setShowDataProps(e.target.checked)}
+              style={{ marginRight: 4 }}
+            />
+            数据属性
+          </label>
           <button style={styles.btnPrimary} onClick={() => setShowUploadModal(true)}>
             <Upload size={14} /> 上传 TTL
           </button>
@@ -214,14 +433,74 @@ export default function OntologyViewer() {
 
       {/* ── Main area ── */}
       <div style={styles.main}>
-        {/* Viewer iframe */}
+        {/* Graph area */}
         <div style={styles.viewerWrap}>
-          <iframe
-            ref={iframeRef}
-            src={getViewerUrl()}
-            style={styles.iframe}
-            title="Ontology Viewer"
-          />
+          {graphLoading && (
+            <div style={styles.loadingOverlay}>
+              <Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} />
+              <span>加载图数据...</span>
+            </div>
+          )}
+          {graphError && (
+            <div style={styles.errorOverlay}>
+              <AlertCircle size={24} color="#fca5a5" />
+              <div style={{ maxWidth: 500, wordBreak: 'break-word' as const }}>
+                <b>连接后端失败</b>
+                <p style={{ fontSize: 12, marginTop: 8, color: '#94a3b8', whiteSpace: 'pre-wrap' as const }}>
+                  {graphError}
+                </p>
+                <button style={{ ...styles.btn, marginTop: 12 }} onClick={loadGraph}>
+                  <RefreshCw size={14} /> 重试
+                </button>
+              </div>
+            </div>
+          )}
+          <svg ref={svgRef} style={styles.svg} />
+
+          {/* Node detail panel */}
+          {selectedNode && (
+            <div style={styles.detailPanel}>
+              <div style={styles.detailHeader}>
+                <span style={styles.detailTitle}>{selectedNode.label}</span>
+                <button style={styles.closeBtn} onClick={() => setSelectedNode(null)}>
+                  <X size={14} />
+                </button>
+              </div>
+              <div style={styles.detailBody}>
+                <div style={styles.detailRow}>
+                  <span style={styles.detailLabel}>URI</span>
+                  <span style={styles.detailValue}>{selectedNode.id}</span>
+                </div>
+                <div style={styles.detailRow}>
+                  <span style={styles.detailLabel}>类型</span>
+                  <span style={styles.detailValue}>
+                    {selectedNode.type === 'class' ? '本体类' : '数据属性'}
+                  </span>
+                </div>
+                {selectedNode.comment && (
+                  <div style={styles.detailRow}>
+                    <span style={styles.detailLabel}>描述</span>
+                    <span style={styles.detailValue}>{selectedNode.comment}</span>
+                  </div>
+                )}
+                {selectedNode.rangeType && (
+                  <div style={styles.detailRow}>
+                    <span style={styles.detailLabel}>值类型</span>
+                    <span style={styles.detailValue}>{selectedNode.rangeType}</span>
+                  </div>
+                )}
+                <div style={styles.detailRow}>
+                  <span style={styles.detailLabel}>分组</span>
+                  <span style={{
+                    ...styles.detailValue,
+                    color: getGroupColor(selectedNode.group)
+                  }}>
+                    {selectedNode.group}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Version panel */}
@@ -296,7 +575,6 @@ export default function OntologyViewer() {
               <Upload size={18} /> 上传新 TTL 文件
             </h3>
 
-            {/* Drop zone */}
             <div
               style={styles.dropZone}
               onClick={() => fileInputRef.current?.click()}
@@ -330,7 +608,6 @@ export default function OntologyViewer() {
               onChange={e => e.target.files?.[0] && setUploadFile(e.target.files[0])}
             />
 
-            {/* Message */}
             <div style={styles.formGroup}>
               <label style={styles.label}>版本说明</label>
               <textarea
@@ -341,7 +618,6 @@ export default function OntologyViewer() {
               />
             </div>
 
-            {/* Buttons */}
             <div style={styles.modalBtnRow}>
               <button style={styles.btn} onClick={() => { setShowUploadModal(false); setUploadFile(null); }}>
                 取消
@@ -361,7 +637,7 @@ export default function OntologyViewer() {
       {/* ── Toasts ── */}
       <div style={styles.toastContainer}>
         {toasts.map(t => (
-          <div key={t.id} style={{ ...styles.toast, ...styles[`toast_${t.type}`] }}>
+          <div key={t.id} style={{ ...styles.toast, ...(styles as any)[`toast_${t.type}`] }}>
             {t.type === 'success' && <CheckCircle size={14} />}
             {t.type === 'error' && <AlertCircle size={14} />}
             {t.type === 'info' && <Info size={14} />}
@@ -370,14 +646,12 @@ export default function OntologyViewer() {
         ))}
       </div>
 
-      {/* Keyframe injection (for spinner) */}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
 
 // ─── Inline Styles ────────────────────────────
-// (与 SynonymManager.tsx 风格一致，深色主题)
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
@@ -387,10 +661,10 @@ const styles: Record<string, React.CSSProperties> = {
   toolbar: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     padding: '10px 16px', background: '#1e293b', borderBottom: '1px solid #334155',
-    flexShrink: 0, gap: 12,
+    flexShrink: 0, gap: 12, flexWrap: 'wrap' as const,
   },
   toolbarLeft: { display: 'flex', alignItems: 'center', gap: 16 },
-  toolbarRight: { display: 'flex', alignItems: 'center', gap: 8 },
+  toolbarRight: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' as const },
   title: {
     fontSize: 16, fontWeight: 700, color: '#38bdf8', margin: 0,
     display: 'flex', alignItems: 'center', gap: 6,
@@ -398,6 +672,19 @@ const styles: Record<string, React.CSSProperties> = {
   statsRow: { display: 'flex', gap: 14, fontSize: 13, color: '#94a3b8' },
   stat: { whiteSpace: 'nowrap' as const },
   statValue: { color: '#38bdf8' },
+  searchWrap: {
+    display: 'flex', alignItems: 'center', gap: 4,
+    padding: '4px 10px', background: '#0f172a', borderRadius: 6,
+    border: '1px solid #334155',
+  },
+  searchInput: {
+    background: 'transparent', border: 'none', outline: 'none',
+    color: '#e2e8f0', fontSize: 13, width: 120,
+  },
+  toggleLabel: {
+    display: 'flex', alignItems: 'center', fontSize: 12, color: '#94a3b8',
+    cursor: 'pointer', whiteSpace: 'nowrap' as const,
+  },
   btn: {
     display: 'inline-flex', alignItems: 'center', gap: 4,
     padding: '6px 12px', fontSize: 13, borderRadius: 6, cursor: 'pointer',
@@ -410,12 +697,41 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#0ea5e9', color: '#fff', border: '1px solid #0ea5e9',
   },
   main: { display: 'flex', flex: 1, overflow: 'hidden' },
-  viewerWrap: { flex: 1, position: 'relative' as const },
-  iframe: { width: '100%', height: '100%', border: 'none' },
+  viewerWrap: { flex: 1, position: 'relative' as const, overflow: 'hidden' },
+  svg: { width: '100%', height: '100%', background: '#0f172a' },
+  loadingOverlay: {
+    position: 'absolute' as const, inset: 0, display: 'flex',
+    flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center',
+    gap: 12, color: '#94a3b8', fontSize: 14, zIndex: 10,
+    background: 'rgba(15,23,42,.7)',
+  },
+  errorOverlay: {
+    position: 'absolute' as const, inset: 0, display: 'flex',
+    flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center',
+    gap: 12, color: '#fca5a5', fontSize: 14, zIndex: 10,
+    background: 'rgba(15,23,42,.9)', textAlign: 'center' as const,
+  },
+
+  // Node detail
+  detailPanel: {
+    position: 'absolute' as const, bottom: 16, left: 16,
+    background: '#1e293b', border: '1px solid #334155', borderRadius: 10,
+    padding: 0, width: 280, zIndex: 20, overflow: 'hidden',
+    boxShadow: '0 8px 24px rgba(0,0,0,.4)',
+  },
+  detailHeader: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '10px 14px', borderBottom: '1px solid #334155',
+  },
+  detailTitle: { fontSize: 14, fontWeight: 600, color: '#38bdf8' },
+  detailBody: { padding: '8px 14px 12px' },
+  detailRow: { marginBottom: 6 },
+  detailLabel: { fontSize: 11, color: '#64748b', display: 'block', marginBottom: 2 },
+  detailValue: { fontSize: 13, color: '#e2e8f0', wordBreak: 'break-all' as const },
 
   // Version panel
   versionPanel: {
-    width: 340, minWidth: 340, background: '#1e293b',
+    width: 320, minWidth: 320, background: '#1e293b',
     borderLeft: '1px solid #334155', display: 'flex', flexDirection: 'column' as const,
     overflow: 'hidden',
   },

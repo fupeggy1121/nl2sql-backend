@@ -26,18 +26,37 @@ const getBase = () => {
 
 const BASE = getBase();
 
-// ─── 获取 viewer 页面的 URL ───────────────────
-export function getViewerUrl() {
-  const base = getBase().replace('/api/v1/ontology', '');
-  return `${base}/viewer`;
-}
-
 // ─── 通用请求工具 ─────────────────────────────
 async function request(path, options = {}) {
-  const res = await fetch(BASE + path, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
+  const url = BASE + path;
+  let res;
+  try {
+    res = await fetch(url, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+  } catch (err) {
+    throw new Error(
+      `无法连接后端 ${url}。请检查：\n` +
+      `1. 后端服务是否启动 (uvicorn app.main:app --port 8000)\n` +
+      `2. Bolt.new 无法访问 localhost，需设置 VITE_API_BASE_URL 为公网地址\n` +
+      `   例: VITE_API_BASE_URL=https://xxx.trycloudflare.com/api/query/unified\n` +
+      `原始错误: ${err.message}`
+    );
+  }
+  // 检测非 JSON 响应（常见于请求打到了前端 dev server 而非后端）
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    const preview = (await res.text()).slice(0, 120);
+    throw new Error(
+      `后端返回了非 JSON 响应 (Content-Type: ${ct})。\n` +
+      `请求地址: ${url}\n` +
+      `这通常是因为 VITE_API_BASE_URL 未配置或指向了错误的地址。\n` +
+      `Bolt.new 中的 localhost 指向 WebContainer 自身，不是你的本机！\n` +
+      `解决: 在 Bolt.new 的 .env 中设置 VITE_API_BASE_URL 为后端公网地址。\n` +
+      `响应预览: ${preview}`
+    );
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `HTTP ${res.status}`);
@@ -46,7 +65,13 @@ async function request(path, options = {}) {
 }
 
 async function requestText(path) {
-  const res = await fetch(BASE + path);
+  const url = BASE + path;
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (err) {
+    throw new Error(`无法连接后端 ${url}: ${err.message}`);
+  }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.text();
 }
@@ -87,6 +112,9 @@ export const ontologyApi = {
 
   /** 热重载 TTL + mapping */
   reload: () => request('/reload', { method: 'POST' }),
+
+  /** 获取 D3 力导向图数据 (nodes + links JSON) */
+  getGraph: () => request('/graph'),
 
   /** 语义解析 */
   resolve: (query) => request('/resolve', {
