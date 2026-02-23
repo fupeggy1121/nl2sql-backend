@@ -1,20 +1,19 @@
 """
-⚠️ DEPRECATED — Phase E
+统一应用入口
 
-旧 Flask 应用入口。新的入口为 app/main.py (FastAPI + uvicorn)。
-保留本文件仅用于本地调试兼容，生产环境请使用:
-    uvicorn app.main:app --host 0.0.0.0 --port $PORT
+将 FastAPI 应用暴露为模块级 `app` 变量，以兼容各种启动方式:
+  1. uvicorn run:app          (直接 ASGI)
+  2. gunicorn -k uvicorn.workers.UvicornWorker run:app  (生产推荐)
+  3. python run.py             (本地调试)
+
+旧 Flask 应用已废弃，所有 API 均由 FastAPI 提供。
 """
 import os
-from app import create_app
 
-# 获取配置环境
-config_name = os.getenv('FLASK_ENV', 'development')
+# ── 暴露 FastAPI app（供 gunicorn / uvicorn 直接 import）──
+from app.main import app  # noqa: F401
 
-# 创建应用
-app = create_app(config_name)
-
-# 这个 if 块确保 app 在生产环境（Gunicorn）中也能被访问
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5001))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    import uvicorn
+    port = int(os.getenv('PORT', 8000))
+    uvicorn.run(app, host='0.0.0.0', port=port)

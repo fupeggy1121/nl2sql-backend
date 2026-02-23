@@ -4,9 +4,8 @@ services:
     runtime: python311
     pythonVersion: 3.11.9
     buildCommand: pip install -r requirements.txt
-    # Phase E: 切换到 FastAPI + uvicorn（保留 gunicorn 作为注释备选）
-    # 旧命令: gunicorn --bind 0.0.0.0:$PORT run:app
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2
+    # 使用 gunicorn + uvicorn worker 启动 FastAPI (ASGI)
+    startCommand: gunicorn -k uvicorn.workers.UvicornWorker -w 2 --bind 0.0.0.0:$PORT run:app
     healthCheckPath: /health
     envVars:
       - key: FLASK_ENV
