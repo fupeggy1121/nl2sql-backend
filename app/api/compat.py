@@ -235,6 +235,7 @@ async def compat_explain_query(request: Request):
 # ═══════════════════════════════════════════════════════════════
 
 @router.get("/api/query/health")
+@router.get("/api/query/unified/health")
 async def compat_health():
     """健康检查"""
     import os
