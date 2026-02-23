@@ -165,9 +165,9 @@ class EnhancedNL2SQLConverter:
 
 【业务领域知识（必须参考）】
 - 在制品(WIP)数量：统计的是 wafers 表中的晶圆(Wafer)实例数量，不是 sub_batches 数量！
-  WIP状态通过 sub_batches.status != 'completed' 过滤，但 COUNT 对象必须是 wafers.id
+  WIP状态通过 sub_batches.status != 'completed' 过滤，但 COUNT 对象必须是 DISTINCT wafers.id（因为 batch→sub_batch 一对多会导致 wafer 行重复）
   JOIN路径: wafers → batches(wafers.batch_id = batches.id) → sub_batches(sub_batches.batch_id = batches.id) → stations(sub_batches.current_station_id = stations.id)
-  示例: SELECT s.name, COUNT(w.id) AS wip_count FROM wafers w JOIN batches b ON w.batch_id = b.id JOIN sub_batches sb ON sb.batch_id = b.id JOIN stations s ON sb.current_station_id = s.id WHERE sb.status != 'completed' GROUP BY s.name ORDER BY wip_count DESC
+  示例: SELECT s.name, COUNT(DISTINCT w.id) AS wip_count FROM wafers w JOIN batches b ON w.batch_id = b.id JOIN sub_batches sb ON sb.batch_id = b.id JOIN stations s ON sb.current_station_id = s.id WHERE sb.status != 'completed' GROUP BY s.name ORDER BY wip_count DESC
   如果需要按特定站点筛选，加 WHERE s.name = '站点名' AND sb.status != 'completed'
 - 站点(station)相关查询用 stations 表，通过 name 列筛选中文名
 - 批次(batch/sub_batch)当前所在站点用 sub_batches.current_station_id

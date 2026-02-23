@@ -261,7 +261,7 @@ def _generate_multi_step_sql(
         f"5. 不要在 SQL 末尾加分号\n"
         f"6. 中文名称匹配使用 name 列，不要用 code 列\n\n"
         f"【业务领域知识（来自语义引擎）】\n"
-        f"- 在制品(WIP)数量 = COUNT(wafers.id) 晶圆实例数，不是 COUNT(sub_batches.id)！\n"
+        f"- 在制品(WIP)数量 = COUNT(DISTINCT wafers.id) 晶圆实例数，不是 COUNT(sub_batches.id)！（batch→sub_batch一对多会导致wafer行重复，必须DISTINCT去重）\n"
         f"  WIP状态通过 sub_batches.status != 'completed' 过滤\n"
         f"  JOIN路径: wafers→batches(batch_id=id)→sub_batches(batch_id)→stations(current_station_id=id)\n"
         f"- process_route_stations 是工艺路线定义表，不含在制品数据\n"
@@ -399,7 +399,7 @@ def _format_semantic_context(semantic_ctx: dict) -> str:
             ct_col = f.get("count_target_column")
             if ct_table and ct_col:
                 lines.append(
-                    f"  ⚠ COUNT 统计对象: COUNT({ct_table}.{ct_col})，不是 COUNT({f.get('applies_to_table', '?')}.id)"
+                    f"  ⚠ COUNT 统计对象: COUNT(DISTINCT {ct_table}.{ct_col})，不是 COUNT({f.get('applies_to_table', '?')}.id)（JOIN可能产生重复行，必须DISTINCT去重）"
                 )
 
     # 业务规则
