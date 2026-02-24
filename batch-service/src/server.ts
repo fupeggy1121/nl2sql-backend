@@ -94,6 +94,11 @@ app.get('/', (_req, res) => {
 // 批次作业 API
 app.use('/api/batch', batchRoutes);
 
+// 站点 API（兼容前端 /api/stations 路径）
+import { listStations as listStationsHandler } from './controllers/batchQueryController';
+import { asyncHandler as asyncWrap } from './middleware/errorHandler';
+app.get('/api/stations', asyncWrap(listStationsHandler));
+
 // ─── 全局错误处理 ────────────────────────────────────────────
 app.use(errorHandler);
 

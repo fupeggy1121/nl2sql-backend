@@ -8,6 +8,7 @@ import batchService from '../services/batchService';
 import subBatchService from '../services/subBatchService';
 import waferService from '../services/waferService';
 import operationLogService from '../services/operationLogService';
+import stationService from '../services/stationService';
 import { ApiResponse } from '../types/batch.types';
 import { BatchServiceError } from '../middleware/errorHandler';
 
@@ -74,6 +75,31 @@ export async function getBatchHistory(req: Request, res: Response): Promise<void
   const response: ApiResponse = {
     success: true,
     data: logs,
+  };
+  res.json(response);
+}
+
+/**
+ * GET /api/batch/stations  或  GET /api/stations
+ * 查询所有活跃站点（用于前端站点下拉框）
+ */
+export async function listStations(_req: Request, res: Response): Promise<void> {
+  const stations = await stationService.listActiveStations();
+
+  // 返回前端期望的格式: { code, name } 数组
+  const mapped = stations.map(s => ({
+    id: s.id,
+    code: s.code,
+    name: s.name,
+    description: s.description,
+    workshop: s.workshop,
+    station_type: s.station_type,
+    status: s.status,
+  }));
+
+  const response: ApiResponse = {
+    success: true,
+    data: mapped,
   };
   res.json(response);
 }

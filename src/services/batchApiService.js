@@ -93,7 +93,9 @@ async function request(path, options = {}) {
     throw new Error(body.error || body.message || `HTTP ${res.status}`);
   }
 
-  return body;
+  // 返回 data 字段（数组/对象），而非整个 { success, data } 包装
+  // 这样前端可以直接: const batches = await listBatches() → batches 即数组
+  return body.data !== undefined ? body.data : body;
 }
 
 // ─── API 方法 ─────────────────────────────────
@@ -106,6 +108,9 @@ export const batchApiService = {
     const qs = new URLSearchParams(params).toString();
     return request(`/list${qs ? '?' + qs : ''}`);
   },
+
+  /** 查询所有站点（用于站点下拉框） */
+  listStations: () => request('/stations'),
 
   /** 查询批次详情（含子批次） */
   getBatchDetail: (batchId) =>

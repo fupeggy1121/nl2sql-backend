@@ -12,6 +12,7 @@ import {
   getBatchWafers,
   getBatchHistory,
   listBatches,
+  listStations,
 } from '../controllers/batchQueryController';
 
 // 操作控制器
@@ -37,6 +38,9 @@ if (!authEnabled) {
 router.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'batch-api', timestamp: new Date().toISOString() });
 });
+/** 站点列表 — GET /api/batch/stations */
+router.get('/stations', optAuth, asyncHandler(listStations));
+
 /** 批次列表 — GET /api/batch/list?status=&station=&limit= */
 router.get('/list', optAuth, asyncHandler(listBatches));
 
