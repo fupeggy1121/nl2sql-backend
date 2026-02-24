@@ -38,3 +38,23 @@ services:
         sync: false
       - key: DB_NAME
         sync: false
+
+  # ─── 批次作业后端服务 ───────────────────────────
+  - type: web
+    name: batch-service
+    runtime: node
+    rootDir: batch-service
+    buildCommand: npm install && npm run build
+    startCommand: node dist/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: $PORT
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CORS_ORIGIN
+        value: "https://your-frontend-domain.com"
+      - key: NODE_ENV
+        value: production
