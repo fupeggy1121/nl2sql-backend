@@ -85,32 +85,22 @@ async def compat_process_query(request: Request):
             f"input='{natural_language[:60]}...', mode={execution_mode}"
         )
 
-        if execution_mode == "explain":
-            result = await agent.ainvoke(initial_state)
-            response_data = result.get("response", {})
-            is_followup = result.get("is_followup", False)
+        # explain / execute 都走完整 Agent 流水线，统一返回所有字段
+        # Agent 无论什么模式都会执行完整 pipeline，不再区分返回字段
+        result = await agent.ainvoke(initial_state)
+        response_data = result.get("response", {})
+        is_followup = result.get("is_followup", False)
 
-            return JSONResponse({
-                "success": True,
-                "session_id": session_id,
-                "is_followup": is_followup,
-                "query_plan": response_data.get("query_plan"),
-                "pipeline_trace": response_data.get("pipeline_trace", []),
-            })
-        else:
-            result = await agent.ainvoke(initial_state)
-            response_data = result.get("response", {})
-            is_followup = result.get("is_followup", False)
-
-            return JSONResponse({
-                "success": response_data.get("success", False),
-                "session_id": session_id,
-                "is_followup": is_followup,
-                "query_plan": response_data.get("query_plan"),
-                "query_result": response_data.get("query_result"),
-                "visualization": response_data.get("visualization"),
-                "pipeline_trace": response_data.get("pipeline_trace", []),
-            })
+        return JSONResponse({
+            "success": response_data.get("success", False),
+            "session_id": session_id,
+            "is_followup": is_followup,
+            "execution_mode": execution_mode,
+            "query_plan": response_data.get("query_plan"),
+            "query_result": response_data.get("query_result"),
+            "visualization": response_data.get("visualization"),
+            "pipeline_trace": response_data.get("pipeline_trace", []),
+        })
 
     except Exception as e:
         logger.error(f"[compat/process] Error: {e}", exc_info=True)
