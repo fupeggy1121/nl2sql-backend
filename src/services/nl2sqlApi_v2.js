@@ -345,6 +345,25 @@ export async function executeRecommendedQuery(
   );
 }
 
+/**
+ * 检查后端连接状态
+ */
+export async function checkConnection(): Promise<{ connected: boolean; message?: string }> {
+  try {
+    const response = await fetch(`${UNIFIED_API_URL}/health`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) {
+      return { connected: false, message: `HTTP ${response.status}` };
+    }
+    const data = await response.json();
+    return { connected: true, message: data.status || 'healthy' };
+  } catch (error) {
+    return { connected: false, message: String(error) };
+  }
+}
+
 export const nl2sqlApi = {
   processNaturalLanguageQuery,
   explainQuery,
@@ -354,7 +373,8 @@ export const nl2sqlApi = {
   getExecutionHistory,
   getQueryRecommendations,
   executeQueryWithApproval,
-  executeRecommendedQuery
+  executeRecommendedQuery,
+  checkConnection,
 };
 
 export default nl2sqlApi;

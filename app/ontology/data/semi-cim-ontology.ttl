@@ -16,6 +16,27 @@ semi:Material a owl:Class ;
     rdfs:label "物料" ;
     rdfs:comment "价值的物理载体，包括原料、辅料、备件、产品。" .
 
+semi:Product a owl:Class ; 
+    rdfs:subClassOf semi:Material ; 
+    rdfs:label "产品" ;
+    rdfs:comment "状态演化的终点产物，受产品模型定义约束。" .
+
+semi:RawMaterial a owl:Class ; 
+    rdfs:subClassOf semi:Material ; 
+    rdfs:label "原料" ;
+    rdfs:comment "生产投入的初始实物（如 Bare Wafer）。" .
+
+semi:Auxiliary a owl:Class ; 
+    rdfs:subClassOf semi:Material ; 
+    rdfs:label "辅料" ;
+    rdfs:comment "加工过程中的消耗性资源（如化学药液、特气）。" .
+
+semi:SparePart a owl:Class ; 
+    rdfs:subClassOf semi:Material ; 
+    rdfs:label "备件" ;
+    rdfs:comment "用于设备维护和状态恢复的更换件。" .
+
+
 semi:ProductModel a owl:Class ; 
     rdfs:label "产品模型" ;
     rdfs:comment "目标状态(What)与转换约束(How)的规则总成。" .
@@ -131,7 +152,33 @@ semi:specifiesRecipe a owl:ObjectProperty ;
     rdfs:domain semi:ProcessConstraint ; rdfs:range semi:Recipe ;
     rdfs:label "在该工序指定配方" .
 
-# 2.4 设备、物料与 BOM 关联
+# 2.4 物料子类、设备、BOM的关联
+
+# 产品与模型的灵魂绑定
+semi:isDefinedBy a owl:ObjectProperty ;
+    rdfs:label "由产品模型定义" ;
+    rdfs:domain semi:Product ; 
+    rdfs:range semi:ProductModel ;
+    rdfs:comment "产品模型是该产品的状态转换规则与目标模板总成。" .
+
+# BOM 对原料与辅料的精准消耗
+semi:consumesRawMaterial a owl:ObjectProperty ;
+    rdfs:label "消耗原料" ;
+    rdfs:domain semi:BOM ; 
+    rdfs:range semi:RawMaterial .
+
+semi:consumesAuxiliary a owl:ObjectProperty ;
+    rdfs:label "消耗辅料" ;
+    rdfs:domain semi:BOM ; 
+    rdfs:range semi:Auxiliary .
+
+# 备件与设备的运维关联
+semi:requiresSparePart a owl:ObjectProperty ;
+    rdfs:label "要求备件更换" ;
+    rdfs:domain semi:Equipment ; 
+    rdfs:range semi:SparePart ;
+    rdfs:comment "驱动设备从异常/老化状态回归受控状态。" .
+
 semi:requiresEquipment a owl:ObjectProperty ;
     rdfs:domain semi:ProcessStation ; rdfs:range semi:Equipment ;
     rdfs:label "要求设备执行" .
@@ -148,9 +195,6 @@ semi:anchoredAtStation a owl:ObjectProperty ;
     rdfs:domain semi:BOM ; rdfs:range semi:ProcessStation ;
     rdfs:label "物料消耗锚定工序" .
 
-semi:consumesMaterial a owl:ObjectProperty ;
-    rdfs:domain semi:BOM ; rdfs:range semi:Material ;
-    rdfs:label "定义消耗物料清单" .
 
 # 2.5 动作驱动与跳转 (Action Logic)
 semi:hasInput a owl:ObjectProperty ;
