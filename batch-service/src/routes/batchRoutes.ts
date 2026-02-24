@@ -33,7 +33,10 @@ if (!authEnabled) {
 }
 
 // ─── 查询端点（可选认证） ────────────────────────────────────
-
+/** 健康检查 — GET /api/batch/health（放在 :id 前避免被捕获） */
+router.get('/health', (_req, res) => {
+  res.json({ status: 'ok', service: 'batch-api', timestamp: new Date().toISOString() });
+});
 /** 批次列表 — GET /api/batch/list?status=&station=&limit= */
 router.get('/list', optAuth, asyncHandler(listBatches));
 

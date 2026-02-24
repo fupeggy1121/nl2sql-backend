@@ -55,6 +55,6 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: CORS_ORIGIN
-        value: "https://your-frontend-domain.com"
+        value: "*"
       - key: NODE_ENV
         value: production

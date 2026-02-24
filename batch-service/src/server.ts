@@ -15,22 +15,38 @@ const app = express();
 const port = parseInt(process.env.PORT || '3001', 10);
 
 // ─── CORS 配置 ───────────────────────────────────────────────
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
-  .split(',')
-  .map(o => o.trim());
+const corsOriginEnv = (process.env.CORS_ORIGIN || 'http://localhost:5173').trim();
+
+// 支持 "*" 全开放，或逗号分隔的白名单+通配符（如 *.webcontainer-api.io）
+const isOpenCors = corsOriginEnv === '*';
+const allowedOrigins = corsOriginEnv.split(',').map(o => o.trim());
+
+function originAllowed(origin: string): boolean {
+  if (isOpenCors) return true;
+  for (const pattern of allowedOrigins) {
+    if (pattern === origin) return true;
+    // 通配符支持: *.example.com 匹配 https://foo.example.com
+    if (pattern.startsWith('*')) {
+      const suffix = pattern.slice(1); // e.g. ".webcontainer-api.io"
+      if (origin.includes(suffix)) return true;
+    }
+  }
+  return false;
+}
 
 app.use(cors({
   origin: (origin, callback) => {
     // 允许无 origin 的请求（如 curl、Postman、服务间调用）
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || originAllowed(origin)) {
       callback(null, true);
     } else {
+      console.warn(`[CORS] Blocked origin: ${origin}`);
       callback(new Error(`CORS not allowed for origin: ${origin}`));
     }
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
+  credentials: !isOpenCors, // credentials 不能与 origin:* 同时使用
 }));
 
 // ─── Body 解析 ───────────────────────────────────────────────
@@ -87,7 +103,7 @@ app.listen(port, () => {
   console.log(`  Batch Service running at http://localhost:${port}`);
   console.log(`  Health check: http://localhost:${port}/health`);
   console.log(`  API base:     http://localhost:${port}/api/batch`);
-  console.log(`  CORS origins: ${allowedOrigins.join(', ')}`);
+  console.log(`  CORS origins: ${isOpenCors ? '* (open)' : allowedOrigins.join(', ')}`);
   console.log(`========================================\n`);
 });
 
