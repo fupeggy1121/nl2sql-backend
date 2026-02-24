@@ -11,7 +11,9 @@ Phase D 新增:
 """
 
 import logging
+import time
 from app.agent.state import AgentState
+from app.agent.trace import trace_step
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,7 @@ def query_planner_node(state: AgentState) -> dict:
     # Phase C: 追问时使用消解后的输入
     effective_input = resolved_input if is_followup else user_input
 
+    _t0 = time.perf_counter()
     logger.info(
         f"[query_planner] Building plan for: {effective_input[:60]}... "
         f"(followup={is_followup})"
@@ -71,9 +74,25 @@ def query_planner_node(state: AgentState) -> dict:
     # ── Phase D: RAG 检索 schema 上下文 ──
     rag_context = _retrieve_rag_context(effective_input)
 
+    # ── Pipeline Trace ──
+    trace = list(state.get("pipeline_trace", []))
+    trace_step(trace, "query_planner", _t0, summary=(
+        f"目标表: {query_plan['table'] or '自动推断'}, "
+        f"指标: {query_plan['metrics'] or '无'}, "
+        f"RAG上下文: {'有' if rag_context else '无'}"
+    ), detail={
+        "table": query_plan.get("table"),
+        "metrics": query_plan.get("metrics", []),
+        "time_range": query_plan.get("time_range"),
+        "filters": query_plan.get("filters", {}),
+        "is_followup": is_followup,
+        "rag_context_length": len(rag_context) if rag_context else 0,
+    })
+
     return {
         "query_plan": query_plan,
         "rag_context": rag_context,
+        "pipeline_trace": trace,
     }
 
 

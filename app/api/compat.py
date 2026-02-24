@@ -94,6 +94,7 @@ async def compat_process_query(request: Request):
                 "session_id": session_id,
                 "is_followup": is_followup,
                 "query_plan": response_data.get("query_plan"),
+                "pipeline_trace": response_data.get("pipeline_trace", []),
             })
         else:
             result = await agent.ainvoke(initial_state)
@@ -107,6 +108,7 @@ async def compat_process_query(request: Request):
                 "query_plan": response_data.get("query_plan"),
                 "query_result": response_data.get("query_result"),
                 "visualization": response_data.get("visualization"),
+                "pipeline_trace": response_data.get("pipeline_trace", []),
             })
 
     except Exception as e:

@@ -8,6 +8,7 @@ import logging
 import time
 from datetime import datetime
 from app.agent.state import AgentState
+from app.agent.trace import trace_step
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ def response_builder_node(state: AgentState) -> dict:
     输入: 所有 state 字段
     输出: response (最终 API 响应)
     """
+    _t0 = time.perf_counter()
     intent = state.get("intent", "query")
     error = state.get("error", "")
     query_result = state.get("query_result", {})
@@ -101,6 +103,13 @@ def response_builder_node(state: AgentState) -> dict:
         f"[response_builder] Built response: success={response.get('success')}, "
         f"elapsed={elapsed_ms:.0f}ms"
     )
+
+    # ── Pipeline Trace: 汇总并写入响应 ──
+    trace = list(state.get("pipeline_trace", []))
+    trace_step(trace, "response_builder", _t0, summary=(
+        f"构建响应完成, 总耗时: {elapsed_ms:.0f}ms"
+    ))
+    response["pipeline_trace"] = trace
 
     return {"response": response}
 

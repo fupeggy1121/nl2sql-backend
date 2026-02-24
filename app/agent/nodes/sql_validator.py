@@ -9,8 +9,10 @@ sql_validator — SQL 验证节点
 
 import re
 import logging
+import time
 from app.agent.state import AgentState
 from app.agent.tools.schema_tools import validate_sql, _find_closest_table, _get_schema_metadata
+from app.agent.trace import trace_step
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,7 @@ def sql_validator_node(state: AgentState) -> dict:
 
     放在 sql_generator 和 data_executor 之间，减少无意义的执行失败。
     """
+    _t0 = time.perf_counter()
     sql = state.get("sql", "")
 
     if not sql:
@@ -52,11 +55,20 @@ def sql_validator_node(state: AgentState) -> dict:
         logger.info("[sql_validator] ✅ SQL valid")
         if validation.get("warnings"):
             logger.info(f"[sql_validator] Warnings: {validation['warnings']}")
+        # ── Pipeline Trace ──
+        trace = list(state.get("pipeline_trace", []))
+        trace_step(trace, "sql_validator", _t0, summary=(
+            "SQL 验证通过" + (f" (警告: {len(validation.get('warnings', []))})" if validation.get('warnings') else "")
+        ), detail={
+            "valid": True,
+            "warnings": validation.get("warnings", []),
+        })
         # If we cleaned fences, return the cleaned SQL
         original_sql = state.get("sql", "")
+        result = {"pipeline_trace": trace}
         if sql != original_sql:
-            return {"sql": sql}
-        return {}
+            result["sql"] = sql
+        return result
 
     # ── SQL 无效，尝试自动修正 ──
     logger.warning(f"[sql_validator] ❌ Validation errors: {validation['errors']}")
@@ -69,11 +81,18 @@ def sql_validator_node(state: AgentState) -> dict:
         if re_validation["valid"]:
             logger.info(f"[sql_validator] ✅ Auto-corrected SQL: "
                         f"{corrected_sql[:100]}...")
+            trace = list(state.get("pipeline_trace", []))
+            trace_step(trace, "sql_validator", _t0, summary="SQL 自动修正成功", detail={
+                "original_sql": sql[:200],
+                "corrected_sql": corrected_sql[:200],
+                "errors_fixed": validation["errors"],
+            })
             return {
                 "sql": corrected_sql,
                 "sql_confidence": max(
                     state.get("sql_confidence", 0.0) - 0.1, 0.3
                 ),
+                "pipeline_trace": trace,
             }
         else:
             logger.warning("[sql_validator] Auto-correction failed re-validation")
@@ -93,8 +112,12 @@ def sql_validator_node(state: AgentState) -> dict:
     logger.info(f"[sql_validator] Writing validation errors to state for "
                 f"self-correction: {error_details[:200]}")
 
+    trace = list(state.get("pipeline_trace", []))
+    trace_step(trace, "sql_validator", _t0, summary=f"SQL 验证失败: {error_details[:80]}",
+              status="error", detail={"errors": validation["errors"], "missing_tables": validation.get("missing_tables", [])})
     return {
         "sql_error": f"[VALIDATION] {error_details}",
+        "pipeline_trace": trace,
     }
 
 

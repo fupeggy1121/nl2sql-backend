@@ -19,6 +19,7 @@ import time
 from typing import Dict, Any
 
 from app.agent.state import AgentState
+from app.agent.trace import trace_step
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +63,24 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
             f"rules={n_rules}, tables={tables}"
         )
 
-        return {"semantic_context": ctx_dict}
+        # ── Pipeline Trace ──
+        trace = list(state.get("pipeline_trace", []))
+        trace_step(trace, "semantic_resolver", t0, summary=(
+            f"匹配 {n_classes} 个本体类, {n_joins} 个JOIN, "
+            f"{n_filters} 个过滤条件, 物理表: {tables}"
+        ), detail={
+            "matched_classes": ctx_dict.get("matched_classes", []),
+            "joins": ctx_dict.get("joins", []),
+            "filters": ctx_dict.get("filters", []),
+            "business_rules": ctx_dict.get("business_rules", []),
+            "physical_tables": tables,
+        })
+
+        return {"semantic_context": ctx_dict, "pipeline_trace": trace}
 
     except Exception as e:
         logger.error(f"[semantic_resolver] Failed: {e}", exc_info=True)
         # Graceful fallback — 不阻塞后续节点
-        return {"semantic_context": {}}
+        trace = list(state.get("pipeline_trace", []))
+        trace_step(trace, "semantic_resolver", t0, summary=f"语义解析失败: {e}", status="error")
+        return {"semantic_context": {}, "pipeline_trace": trace}

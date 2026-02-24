@@ -54,3 +54,6 @@ class AgentState(TypedDict, total=False):
 
     # ── 执行时间 ──
     start_time: float                            # 请求开始时间戳
+
+    # ── 管道追踪 (Pipeline Trace) ──
+    pipeline_trace: List[Dict[str, Any]]         # 各步骤的执行追踪记录

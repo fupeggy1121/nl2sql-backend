@@ -10,6 +10,7 @@ import logging
 import time
 from app.agent.state import AgentState
 from app.agent.tools.intent_tools import classify_intent
+from app.agent.trace import trace_step
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ def intent_router_node(state: AgentState) -> dict:
             effective_input = f"对话上下文:\n{context_str}\n\n当前问题: {effective_input}"
 
     # 调用意图识别 Tool
+    _t0 = time.perf_counter()
     intent_data = classify_intent.invoke({"user_input": effective_input})
 
     # 映射意图到路由
@@ -72,8 +74,20 @@ def intent_router_node(state: AgentState) -> dict:
         f"confidence: {intent_data.get('confidence', 0):.2f}"
     )
 
+    # ── Pipeline Trace ──
+    trace = list(state.get("pipeline_trace", []))
+    trace_step(trace, "intent_router", time.perf_counter(), summary=(
+        f"意图: {raw_intent} → {route}, 置信度: {intent_data.get('confidence', 0):.2f}"
+    ), detail={
+        "raw_intent": raw_intent,
+        "route": route,
+        "confidence": intent_data.get("confidence", 0),
+        "entities": intent_data.get("entities", {}),
+    })
+
     return {
         "intent": route,
         "intent_data": intent_data,
         "start_time": time.time(),
+        "pipeline_trace": trace,
     }

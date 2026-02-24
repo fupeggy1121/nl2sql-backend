@@ -15,9 +15,11 @@ Phase D 新增:
 """
 
 import logging
+import time as _time
 from app.agent.state import AgentState
 from app.agent.tools.nl2sql_tools import generate_sql
 from app.agent.tools.schema_tools import get_schema_context
+from app.agent.trace import trace_step
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,7 @@ def sql_generator_node(state: AgentState) -> dict:
           sql_error (可选), sql_retry_count (可选)
     输出: sql, sql_confidence, sql_retry_count, rag_context
     """
+    _t0 = _time.perf_counter()
     user_input = state.get("user_input", "")
     resolved_input = state.get("resolved_input", "") or user_input
     is_followup = state.get("is_followup", False)
@@ -88,25 +91,42 @@ def sql_generator_node(state: AgentState) -> dict:
     if sql:
         sql = sql.strip().rstrip(';').strip()
 
+    # ── Pipeline Trace ──
+    trace = list(state.get("pipeline_trace", []))
+
     if sql:
         # 置信度计算：首次高，重试递减
         confidence = 0.88 if not sql_error else max(0.5, 0.8 - retry_count * 0.1)
         logger.info(f"[sql_generator] Generated SQL: {sql[:100]}...")
+        trace_step(trace, "sql_generator", _t0, summary=(
+            f"生成SQL成功, 置信度: {confidence:.2f}"
+            + (f", 重试#{new_retry_count}" if new_retry_count else "")
+        ), detail={
+            "sql": sql,
+            "confidence": confidence,
+            "retry_count": new_retry_count,
+            "has_semantic_context": bool(semantic_ctx),
+            "has_few_shot": bool(few_shot_context),
+        })
         return {
             "sql": sql,
             "sql_confidence": confidence,
             "sql_retry_count": new_retry_count,
             "sql_error": "",  # 清除上一次的错误
             "rag_context": schema_ctx,
+            "pipeline_trace": trace,
         }
     else:
         logger.warning("[sql_generator] Failed to generate SQL")
+        trace_step(trace, "sql_generator", _t0,
+                   summary="SQL 生成失败", status="error")
         return {
             "sql": "",
             "sql_confidence": 0.0,
             "sql_retry_count": new_retry_count,
             "error": "Failed to generate SQL from natural language input",
             "rag_context": schema_ctx,
+            "pipeline_trace": trace,
         }
 
 
