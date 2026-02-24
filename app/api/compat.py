@@ -27,6 +27,7 @@ router = APIRouter(tags=["Compat Layer"])
 #   /api/query/unified/* — 核心查询接口（通过 Agent 处理）
 # ═══════════════════════════════════════════════════════════════
 
+@router.post("/api/query/process")
 @router.post("/api/query/unified/process")
 async def compat_process_query(request: Request):
     """
@@ -119,6 +120,7 @@ async def compat_process_query(request: Request):
         )
 
 
+@router.post("/api/query/execute")
 @router.post("/api/query/unified/execute")
 async def compat_execute_query(request: Request):
     """
@@ -197,6 +199,7 @@ async def compat_execute_query(request: Request):
         )
 
 
+@router.post("/api/query/explain")
 @router.post("/api/query/unified/explain")
 async def compat_explain_query(request: Request):
     """兼容旧 /explain 接口"""
