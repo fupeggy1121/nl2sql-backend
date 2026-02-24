@@ -95,9 +95,11 @@ app.get('/', (_req, res) => {
 app.use('/api/batch', batchRoutes);
 
 // 站点 API（兼容前端 /api/stations 路径）
-import { listStations as listStationsHandler } from './controllers/batchQueryController';
+import { listStations as listStationsHandler, listProducts as listProductsHandler, listLossWafers as listLossWafersHandler } from './controllers/batchQueryController';
 import { asyncHandler as asyncWrap } from './middleware/errorHandler';
 app.get('/api/stations', asyncWrap(listStationsHandler));
+app.get('/api/products', asyncWrap(listProductsHandler));
+app.get('/api/loss-wafers', asyncWrap(listLossWafersHandler));
 
 // ─── 全局错误处理 ────────────────────────────────────────────
 app.use(errorHandler);

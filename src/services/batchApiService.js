@@ -103,14 +103,23 @@ export const batchApiService = {
 
   // ── 查询 ──────────────────────────────────
 
-  /** 查询批次列表 */
+  /** 查询批次列表 — 返回 BatchData[] */
   listBatches: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return request(`/list${qs ? '?' + qs : ''}`);
   },
 
-  /** 查询所有站点（用于站点下拉框） */
+  /** 查询所有站点 — 返回 StationData[] */
   listStations: () => request('/stations'),
+
+  /** 查询所有站点（别名，兼容 context 中的 fetchStations / getStations） */
+  getStations: () => request('/stations'),
+
+  /** 查询产品列表 — 返回 ProductData[] */
+  getProducts: () => request('/products'),
+
+  /** 查询损耗晶圆记录 — 返回 WaferLossRecord[] */
+  getLossWafers: (limit = 200) => request(`/loss-wafers?limit=${limit}`),
 
   /** 查询批次详情（含子批次） */
   getBatchDetail: (batchId) =>

@@ -13,6 +13,8 @@ import {
   getBatchHistory,
   listBatches,
   listStations,
+  listProducts,
+  listLossWafers,
 } from '../controllers/batchQueryController';
 
 // 操作控制器
@@ -40,6 +42,12 @@ router.get('/health', (_req, res) => {
 });
 /** 站点列表 — GET /api/batch/stations */
 router.get('/stations', optAuth, asyncHandler(listStations));
+
+/** 产品列表 — GET /api/batch/products */
+router.get('/products', optAuth, asyncHandler(listProducts));
+
+/** 损耗晶圆 — GET /api/batch/loss-wafers */
+router.get('/loss-wafers', optAuth, asyncHandler(listLossWafers));
 
 /** 批次列表 — GET /api/batch/list?status=&station=&limit= */
 router.get('/list', optAuth, asyncHandler(listBatches));
