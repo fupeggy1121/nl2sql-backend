@@ -40,6 +40,19 @@ logger = logging.getLogger(__name__)
 MAX_SQL_RETRIES = 3
 
 
+def _route_after_semantic(state: AgentState) -> str:
+    """
+    条件边：语义解析后的路由决策 (Phase B1 Fast Path)
+
+    - fast_path=True  → sql_validator (业务规则SQL模板，跳过规划/生成节点)
+    - fast_path=False → query_planner  (正常流程)
+    """
+    if state.get("fast_path", False):
+        logger.info("[graph] Fast Path activated — skipping query_planner/decomposer/sql_generator")
+        return "sql_validator"
+    return "query_planner"
+
+
 def _route_by_intent(state: AgentState) -> str:
     """条件边：根据意图路由到不同分支"""
     intent = state.get("intent", "query")
@@ -166,8 +179,15 @@ def build_agent_graph() -> StateGraph:
         },
     )
 
-    # ── 固定边: 语义解析 → 查询规划 → 查询分解 → SQL 生成 → SQL 验证 ──
-    graph.add_edge("semantic_resolver", "query_planner")  # Phase 3
+    # ── 固定边: 语义解析 → (条件) → 查询规划 ──
+    graph.add_conditional_edges(
+        "semantic_resolver",
+        _route_after_semantic,
+        {
+            "query_planner": "query_planner",   # 普通路径
+            "sql_validator": "sql_validator",   # B1 Fast Path: 直接去验证
+        },
+    )
     graph.add_edge("query_planner", "query_decomposer")
     graph.add_edge("query_decomposer", "sql_generator")
     graph.add_edge("sql_generator", "sql_validator")

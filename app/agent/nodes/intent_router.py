@@ -11,6 +11,7 @@ import time
 from app.agent.state import AgentState
 from app.agent.tools.intent_tools import classify_intent
 from app.agent.trace import trace_step
+from app.agent.cache import intent_cache
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +62,24 @@ def intent_router_node(state: AgentState) -> dict:
             context_str = "\n".join(context_parts)
             effective_input = f"对话上下文:\n{context_str}\n\n当前问题: {effective_input}"
 
-    # 调用意图识别 Tool
+    # ── B2: 意图缓存 (追问不使用缓存，避免上下文依赖) ──
+    _cache_key = user_input  # 用原始输入做 key，避免上下文拼接干扰
     _t0 = time.perf_counter()
-    intent_data = classify_intent.invoke({"user_input": effective_input})
+    _cache_hit = False
+
+    if not is_followup:
+        _cached = intent_cache.get(_cache_key)
+        if _cached is not None:
+            intent_data = _cached
+            _cache_hit = True
+            logger.info(f"[intent_router] Cache HIT for: {user_input[:60]}")
+
+    if not _cache_hit:
+        # 调用意图识别 Tool（LLM 或规则）
+        intent_data = classify_intent.invoke({"user_input": effective_input})
+        # 写入缓存（追问不缓存）
+        if not is_followup:
+            intent_cache.set(_cache_key, intent_data)
 
     # 映射意图到路由
     raw_intent = intent_data.get("intent", "direct_query")
@@ -71,18 +87,21 @@ def intent_router_node(state: AgentState) -> dict:
 
     logger.info(
         f"[intent_router] Intent: {raw_intent} → route: {route}, "
-        f"confidence: {intent_data.get('confidence', 0):.2f}"
+        f"confidence: {intent_data.get('confidence', 0):.2f}, "
+        f"cache={'HIT' if _cache_hit else 'MISS'}"
     )
 
     # ── Pipeline Trace ──
     trace = list(state.get("pipeline_trace", []))
-    trace_step(trace, "intent_router", time.perf_counter(), summary=(
+    trace_step(trace, "intent_router", _t0, summary=(
         f"意图: {raw_intent} → {route}, 置信度: {intent_data.get('confidence', 0):.2f}"
+        + (" [缓存]" if _cache_hit else "")
     ), detail={
         "raw_intent": raw_intent,
         "route": route,
         "confidence": intent_data.get("confidence", 0),
         "entities": intent_data.get("entities", {}),
+        "cache_hit": _cache_hit,
     })
 
     return {

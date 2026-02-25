@@ -55,5 +55,9 @@ class AgentState(TypedDict, total=False):
     # ── 执行时间 ──
     start_time: float                            # 请求开始时间戳
 
+    # ── Fast Path (Phase B1) ──
+    fast_path: bool                              # True 时由 semantic_resolver 直接提供 SQL，跳过规划/生成节点
+    fast_sql_source: str                         # fast_path SQL 来源描述 (e.g. "business_rule:wip_by_station")
+
     # ── 管道追踪 (Pipeline Trace) ──
     pipeline_trace: List[Dict[str, Any]]         # 各步骤的执行追踪记录

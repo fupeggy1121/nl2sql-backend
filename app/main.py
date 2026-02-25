@@ -98,6 +98,22 @@ def _register_routes(app: FastAPI):
     async def health():
         return {"status": "healthy", "service": "ai-agent", "version": "2.0.0"}
 
+    # ── B2: 缓存统计 & 清理 ──
+    @app.get("/cache/stats")
+    async def cache_stats():
+        """返回各级缓存的命中率统计"""
+        from app.agent.cache import get_cache_stats
+        return get_cache_stats()
+
+    @app.post("/cache/clear")
+    async def cache_clear():
+        """手动清空所有缓存（热更新配置后调用）"""
+        from app.agent.cache import intent_cache, semantic_cache, result_cache
+        intent_cache.clear()
+        semantic_cache.clear()
+        result_cache.clear()
+        return {"message": "All caches cleared"}
+
 
 # ── 全局 app 实例（供 uvicorn 使用）──
 app = create_fastapi_app()
