@@ -78,6 +78,22 @@ class EmbeddingService:
     @property
     def is_available(self) -> bool:
         """embedding 服务始终可用（有 API 用 API，否则用 hash fallback）"""
+
+    @property
+    def has_real_embeddings(self) -> bool:
+        """
+        仅当真正的 OpenAI embedding API 可用时返回 True。
+        hash fallback 不具备语义，不应用于相似度匹配（会产生误命中）。
+        """
+        if self._use_fallback:
+            return False
+        if self._api_available is False:
+            return False
+        if self._api_available is None:
+            # 尚未尝试 — 触发一次初始化
+            client = self._get_client()
+            return client is not None
+        return True
         return True
 
     @property

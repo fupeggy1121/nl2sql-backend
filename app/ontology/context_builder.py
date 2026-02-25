@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -33,6 +34,10 @@ from app.ontology.mapping import (
 from app.ontology.model import OntologyClass, OntologyGraph
 
 logger = logging.getLogger(__name__)
+
+# 策略 E: embedding 相似度阈值 — 只有超过此分才将 token 视为命中
+# 0.82 经验判断：足够抗噪声又不过于严格
+_EMBED_SIMILARITY_THRESHOLD: float = 0.82
 
 
 # --------------------------------------------------------------------- #
@@ -349,6 +354,8 @@ class SemanticContextBuilder:
     ):
         self._ontology = ontology or get_ontology()
         self._mapping = mapping or get_mapping()
+        # Phase C: 标签向量索引 (lazy) — [(label, uri, np.ndarray)]
+        self._label_vec_index: Optional[List] = None
 
     # ----------------------------------------------------------------- #
     # 主入口
@@ -413,11 +420,13 @@ class SemanticContextBuilder:
         """
         从查询中提取中文/英文关键词并匹配到本体类。
 
-        策略:
+        策略（优先级从高到低，静态规则优先）:
           A. 映射字典的中文标签做精确子串匹配
-          B. 同义词/缩写词典匹配
-          C. OntologyGraph 的 label_index 做模糊匹配
-          D. 正则分词后逐词查找
+          B. _CLASS_SYNONYMS 同义词/缩写词典匹配
+          C. OntologyGraph 的 label_index 扫描
+          D. 正则分词后逐词 find_class_by_label
+          E. [Phase C] Embedding 相似度匹配（仅对 A-D 全部未命中的 token）
+             → 相似度 < 0.82 时仍 MISS，并通过 synonym_manager 上报等待人工审核
         """
         results: List[MatchedClass] = []
         seen_classes: Set[str] = set()
@@ -470,15 +479,21 @@ class SemanticContextBuilder:
                             virtual=True,
                         ))
 
-        # 策略D: 正则分词后逐词查找（仍保留作为兜底）
+        # 策略D: 正则分词后逐词查找（仍保留作为内层兜底）
         chinese_tokens = re.findall(r'[\u4e00-\u9fff]{2,}', query)
         english_tokens = re.findall(r'[a-zA-Z]{2,}', query.lower())
         all_tokens = chinese_tokens + english_tokens
+        matched_keywords: Set[str] = {mc.keyword for mc in results}  # 已命中的关键词
+        unmatched_tokens: List[str] = []  # A-D 全部未命中的 token，供策略 E 使用
 
         for token in all_tokens:
+            # 如果 token 已被前面任意策略覆盖（是已命中 keyword 的子串或超串）则跳过
+            if any(token in kw or kw in token for kw in matched_keywords):
+                continue
             cls = self._ontology.find_class_by_label(token)
             if cls and cls.uri not in seen_classes:
                 seen_classes.add(cls.uri)
+                matched_keywords.add(token)
                 pt = self._mapping.get_physical_table(cls.uri)
                 if pt:
                     results.append(self._to_matched_class(token, pt))
@@ -492,8 +507,168 @@ class SemanticContextBuilder:
                         display_column=None,
                         virtual=True,
                     ))
+            else:
+                # 策略 A-D 全部未命中，候选供策略 E
+                unmatched_tokens.append(token)
+
+        # 策略E: embedding 相似度匹配（仅对 A-D 全部未命中的 token 使用）
+        _still_unmatched: List[str] = []
+        for token in unmatched_tokens:
+            matched = self._embed_fuzzy_match(token, seen_classes)
+            if matched:
+                seen_classes.add(matched.logic_class)
+                results.append(matched)
+                logger.info(
+                    f"[context_builder] Strategy E matched: '{token}' → "
+                    f"{matched.logic_class} ({matched.label_cn})"
+                )
+            else:
+                _still_unmatched.append(token)
+
+        # 对全部策略都未命中的词，上报同义词管理层等待人工审核
+        if _still_unmatched:
+            try:
+                from app.services.synonym_manager import synonym_manager as _sm
+                for tok in _still_unmatched:
+                    _sm.record_unmatched_term(tok, query)
+                    logger.debug(f"[context_builder] Unmatched term recorded: '{tok}'")
+            except Exception:
+                pass  # 同义词服务不可用时不阻塞主流程
 
         return results
+
+    # ----------------------------------------------------------------- #
+    # Phase C: Embedding 向量索引 + 相似度匹配                           #
+    # ----------------------------------------------------------------- #
+
+    def _get_label_vec_index(self) -> Optional[List]:
+        """
+        构建标签向量索引（懒加载 + 实例级缓存）。
+
+        收集来源：
+          1. _CLASS_SYNONYMS 中所有同义词键 (key → uri)
+          2. OntologyGraph._label_index 中所有标签 (label → uri)
+          3. MappingDictionary.list_all_tables() 中所有 label_cn
+
+        返回: List[Tuple[label:str, uri:str, vector:np.ndarray]]
+        当 OpenAI API 不可用（hash fallback）时返回 None。
+        """
+        if self._label_vec_index is not None:
+            return self._label_vec_index
+
+        try:
+            from app.agent.rag.embeddings import get_embedding_service
+        except ImportError:
+            return None
+
+        emb_svc = get_embedding_service()
+        if not emb_svc.has_real_embeddings:
+            logger.debug("[context_builder] No real embedding API — skipping Strategy E index build")
+            return None
+
+        # 收集候选标签（去重）
+        candidates: Dict[str, str] = {}  # label → uri
+        # 来源1: 静态同义词典
+        for label, uri in _CLASS_SYNONYMS.items():
+            candidates[label] = uri
+        # 来源2: 本体图 label_index
+        for label, uri in self._ontology._label_index.items():
+            if len(label) >= 2:
+                candidates.setdefault(label, uri)
+        # 来源3: 映射字典 label_cn
+        for pt in self._mapping.list_all_tables():
+            if pt.label_cn and len(pt.label_cn) >= 2:
+                candidates.setdefault(pt.label_cn, pt.logic_class)
+
+        labels = list(candidates.keys())
+        uris = list(candidates.values())
+        logger.info(f"[context_builder] Building embedding index for {len(labels)} labels...")
+
+        import numpy as np
+        vectors = emb_svc.embed_batch(labels)
+
+        index = []
+        for label, uri, vec in zip(labels, uris, vectors):
+            if vec is not None:
+                index.append((label, uri, np.array(vec, dtype=np.float32)))
+
+        self._label_vec_index = index
+        logger.info(f"[context_builder] Embedding index built: {len(index)} entries")
+        return index
+
+    @staticmethod
+    def _cosine_similarity(a: "np.ndarray", b: "np.ndarray") -> float:
+        """L2 归一化后的点积（即余弦相似度）"""
+        import numpy as np
+        norm_a = np.linalg.norm(a)
+        norm_b = np.linalg.norm(b)
+        if norm_a == 0 or norm_b == 0:
+            return 0.0
+        return float(np.dot(a, b) / (norm_a * norm_b))
+
+    def _embed_fuzzy_match(
+        self, token: str, seen_classes: Set[str]
+    ) -> Optional["MatchedClass"]:
+        """
+        策略 E: 用 embedding 相似度为未命中 token 寻找最近本体类。
+
+        只有相似度 > _EMBED_SIMILARITY_THRESHOLD 且未在 seen_classes 中时才返回结果。
+        返回 None 表示没有足够相似的匹配。
+        """
+        index = self._get_label_vec_index()
+        if not index:
+            return None
+
+        try:
+            from app.agent.rag.embeddings import get_embedding_service
+            import numpy as np
+        except ImportError:
+            return None
+
+        emb_svc = get_embedding_service()
+        token_vec = emb_svc.embed_text(token)
+        if token_vec is None:
+            return None
+
+        token_arr = np.array(token_vec, dtype=np.float32)
+
+        best_sim = -1.0
+        best_label = ""
+        best_uri = ""
+        for label, uri, vec in index:
+            if uri in seen_classes:
+                continue
+            sim = self._cosine_similarity(token_arr, vec)
+            if sim > best_sim:
+                best_sim = sim
+                best_label = label
+                best_uri = uri
+
+        if best_sim < _EMBED_SIMILARITY_THRESHOLD:
+            logger.debug(
+                f"[context_builder] Strategy E: token='{token}' best_sim={best_sim:.3f} < threshold, no match"
+            )
+            return None
+
+        logger.info(
+            f"[context_builder] Strategy E: '{token}' → '{best_label}' ({best_uri}) sim={best_sim:.3f}"
+        )
+
+        pt = self._mapping.get_physical_table(best_uri)
+        if pt:
+            return self._to_matched_class(token, pt)
+        else:
+            cls = self._ontology.get_class(best_uri)
+            label_cn = cls.label if cls else best_label
+            return MatchedClass(
+                keyword=token,
+                logic_class=best_uri,
+                label_cn=label_cn,
+                physical_table=None,
+                primary_key=None,
+                display_column=None,
+                virtual=True,
+            )
 
     def _to_matched_class(self, keyword: str, pt: PhysicalTable) -> MatchedClass:
         return MatchedClass(
