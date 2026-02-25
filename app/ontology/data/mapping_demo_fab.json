@@ -470,6 +470,16 @@
 
   "business_rules": [
     {
+      "id": "wip_quality",
+      "name": "在制品WIP + 良品/不良品综合统计",
+      "description": "同时查询WIP在制品数量与良品/不良品数量时使用。按站点统计当前在制批次的WIP数（DISTINCT wafers.id）、良品数(good_qty)、不良品数(defect_qty)、总产量及良率。HAVING过滤掉合计产量为0的站点（即真正有WIP且有产量数据的站点）。JOIN路径: stations→sub_batches(current_station_id)→batches→wafers。优先级高于 wip_count 规则。",
+      "semantic_pattern": "WIP + QUALITY + Station",
+      "trigger_keywords": ["良品", "不良品", "良品数", "不良品数", "good_qty", "defect_qty"],
+      "physical_sql_template": "SELECT s.id AS station_id, s.name AS station_name, COUNT(DISTINCT w.id) AS wip_count, SUM(COALESCE(sb.good_qty, 0)) AS good_qty, SUM(COALESCE(sb.defect_qty, 0)) AS defect_qty, SUM(COALESCE(sb.total_qty, 0)) AS total_qty, CASE WHEN SUM(COALESCE(sb.total_qty, 0)) > 0 THEN ROUND(SUM(COALESCE(sb.good_qty, 0)) * 100.0 / SUM(COALESCE(sb.total_qty, 0)), 2) ELSE 0 END AS good_rate_percent FROM stations s JOIN sub_batches sb ON sb.current_station_id = s.id JOIN batches b ON sb.batch_id = b.id JOIN wafers w ON w.batch_id = b.id WHERE sb.status != 'completed' {station_filter}GROUP BY s.id, s.name HAVING SUM(COALESCE(sb.total_qty, 0)) > 0 ORDER BY wip_count DESC",
+      "involved_tables": ["stations", "sub_batches", "batches", "wafers"],
+      "involved_relations": ["semi:atStation", "semi:belongsToLot", "semi:containsSublot"]
+    },
+    {
       "id": "wip_count",
       "name": "在制品(WIP)数量统计",
       "description": "WIP统计的是Wafer(晶圆)实例数量，不是sub_batches数量。WIP状态通过sub_batches.status != 'completed'过滤，COUNT对象必须是DISTINCT wafers.id（因batch→sub_batch一对多会导致wafer行重复）。JOIN路径: wafers→batches(batch_id=id)→sub_batches(batch_id)→stations(current_station_id=id)",
