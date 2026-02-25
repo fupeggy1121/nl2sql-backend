@@ -185,16 +185,29 @@ def validate_sql(sql: str) -> dict:
 
     # 4. 检查列名（仅对已匹配的表做验证）
     if tables_found and schema["all_columns"]:
-        # 提取 SELECT 子句和 WHERE 子句中的列名
-        col_pattern = r'(?:SELECT|WHERE|ON|AND|OR|ORDER BY|GROUP BY|HAVING)\s+'
-        # 简化方式：提取非函数的标识符
+        # 先提取表别名: FROM table alias 或 JOIN table alias
+        table_alias_pattern = r'(?:FROM|JOIN)\s+\w+\s+(\w+)'
+        table_aliases = {
+            m.lower() for m in re.findall(table_alias_pattern, sql, re.IGNORECASE)
+        }
+        # 提取 SELECT 中的列别名: ... AS alias_name
+        col_alias_pattern = r'\bAS\s+(\w+)'
+        col_aliases = {
+            m.lower() for m in re.findall(col_alias_pattern, sql, re.IGNORECASE)
+        }
+        # 提取点引用前缀: alias.col → alias 是表别名，不算列名
+        dot_prefixes = {
+            m.lower() for m in re.findall(r'\b(\w+)\.\w+', sql)
+        }
+        # 合并所有应跳过的符号
+        skip_identifiers = table_aliases | col_aliases | dot_prefixes
+
         select_match = re.search(
             r'SELECT\s+(.*?)\s+FROM', sql, re.IGNORECASE | re.DOTALL
         )
         if select_match:
             select_clause = select_match.group(1)
             if select_clause.strip() != "*":
-                # 提取可能的列名
                 potential_cols = re.findall(
                     r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', select_clause
                 )
@@ -205,12 +218,15 @@ def validate_sql(sql: str) -> dict:
                     "asc", "desc", "limit", "offset", "between", "in",
                     "like", "is", "not", "and", "or", "json_agg",
                     "row_to_json", "extract", "date", "timestamp",
+                    "round", "nullif", "over", "partition", "numeric",
+                    "integer", "varchar", "text", "float", "double",
                 }
                 for col in potential_cols:
                     col_l = col.lower()
-                    if col_l not in sql_keywords and col_l not in valid_tables:
+                    if (col_l not in sql_keywords
+                            and col_l not in valid_tables
+                            and col_l not in skip_identifiers):
                         if col_l not in schema["all_columns"]:
-                            # 不确定是否是列名，只做 warning
                             missing_columns.append(col)
 
     if missing_columns:

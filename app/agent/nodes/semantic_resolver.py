@@ -101,7 +101,9 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
         return {"semantic_context": {}}
 
     # ── B2: 语义缓存查找（追问不使用缓存，避免上下文依赖）──
-    _cache_key = effective_input
+    # v2: 业务规则版本前缀——当规则/模板发生重大变更时更新版本号可立即淘汰旧缓存
+    _SEMANTIC_CACHE_VERSION = "v2"
+    _cache_key = f"{_SEMANTIC_CACHE_VERSION}:{effective_input}"
     _cache_hit = False
     if not is_followup:
         _cached_ctx = semantic_cache.get(_cache_key)

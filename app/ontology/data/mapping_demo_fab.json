@@ -480,6 +480,16 @@
       "involved_relations": ["semi:belongsToLot", "semi:containsSublot", "semi:atStation"]
     },
     {
+      "id": "yield_rate",
+      "name": "良率(合格率)统计",
+      "description": "站点良率通过 sub_batches 表的 good_qty/total_qty 计算。ROUND(SUM(good_qty)/NULLIF(SUM(total_qty),0)*100, 2) 防止除零。需 JOIN stations 表按站点中文名过滤。sub_batches.status 可不过滤（在制/已完成批次都参与良率统计）。",
+      "semantic_pattern": "YIELD + Station",
+      "trigger_keywords": ["良率", "良品率", "合格率"],
+      "physical_sql_template": "SELECT s.name AS station_name, ROUND(SUM(sb.good_qty)::numeric / NULLIF(SUM(sb.total_qty), 0) * 100, 2) AS yield_rate FROM sub_batches sb JOIN stations s ON sb.current_station_id = s.id WHERE sb.total_qty > 0 {station_filter}GROUP BY s.name ORDER BY yield_rate DESC",
+      "involved_tables": ["sub_batches", "stations"],
+      "involved_relations": ["semi:atStation"]
+    },
+    {
       "id": "chinese_name_filter",
       "name": "中文名过滤规则",
       "description": "对工站、设备按中文名过滤时，使用 name 字段（中文显示名），而不是 code 字段（英文编码）",
