@@ -16,6 +16,7 @@ export interface TraceStep {
   summary: string;
   status: 'ok' | 'warn' | 'error';
   detail?: Record<string, any>;
+  llm_tokens?: { input: number; output: number; total: number };
 }
 
 interface QueryTraceProps {
@@ -32,6 +33,7 @@ const STEP_LABELS: Record<string, string> = {
   result_analyzer: '📊 结果分析',
   chart_generator: '📈 图表生成',
   response_builder: '📦 响应构建',
+  rag_chat: '💬 智能问答',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -140,6 +142,20 @@ const QueryTrace: React.FC<QueryTraceProps> = ({ trace }) => {
                   }}>
                     {step.elapsed_ms.toFixed(1)}ms
                   </span>
+                  {/* Token 消耗 */}
+                  {step.llm_tokens && step.llm_tokens.total > 0 && (
+                    <span style={{
+                      marginLeft: 6,
+                      color: '#b8a0ff',
+                      fontSize: 11,
+                      flexShrink: 0,
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={`输入: ${step.llm_tokens.input} tokens, 输出: ${step.llm_tokens.output} tokens`}
+                    >
+                      🔢 {step.llm_tokens.total}
+                    </span>
+                  )}
                   {/* 展开箭头 */}
                   {step.detail && (
                     <span style={{ marginLeft: 8, color: '#ccc', fontSize: 10 }}>

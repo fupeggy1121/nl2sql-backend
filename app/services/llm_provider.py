@@ -5,7 +5,7 @@ LLM 提供者抽象层
 """
 import logging
 import os
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 import requests
 
 logger = logging.getLogger(__name__)
@@ -23,11 +23,33 @@ class LLMProvider:
     model: str = ""
     provider_name: str = "base"
 
+    def __init__(self):
+        # 追踪最近一次调用的 token 用量，供调用方读取
+        self._last_usage: Dict[str, int] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+
+    def pop_last_usage(self) -> Dict[str, int]:
+        """返回并重置最近一次 LLM 调用的 token 用量"""
+        usage = dict(self._last_usage)
+        self._last_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        return usage
+
     def convert_nl_to_sql(self, natural_language: str, schema_info: str = "") -> Optional[str]:
         raise NotImplementedError
 
     def generate(self, prompt: str, system_prompt: str = "You are an expert assistant.") -> str:
         raise NotImplementedError
+
+    def generate_with_usage(
+        self, prompt: str, system_prompt: str = "You are an expert assistant."
+    ) -> Dict[str, Any]:
+        """
+        同 generate()，但同时返回 token 使用情况。
+
+        Returns:
+            dict with keys: content (str), input_tokens (int), output_tokens (int), total_tokens (int)
+        """
+        content = self.generate(prompt, system_prompt)
+        return {"content": content, **self._last_usage}
 
 
 # ──────────────────────────────────────────────────────────
@@ -40,6 +62,7 @@ class OpenAICompatProvider(LLMProvider):
     """
 
     def __init__(self, provider_name: str, api_key: str, base_url: str, model: str):
+        super().__init__()
         self.provider_name = provider_name
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -50,6 +73,15 @@ class OpenAICompatProvider(LLMProvider):
 
     # ── 通用生成 ──
     def generate(self, prompt: str, system_prompt: str = "You are an expert assistant for intent recognition.") -> str:
+        result = self.generate_with_usage(prompt, system_prompt)
+        return result["content"]
+
+    def generate_with_usage(
+        self,
+        prompt: str,
+        system_prompt: str = "You are an expert assistant for intent recognition.",
+    ) -> Dict[str, Any]:
+        """调用 LLM 并返回 content + token 用量，同时写入 _last_usage"""
         if not self.api_key:
             raise RuntimeError(f"{self.provider_name} API key not configured")
 
@@ -79,8 +111,28 @@ class OpenAICompatProvider(LLMProvider):
                 data = resp.json()
                 if "choices" in data and data["choices"]:
                     content = data["choices"][0]["message"]["content"].strip()
-                    logger.info(f"{self.provider_name} generate OK: {content[:80]}...")
-                    return content
+                    usage = data.get("usage", {})
+                    input_tokens  = usage.get("prompt_tokens", 0)
+                    output_tokens = usage.get("completion_tokens", 0)
+                    total_tokens  = usage.get("total_tokens", input_tokens + output_tokens)
+                    logger.info(
+                        f"{self.provider_name} generate OK: {content[:80]}... "
+                        f"[tokens: in={input_tokens} out={output_tokens}]"
+                    )
+                    self._last_usage = {
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "total_tokens": total_tokens,
+                    }
+                    # 同时更新模块级变量，供节点层读取
+                    import app.services.llm_provider as _self_mod
+                    _self_mod._last_global_usage = dict(self._last_usage)
+                    return {
+                        "content": content,
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "total_tokens": total_tokens,
+                    }
                 raise RuntimeError(f"Invalid response from {self.provider_name} API")
             raise RuntimeError(f"{self.provider_name} API error: {resp.status_code} - {resp.text}")
         except requests.exceptions.Timeout:
@@ -167,6 +219,14 @@ _PROVIDER_MAP: Dict[str, type] = {
 
 # 运行时可切换的 provider 名称
 _active_provider: Optional[str] = None
+
+# 模块级 token 累计（最近一次 LLM 调用，线程不安全但足够用于 trace）
+_last_global_usage: Dict[str, int] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+
+
+def get_last_llm_usage() -> Dict[str, int]:
+    """返回最近一次 LLM 调用的 token 用量（用于 pipeline_trace）"""
+    return dict(_last_global_usage)
 
 
 def set_active_provider(name: str) -> None:

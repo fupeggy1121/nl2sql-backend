@@ -24,6 +24,7 @@ def trace_step(
     summary: str = "",
     detail: Optional[Dict[str, Any]] = None,
     status: str = "ok",
+    llm_tokens: Optional[Dict[str, int]] = None,
 ) -> None:
     """
     向 trace 列表追加一条步骤记录（原地修改 trace）。
@@ -35,6 +36,7 @@ def trace_step(
         summary    : 一行中文摘要（显示在折叠标题中）
         detail     : 可展开查看的完整字典
         status     : "ok" | "warn" | "error"
+        llm_tokens : LLM token 用量，如 {"input": 320, "output": 128, "total": 448}
     """
     elapsed_ms = round((time.perf_counter() - start_time) * 1000, 1)
     entry: Dict[str, Any] = {
@@ -44,8 +46,9 @@ def trace_step(
         "status": status,
     }
     if detail is not None:
-        # 清理 detail 中不可序列化的内容
         entry["detail"] = _safe_detail(detail)
+    if llm_tokens:
+        entry["llm_tokens"] = llm_tokens
     trace.append(entry)
 
 

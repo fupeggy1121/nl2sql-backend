@@ -84,6 +84,10 @@ def sql_generator_node(state: AgentState) -> dict:
             "error_context": error_context,
         })
 
+    # 读取本次 LLM 调用的 token 用量
+    from app.services.llm_provider import get_last_llm_usage
+    llm_usage = get_last_llm_usage()
+
     # ── 5. 更新 state ──
     new_retry_count = retry_count + 1 if sql_error else 0
 
@@ -107,6 +111,10 @@ def sql_generator_node(state: AgentState) -> dict:
             "retry_count": new_retry_count,
             "has_semantic_context": bool(semantic_ctx),
             "has_few_shot": bool(few_shot_context),
+        }, llm_tokens={
+            "input": llm_usage.get("input_tokens", 0),
+            "output": llm_usage.get("output_tokens", 0),
+            "total": llm_usage.get("total_tokens", 0),
         })
         return {
             "sql": sql,
