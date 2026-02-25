@@ -102,7 +102,7 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
 
     # ── B2: 语义缓存查找（追问不使用缓存，避免上下文依赖）──
     # v2: 业务规则版本前缀——当规则/模板发生重大变更时更新版本号可立即淘汰旧缓存
-    _SEMANTIC_CACHE_VERSION = "v2"
+    _SEMANTIC_CACHE_VERSION = "v3"
     _cache_key = f"{_SEMANTIC_CACHE_VERSION}:{effective_input}"
     _cache_hit = False
     if not is_followup:
@@ -121,12 +121,7 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
                 "physical_tables": _cached_ctx.get("physical_tables", []),
                 "business_rules": _cached_ctx.get("business_rules", []),
             })
-            extra: Dict[str, Any] = {}
-            if _cached_ctx.get("_fast_path"):
-                extra["sql"] = _cached_ctx["_fast_sql"]
-                extra["fast_path"] = True
-                extra["fast_sql_source"] = _cached_ctx.get("_fast_sql_source", "business_rule")
-            return {"semantic_context": _cached_ctx, "pipeline_trace": trace, **extra}
+            return {"semantic_context": _cached_ctx, "pipeline_trace": trace}
 
     try:
         t0 = time.perf_counter()
@@ -149,65 +144,29 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
             f"rules={n_rules}, tables={tables}"
         )
 
-        # ── B1: Fast Path 检测 — 业务规则自带 SQL 模板 ──
-        fast_path = False
-        fast_sql = ""
-        fast_sql_source = ""
-        for rule in ctx.business_rules:
-            if rule.physical_sql_template:
-                # 若规则定义了触发关键词，用户输入必须包含其中至少一个
-                trigger_kws = rule.trigger_keywords if rule.trigger_keywords else []
-                if trigger_kws and not any(kw in effective_input for kw in trigger_kws):
-                    logger.info(
-                        f"[semantic_resolver] Skip fast path for rule '{rule.id}': "
-                        f"trigger keywords {trigger_kws} not matched in query '{effective_input[:40]}'"
-                    )
-                    continue
-                fast_path = True
-                # 注入实体过滤条件（如"包装站点" → AND s.name LIKE '%包装%'）
-                fast_sql = _inject_entity_filters(rule.physical_sql_template, ctx, effective_input)
-                fast_sql_source = f"business_rule:{rule.id}"
-                logger.info(
-                    f"[semantic_resolver] Fast Path activated by rule '{rule.id}': "
-                    f"{fast_sql[:80]}..."
-                )
-                break  # 取第一个匹配规则
-
         # ── Pipeline Trace ──
         trace = list(state.get("pipeline_trace", []))
-        fast_note = " [★快速通道]" if fast_path else ""
         trace_step(trace, "semantic_resolver", t0, summary=(
             f"匹配 {n_classes} 个本体类, {n_joins} 个JOIN, "
-            f"{n_filters} 个过滤条件, 物理表: {tables}{fast_note}"
+            f"{n_filters} 个过滤条件, 物理表: {tables}"
         ), detail={
             "matched_classes": ctx_dict.get("matched_classes", []),
             "joins": ctx_dict.get("joins", []),
             "filters": ctx_dict.get("filters", []),
             "business_rules": ctx_dict.get("business_rules", []),
             "physical_tables": tables,
-            "fast_path": fast_path,
-            **({"+fast_sql_source": fast_sql_source} if fast_path else {}),
         })
 
-        # ── B2: 写入语义缓存（追问不缓存）──
-        # 将 fast_path 信息一并存进缓存，方便缓存命中时知道是否快速通道
+        # ── 写入语义缓存（追问不缓存）──
         if not is_followup:
             _summary = (
                 f"匹配 {n_classes} 个本体类, {n_joins} 个JOIN, "
-                f"{n_filters} 个过滤条件, 物理表: {tables}{fast_note}"
+                f"{n_filters} 个过滤条件, 物理表: {tables}"
             )
             ctx_dict["_summary"] = _summary
-            ctx_dict["_fast_path"] = fast_path
-            ctx_dict["_fast_sql"] = fast_sql
-            ctx_dict["_fast_sql_source"] = fast_sql_source
             semantic_cache.set(_cache_key, ctx_dict)
 
-        result: Dict[str, Any] = {"semantic_context": ctx_dict, "pipeline_trace": trace}
-        if fast_path:
-            result["sql"] = fast_sql
-            result["fast_path"] = True
-            result["fast_sql_source"] = fast_sql_source
-        return result
+        return {"semantic_context": ctx_dict, "pipeline_trace": trace}
 
     except Exception as e:
         logger.error(f"[semantic_resolver] Failed: {e}", exc_info=True)

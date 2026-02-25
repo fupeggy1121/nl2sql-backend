@@ -284,6 +284,8 @@ def _generate_multi_step_sql(
         if rules:
             for r in rules:
                 rule_lines.append(f"- {r.get('name', '')}: {r.get('description', '')}")
+                if r.get("sql_example"):
+                    rule_lines.append(f"  参考SQL模板: {r['sql_example']}")
         if joins:
             rule_lines.append("- JOIN 条件:")
             for j in joins:
@@ -452,5 +454,8 @@ def _format_semantic_context(semantic_ctx: dict) -> str:
         lines.append("业务规则提醒:")
         for r in rules:
             lines.append(f"  ⚠ {r.get('name', '')}: {r.get('description', '')}")
+            if r.get("sql_example"):
+                lines.append(f"    参考SQL模板 (按需调整，不要照抄——根据实际查询需求增减字段或过滤条件):")
+                lines.append(f"    {r['sql_example']}")
 
     return "\n".join(lines) if len(lines) > 1 else ""

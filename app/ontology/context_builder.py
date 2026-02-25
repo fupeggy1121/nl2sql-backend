@@ -219,7 +219,12 @@ class SemanticContext:
                 for r in self.recursive
             ],
             "business_rules": [
-                {"id": br.id, "name": br.name, "description": br.description}
+                {
+                    "id": br.id,
+                    "name": br.name,
+                    "description": br.description,
+                    **({"sql_example": br.physical_sql_template} if br.physical_sql_template else {}),
+                }
                 for br in self.business_rules
             ],
             "schema_snippet": self.schema_snippet,
