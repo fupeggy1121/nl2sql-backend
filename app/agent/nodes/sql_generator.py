@@ -32,6 +32,22 @@ def sql_generator_node(state: AgentState) -> dict:
     输出: sql, sql_confidence, sql_retry_count, rag_context
     """
     _t0 = _time.perf_counter()
+
+    # 快速路径: approved_sql 模式（前端直接提交已批准的 SQL 执行）
+    # 若无重试错误，跳过 LLM 生成，直接将 approved_sql 传递给下游节点
+    _approved_sql = state.get("approved_sql", "")
+    if _approved_sql and not state.get("sql_error"):
+        trace = list(state.get("pipeline_trace", []))
+        trace_step(trace, "sql_generator", _t0,
+                   summary="approved_sql 模式: 使用前端提交的已批准 SQL，跳过 LLM 生成",
+                   detail={"sql": _approved_sql[:200], "approved_sql_mode": True})
+        return {
+            "sql": _approved_sql,
+            "sql_confidence": 1.0,
+            "sql_retry_count": 0,
+            "pipeline_trace": trace,
+        }
+
     user_input = state.get("user_input", "")
     resolved_input = state.get("resolved_input", "") or user_input
     is_followup = state.get("is_followup", False)

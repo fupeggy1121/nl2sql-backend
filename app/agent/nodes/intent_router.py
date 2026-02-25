@@ -35,6 +35,22 @@ def intent_router_node(state: AgentState) -> dict:
     输入: user_input, resolved_input, is_followup, conversation_history, memory_context
     输出: intent, intent_data, start_time
     """
+    # 快速路径: approved_sql 模式（前端直接提交已批准的 SQL 执行）
+    # 跳过 LLM 意图分类，直接强制 intent = "query"
+    if state.get("approved_sql"):
+        _t0 = time.perf_counter()
+        trace = list(state.get("pipeline_trace", []))
+        trace_step(trace, "intent_router", _t0,
+                   summary="approved_sql 模式: 跳过意图分类, 直接执行已批准的 SQL",
+                   detail={"raw_intent": "direct_query", "route": "query",
+                           "confidence": 1.0, "approved_sql_mode": True})
+        return {
+            "intent": "query",
+            "intent_data": {"intent": "direct_query", "confidence": 1.0, "entities": {}},
+            "start_time": time.time(),
+            "pipeline_trace": trace,
+        }
+
     user_input = state.get("user_input", "")
     resolved_input = state.get("resolved_input", "") or user_input
     is_followup = state.get("is_followup", False)
