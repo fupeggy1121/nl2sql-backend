@@ -94,6 +94,8 @@ class BusinessRule:
     involved_relations: List[str] = field(default_factory=list)
     applies_to: List[str] = field(default_factory=list)
     warning_tables: List[str] = field(default_factory=list)
+    # Fast Path 触发条件：用户查询必须包含其中至少一个关键词才激活该规则的 SQL 模板
+    trigger_keywords: List[str] = field(default_factory=list)
 
 
 # --------------------------------------------------------------------- #
@@ -260,6 +262,7 @@ class MappingDictionary:
                 involved_relations=item.get("involved_relations", []),
                 applies_to=item.get("applies_to", []),
                 warning_tables=item.get("warning_tables", []),
+                trigger_keywords=item.get("trigger_keywords", []),
             )
             self._business_rules.append(br)
 

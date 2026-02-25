@@ -15,6 +15,7 @@ semantic_resolver — 语义解析节点 (Phase 3: 本体引擎集成)
 """
 
 import logging
+import re
 import time
 from typing import Dict, Any
 
@@ -23,6 +24,62 @@ from app.agent.trace import trace_step
 from app.agent.cache import semantic_cache
 
 logger = logging.getLogger(__name__)
+
+# 通用限定词，出现在"XX站点"/"XX设备"中时不作为实体名过滤
+_GENERIC_QUALIFIERS = {"工艺", "生产", "所有", "各", "每个", "全部", "某", "该", "此", "其他", "任意"}
+# 常见查询动词前缀，提取实体名时需去除
+_QUERY_VERB_PREFIXES = ["查询", "统计", "获取", "计算", "显示", "查看", "对比", "比较", "查找", "搜索", "分析"]
+
+
+def _extract_station_qualifier(user_input: str) -> str:
+    """
+    从用户输入中提取站点限定词。
+    例: "查询包装站点的在制数量"    → "包装"
+        "颗粒检测站点的良率"        → "颗粒检测"
+        "统计双面研磨03站点的WIP"   → "双面研磨"
+        "查询所有站点的在制数量"    → ""（通用词，跳过）
+    """
+    # 抓取若干 CJK/数字 字符后跟 "站点|工站" 的片段（允许中间有数字如"双面研磨03"）
+    m = re.search(r'([\u4e00-\u9fff][\u4e00-\u9fff\d]*)(站点|工站)', user_input)
+    if not m:
+        return ""
+    qualifier = m.group(1)
+    # 去掉已知动词前缀（优先匹配最长）
+    for verb in sorted(_QUERY_VERB_PREFIXES, key=len, reverse=True):
+        if qualifier.startswith(verb):
+            qualifier = qualifier[len(verb):]
+            break
+    # 去掉尾部数字/英文（如 "双面研磨03" → "双面研磨"）注意：\w 在 Python unicode 模式下包含 CJK，需用 ASCII 范围
+    qualifier = re.sub(r'[0-9a-zA-Z]+$', '', qualifier).strip()
+    if not qualifier or qualifier in _GENERIC_QUALIFIERS or len(qualifier) < 2:
+        return ""
+    return qualifier
+
+
+def _inject_entity_filters(sql: str, ctx: Any, user_input: str) -> str:
+    """
+    从用户输入中提取实体名限定词，注入到 SQL 模板的 {station_filter} 等占位符中。
+
+    当前支持：
+      - stations 表：从 "XX站点" / "XX工站" 中提取 XX，生成 s.name LIKE '%XX%'
+
+    如查询未指定特定实体（如"所有站点"），占位符替换为空字符串，SQL 返回全量数据。
+    """
+    # ── stations 实体过滤 ──────────────────────────────────────────────
+    station_filter = ""
+    has_station_class = any(
+        getattr(mc, "physical_table", None) == "stations"
+        for mc in getattr(ctx, "matched_classes", [])
+    )
+    if has_station_class:
+        qualifier = _extract_station_qualifier(user_input)
+        if qualifier:
+            station_filter = f"AND s.name LIKE '%{qualifier}%' "
+            logger.info(f"[semantic_resolver] Injecting station filter: {station_filter.strip()}")
+
+    # 替换占位符（没有占位符也无副作用）
+    sql = sql.replace("{station_filter}", station_filter)
+    return sql
 
 
 def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
@@ -96,12 +153,21 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
         fast_sql_source = ""
         for rule in ctx.business_rules:
             if rule.physical_sql_template:
+                # 若规则定义了触发关键词，用户输入必须包含其中至少一个
+                trigger_kws = rule.trigger_keywords if rule.trigger_keywords else []
+                if trigger_kws and not any(kw in effective_input for kw in trigger_kws):
+                    logger.info(
+                        f"[semantic_resolver] Skip fast path for rule '{rule.id}': "
+                        f"trigger keywords {trigger_kws} not matched in query '{effective_input[:40]}'"
+                    )
+                    continue
                 fast_path = True
-                fast_sql = rule.physical_sql_template
+                # 注入实体过滤条件（如"包装站点" → AND s.name LIKE '%包装%'）
+                fast_sql = _inject_entity_filters(rule.physical_sql_template, ctx, effective_input)
                 fast_sql_source = f"business_rule:{rule.id}"
                 logger.info(
                     f"[semantic_resolver] Fast Path activated by rule '{rule.id}': "
-                    f"{fast_sql[:60]}..."
+                    f"{fast_sql[:80]}..."
                 )
                 break  # 取第一个匹配规则
 

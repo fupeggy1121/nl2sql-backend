@@ -474,7 +474,8 @@
       "name": "在制品(WIP)数量统计",
       "description": "WIP统计的是Wafer(晶圆)实例数量，不是sub_batches数量。WIP状态通过sub_batches.status != 'completed'过滤，COUNT对象必须是DISTINCT wafers.id（因batch→sub_batch一对多会导致wafer行重复）。JOIN路径: wafers→batches(batch_id=id)→sub_batches(batch_id)→stations(current_station_id=id)",
       "semantic_pattern": "COUNT + WIP + Station",
-      "physical_sql_template": "SELECT s.name AS station_name, COUNT(DISTINCT w.id) AS wip_count FROM wafers w JOIN batches b ON w.batch_id = b.id JOIN sub_batches sb ON sb.batch_id = b.id JOIN stations s ON sb.current_station_id = s.id WHERE sb.status != 'completed' GROUP BY s.name ORDER BY wip_count DESC",
+      "trigger_keywords": ["在制", "WIP", "wip", "在制数量", "在制品", "在途"],
+      "physical_sql_template": "SELECT s.name AS station_name, COUNT(DISTINCT w.id) AS wip_count FROM wafers w JOIN batches b ON w.batch_id = b.id JOIN sub_batches sb ON sb.batch_id = b.id JOIN stations s ON sb.current_station_id = s.id WHERE sb.status != 'completed' {station_filter}GROUP BY s.name ORDER BY wip_count DESC",
       "involved_tables": ["wafers", "batches", "sub_batches", "stations"],
       "involved_relations": ["semi:belongsToLot", "semi:containsSublot", "semi:atStation"]
     },
