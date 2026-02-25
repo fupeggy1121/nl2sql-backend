@@ -166,3 +166,19 @@ export async function listBatches(req: Request, res: Response): Promise<void> {
   };
   res.json(response);
 }
+
+/**
+ * GET /api/batch/:id/sub-batches
+ * 查询指定主批次的所有子批次
+ */
+export async function getSubBatches(req: Request, res: Response): Promise<void> {
+  const id = req.params.id as string;
+
+  const subBatches = await subBatchService.getSubBatchesByBatchId(id);
+
+  const response: ApiResponse = {
+    success: true,
+    data: subBatches,
+  };
+  res.json(response);
+}
