@@ -535,6 +535,43 @@ class ConversationMemory:
         session = self.get_or_create_session(session_id)
         return [t.to_dict() for t in session.turns]
 
+    def get_latest_session(self) -> Optional[Dict[str, Any]]:
+        """
+        返回最近活跃的一条会话信息（前端打开页面时复用，避免每次新建）。
+        优先从内存中取；内存为空时查 Supabase。
+        若完全没有历史会话则返回 None。
+        """
+        # 1. 从内存中取最近活跃的（OrderedDict 末尾为最新）
+        for sid, s in reversed(self._sessions.items()):
+            if s.turns:  # 只返回有真实对话的 session
+                return {
+                    "session_id": sid,
+                    "name": s.turns[0].user_message[:50],
+                    "turn_count": len(s.turns),
+                    "last_active": datetime.fromtimestamp(s.last_active).isoformat(),
+                    "created_at": datetime.fromtimestamp(s.created_at).isoformat(),
+                    "last_message": s.turns[-1].user_message,
+                }
+
+        # 2. 内存中没有，查 DB
+        try:
+            client = self._get_supabase()
+            if client:
+                resp = client.table("chat_sessions").select(
+                    "id,name,created_at"
+                ).order("created_at", desc=True).limit(1).execute()
+                if resp.data:
+                    row = resp.data[0]
+                    return {
+                        "session_id": row["id"],
+                        "name": row.get("name", ""),
+                        "created_at": row.get("created_at", ""),
+                    }
+        except Exception as e:
+            logger.warning(f"[memory] get_latest_session DB query failed: {e}")
+
+        return None
+
     def list_recent_sessions(self, limit: int = 20) -> List[Dict[str, Any]]:
         """列出最近活跃的会话"""
         # 从内存中获取

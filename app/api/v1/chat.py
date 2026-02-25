@@ -117,6 +117,20 @@ async def list_sessions(limit: int = 20):
     return {"success": True, "sessions": sessions, "count": len(sessions)}
 
 
+@router.get("/sessions/latest")
+async def get_latest_session():
+    """
+    返回最近一条有效会话（前端打开页面时调用，复用已有会话避免重复创建）。
+    - 有历史会话 → 返回 {found: true, session: {...}}
+    - 没有任何会话 → 返回 {found: false, session: null}
+    前端逻辑：found=true 时直接复用 session_id；found=false 时才新建。
+    """
+    latest = conversation_memory.get_latest_session()
+    if latest:
+        return {"success": True, "found": True, "session": latest}
+    return {"success": True, "found": False, "session": None}
+
+
 @router.get("/sessions/{session_id}/history")
 async def get_session_history(session_id: str):
     """获取指定会话的完整历史"""
