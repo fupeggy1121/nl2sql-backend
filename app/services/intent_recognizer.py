@@ -21,8 +21,20 @@ class IntentRecognizer:
         
         # Intent configuration
         self.intents = {
+            'chat': {
+                'keywords': ['你好', '您好', 'hello', 'hi', '你叫什么', '你是谁', '你是什么',
+                             '介绍一下', '你能做什么', '能帮我做什么', '谢谢', '感谢', '再见',
+                             '拜拜', '帮帮我', '有什么功能', '怎么用', '你叫', '名字', '你的名字'],
+                'entities': [],
+                'description': 'General chat, greeting, or assistant introduction'
+            },
+            'knowledge_qa': {
+                'keywords': ['是什么', '什么是', '解释', '含义', '定义', '怎么理解', '如何理解'],
+                'entities': [],
+                'description': 'Knowledge question-answering about MES concepts'
+            },
             'direct_query': {
-                'keywords': ['返回', '查询', '显示', '获取', '列出', '表', '片篮', '载具', '载体', 
+                'keywords': ['返回', '查询', '显示', '获取', '列出', '表', '片篮', '载具', '载体',
                             '晶圆', '检测', '批次', '设备', '质量', '缺陷', 'select', 'from'],
                 'entities': ['table', 'limit', 'filters'],
                 'description': 'Direct table data query'
@@ -53,6 +65,17 @@ class IntentRecognizer:
                 'description': 'Comparative analysis'
             }
         }
+
+        # Greeting/chat patterns for top-priority rule match (regex)
+        self._chat_patterns = re.compile(
+            r'^(你好|您好|hi|hello|嗨|哈喽|hey)'
+            r'|你(叫什么|是谁|是什么|能做什么|有什么功能|的名字|叫啥)'
+            r'|你们?(叫什么|是谁|是什么|能做什么|有什么功能|的名字|叫啥)'
+            r'|(介绍一下|介绍下)(你|您|自己|一下自己)'
+            r'|(谢谢|感谢|再见|拜拜|byebye|bye)'
+            r'|怎么?(称呼|叫|叫你)',
+            re.IGNORECASE
+        )
     
     def recognize(self, user_input: str) -> Dict[str, Any]:
         """
@@ -134,10 +157,19 @@ class IntentRecognizer:
             dict: Intent matching result with keys: intent, confidence, entities
         """
         from app.config.table_synonyms import is_valid_table_name
-        
+
         normalized_input = text.lower()
         scores = {}
-        
+
+        # ── 最高优先级：问候 / 闲聊 / 助手介绍 ──
+        # 这些输入不含任何业务查询意图，必须在所有其他规则之前判断
+        if self._chat_patterns.search(text):
+            return {
+                'intent': 'chat',
+                'confidence': 0.95,
+                'entities': {}
+            }
+
         # Check if it's a direct query to a table (highest priority)
         # Look for keywords followed by table synonyms
         if any(kw in normalized_input for kw in ['查询', '返回', '显示', '获取', '列出']):
@@ -198,11 +230,16 @@ class IntentRecognizer:
             }
         
         intent_list = ', '.join(self.intents.keys())
-        
-        prompt = f"""Analyze the user query intent in MES system.
+
+        prompt = f"""Analyze the user query intent in a MES (Manufacturing Execution System) assistant.
 
 Possible intent types and descriptions:
 {chr(10).join(f"- {k}: {v['description']}" for k, v in self.intents.items())}
+
+IMPORTANT RULES:
+- If the input is a greeting (你好/您好/hello/hi), self-introduction question (你叫什么/你是谁), 
+  or general chat (谢谢/再见/你能做什么), classify as "chat" with high confidence.
+- Only classify as a query intent if the user is asking for MES data or production metrics.
 
 User input: "{text}"
 
