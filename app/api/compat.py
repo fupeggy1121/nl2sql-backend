@@ -133,54 +133,24 @@ async def compat_execute_query(request: Request):
                 status_code=400,
             )
 
-        # 直接用 database tool 执行 SQL + chart recommender
-        from app.agent.tools.database_tools import execute_query
-        from app.agent.tools.chart_tools import recommend_chart
-
-        exec_result = execute_query.invoke({"sql": sql_query})
-
-        viz = None
-        if exec_result.get("success"):
-            data = exec_result.get("data", [])
-            viz = recommend_chart.invoke({
-                "sql": sql_query,
-                "data": data,
-                "natural_language": query_intent_data.get("natural_language", ""),
-                "intent_type": query_intent_data.get("intent", ""),
-            })
-
-            from datetime import datetime
-            return JSONResponse({
-                "success": True,
-                "query_result": {
-                    "success": True,
-                    "data": data,
-                    "rows_count": len(data),
-                    "sql": sql_query,
-                    "summary": f"查询返回 {len(data)} 条记录",
-                    "visualization_type": viz.get("type", "table") if viz else "table",
-                    "actions": ["export", "refresh"],
-                    "query_time_ms": 0,
-                    "generated_at": datetime.now().isoformat(),
-                },
-                "visualization": viz,
-            })
-        else:
-            return JSONResponse(
-                {
-                    "success": False,
-                    "query_result": {
-                        "success": False,
-                        "data": [],
-                        "rows_count": 0,
-                        "sql": sql_query,
-                        "error_message": exec_result.get("error", "Unknown error"),
-                    },
-                    "visualization": None,
-                },
-                status_code=400,
-            )
-
+        # 统一走 Agent 流水线，返回 pipeline_trace
+        agent = get_agent_app()
+        initial_state = {
+            "user_input": query_intent_data.get("natural_language", ""),
+            "session_id": str(uuid.uuid4()),
+            "conversation_history": [],
+            "sql_retry_count": 0,
+            "approved_sql": sql_query,
+        }
+        result = await agent.ainvoke(initial_state)
+        response_data = result.get("response", {})
+        return JSONResponse({
+            "success": response_data.get("success", False),
+            "query_plan": response_data.get("query_plan"),
+            "query_result": response_data.get("query_result"),
+            "visualization": response_data.get("visualization"),
+            "pipeline_trace": response_data.get("pipeline_trace", []),
+        })
     except Exception as e:
         logger.error(f"[compat/execute] Error: {e}", exc_info=True)
         return JSONResponse(

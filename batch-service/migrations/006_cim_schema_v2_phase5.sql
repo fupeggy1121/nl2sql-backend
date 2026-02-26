@@ -140,10 +140,10 @@ SELECT EXISTS (
 -- 将旧日志数据复制到 batch_events，保留原始时间戳
 -- ═══════════════════════════════════════════════════════════════
 
-INSERT INTO batch_events (event_type, target_type, target_id, payload, triggered_by, created_at)
+INSERT INTO batch_events (event_type, target_type, target_id, payload, operator_id, created_at)
 SELECT
   bol.operation_type,
-  'batch',
+  'LOT',
   bol.batch_id::uuid,
   jsonb_build_object(
     'batch_code', bol.batch_code,
@@ -158,7 +158,7 @@ SELECT
     'migrated_from', 'batch_operation_logs',
     'original_id', bol.id
   ),
-  COALESCE(bol.operator_id, 'system'),
+  COALESCE(bol.operator_id::uuid, NULL),
   bol.created_at
 FROM batch_operation_logs bol
 WHERE NOT EXISTS (

@@ -18,7 +18,7 @@ function eventToLog(event: BatchEvent): BatchOperationLog {
     operation_type: event.event_type as any,
     from_station: event.payload?.from_station || null,
     to_station: event.payload?.to_station || null,
-    operator_id: event.triggered_by || '',
+    operator_id: event.operator_id || '',
     remarks: event.payload?.remarks || null,
     good_qty_before: event.payload?.good_qty_before ?? null,
     defect_qty_before: event.payload?.defect_qty_before ?? null,

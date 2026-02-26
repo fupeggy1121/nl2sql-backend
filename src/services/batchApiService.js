@@ -12,18 +12,25 @@
  *   await batchApiService.confirmOutstation({ batchId, waferResults, subBatches });
  */
 
-// API 基础地址 — 与 ontologyApi.js / nl2sqlApi_v2.js 保持一致的环境变量模式
+// 统一 API 基础地址 — 与 batchApiService.ts 保持一致
+// 确保 VITE_API_BASE_URL 在 .env 文件中设置为 https://batch-service-mmtw.onrender.com/api
 const getBase = () => {
   // 1. Vite env (推荐)
-  if (typeof import !== 'undefined' && import.meta?.env?.VITE_BATCH_API_URL) {
+  if (import.meta?.env?.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  if (import.meta?.env?.VITE_BATCH_API_URL) {
     return import.meta.env.VITE_BATCH_API_URL;
   }
-  // 2. React CRA env
-  if (typeof process !== 'undefined' && process.env?.REACT_APP_BATCH_API_URL) {
-    return process.env.REACT_APP_BATCH_API_URL;
+  if (import.meta?.env?.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace(/\/api\/query.*$/, '') + '/api';
   }
-  // 3. 本地开发默认
-  return 'http://localhost:3001/api/batch';
+  // 2. React CRA env
+  if (typeof process !== 'undefined' && process.env?.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL.replace(/\/api\/query.*$/, '') + '/api';
+  }
+  // 3. 线上默认（Render 部署地址）
+  return 'https://batch-service-mmtw.onrender.com/api';
 };
 
 const BASE = getBase();
@@ -104,9 +111,35 @@ export const batchApiService = {
   // ── 查询 ──────────────────────────────────
 
   /** 查询批次列表 — 返回 BatchData[] */
-  listBatches: (params = {}) => {
+  listBatches: async (params = {}) => {
     const qs = new URLSearchParams(params).toString();
-    return request(`/list${qs ? '?' + qs : ''}`);
+    const data = await request(`/batch/list${qs ? '?' + qs : ''}`);
+    // snake_case → camelCase 转换（含 current_station_name → stationName）
+    if (Array.isArray(data)) {
+      return data.map(b => ({
+        id: b.id,
+        batchCode: b.batch_code ?? b.batchCode,
+        productCode: b.product_code ?? b.productCode,
+        productName: b.product_name ?? b.productName,
+        totalQty: b.total_qty ?? b.totalQty,
+        goodQty: b.good_qty ?? b.goodQty,
+        defectQty: b.defect_qty ?? b.defectQty,
+        status: b.status,
+        station: b.current_station_code ?? b.station,
+        stationName: b.current_station_name ?? b.stationName ?? '未知站点',
+        equipmentCode: b.equipment_code ?? b.equipmentCode,
+        equipmentName: b.equipment_name ?? b.equipmentName,
+        equipmentChamber: b.equipment_chamber ?? b.equipmentChamber,
+        nextStationCode: b.next_station_code ?? b.nextStationCode,
+        nextStationName: b.next_station_name ?? b.nextStationName,
+        productVersion: b.product_version ?? b.productVersion,
+        recipeCode: b.recipe_code ?? b.recipeCode,
+        ingotId: b.ingot_id ?? b.ingotId,
+        isSmallBatch: b.is_small_batch ?? b.isSmallBatch,
+        isHold: b.is_hold ?? b.isHold,
+      }));
+    }
+    return data;
   },
 
   /** 查询所有站点 — 返回 StationData[] */
@@ -123,15 +156,15 @@ export const batchApiService = {
 
   /** 查询批次详情（含子批次） */
   getBatchDetail: (batchId) =>
-    request(`/${batchId}`),
+    request(`/batch/${batchId}`),
 
   /** 查询批次晶圆数据（含检测结果） */
   getBatchWafers: (batchId, stationCode) =>
-    request(`/${batchId}/wafers?stationCode=${encodeURIComponent(stationCode)}`),
+    request(`/batch/${batchId}/wafers?stationCode=${encodeURIComponent(stationCode)}`),
 
   /** 查询操作历史 */
   getBatchHistory: (batchId, limit = 50) =>
-    request(`/${batchId}/history?limit=${limit}`),
+    request(`/batch/${batchId}/history?limit=${limit}`),
 
   // ── 写操作 ────────────────────────────────
 
@@ -139,10 +172,10 @@ export const batchApiService = {
    * 出站确认
    * 对应原 handleConfirmOutstation
    */
-  confirmOutstation: (payload) =>
-    request('/confirm-outstation', {
+  confirmOutstation: (batchId, payload) =>
+    request('/batch/confirm-outstation', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ batchId, ...payload }),
     }),
 
   /**

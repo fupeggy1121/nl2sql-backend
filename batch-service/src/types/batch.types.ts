@@ -89,10 +89,15 @@ export interface Carrier {
 export interface BatchEvent {
   id: string;
   event_type: string;
-  target_type: 'batch' | 'sublot' | 'wafer' | 'carrier';
+  target_type: 'LOT' | 'SUBLOT' | 'WAFER';
   target_id: string;
+  lot_id: string | null;
+  sublot_id: string | null;
   payload: Record<string, any>;
-  triggered_by: string | null;
+  operator_id: string | null;
+  station_id: string | null;
+  equipment_id: string | null;
+  operated_at: string;
   created_at: string;
 }
 
