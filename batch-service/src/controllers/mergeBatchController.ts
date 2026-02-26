@@ -18,10 +18,11 @@ import { BatchServiceError } from '../middleware/errorHandler';
  * }
  *
  * 业务逻辑（在 RPC 中原子执行）:
- * 1. 校验所有源子批次在同一站点
- * 2. 将源子批次的 batch_id 更新为目标批次
+ * 1. 校验所有源子批次在同一站点 (通过 current_station_id)
+ * 2. 将源子批次的 batch_id + lot_id 更新为目标批次 (v2)
  * 3. 重算目标批次的 total_qty / good_qty / defect_qty
- * 4. 写入操作日志
+ * 4. 更新关联 wafers 的 lot_id / batch_id
+ * 5. 双写 batch_events + batch_operation_logs
  */
 export async function confirmMerge(req: Request, res: Response): Promise<void> {
   const { targetBatchId, sourceSubBatchIds } = req.body as ConfirmMergeRequest;

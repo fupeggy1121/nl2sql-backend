@@ -23,9 +23,9 @@ import { BatchServiceError } from '../middleware/errorHandler';
  *
  * 业务逻辑（在 RPC 中原子执行）:
  * 1. 校验源批次非 HOLD
- * 2. 为每组晶圆创建新子批次
- * 3. 更新 wafer_carrier_contents 关联
- * 4. 写入操作日志
+ * 2. 为每组晶圆创建新子批次 (含 lot_id)
+ * 3. 更新 wafers.sublot_id + carrier_id（v2: 同时兼容 wafer_carrier_contents）
+ * 4. 双写 batch_events + batch_operation_logs
  */
 export async function confirmSplit(req: Request, res: Response): Promise<void> {
   const { batchId, splitConfig } = req.body as ConfirmSplitRequest;

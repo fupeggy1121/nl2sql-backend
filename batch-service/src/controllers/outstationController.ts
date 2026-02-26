@@ -20,10 +20,10 @@ import { BatchServiceError } from '../middleware/errorHandler';
  *
  * 业务逻辑（在 RPC 中原子执行）:
  * 1. 统计良品/不良品数
- * 2. 读取下一站点
- * 3. 更新主批次: status='待进站', station=nextStation, 清空设备
- * 4. 逐个更新子批次: status='待进站', 计算各自良品/不良品
- * 5. 写入操作日志
+ * 2. 通过 current_station_id + 工艺路线计算下一站点 (v2)
+ * 3. 更新主批次: status='待进站', current_station_id=next, 清空设备
+ * 4. 逐个更新子批次: status='待进站', 更新 wafers.wafer_type
+ * 5. 双写 batch_events + batch_operation_logs
  */
 export async function confirmOutstation(req: Request, res: Response): Promise<void> {
   const { batchId, waferResults, subBatches } = req.body as ConfirmOutstationRequest;
