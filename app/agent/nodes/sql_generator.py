@@ -309,7 +309,9 @@ def _generate_multi_step_sql(
         f"【业务领域知识（来自语义引擎）】\n"
         f"- 在制品(WIP)数量 = COUNT(DISTINCT wafers.id) 晶圆实例数，不是 COUNT(sub_batches.id)！（batch→sub_batch一对多会导致wafer行重复，必须DISTINCT去重）\n"
         f"  WIP状态通过 sub_batches.status != 'completed' 过滤\n"
-        f"  JOIN路径: wafers→batches(batch_id=id)→sub_batches(batch_id)→stations(current_station_id=id)\n"
+        f"  v2 JOIN路径(优先): wafers.sublot_id → sub_batches.id → stations(current_station_id=id)\n"
+        f"  也可: wafers→batches(batch_id=id)→sub_batches(batch_id)→stations(current_station_id=id)\n"
+        f"- wafers 表(v2)已包含 sublot_id, carrier_id, slot_number, wafer_type，不再需要 wafer_carrier_contents 桥接表\n"
         f"- process_route_stations 是工艺路线定义表，不含在制品数据\n"
     )
 

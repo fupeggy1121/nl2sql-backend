@@ -13,7 +13,7 @@
       "properties": {
         "semi:hasState": "status"
       },
-      "key_columns": ["id", "wafer_id_code", "batch_id", "initial_product_version", "created_at"]
+      "key_columns": ["id", "wafer_id_code", "wafer_id", "batch_id", "lot_id", "sublot_id", "carrier_id", "slot_number", "wafer_type", "ingot_id", "work_order_id", "initial_product_version", "created_at"]
     },
     {
       "logic_class": "semi:ProductionLot",
@@ -24,7 +24,7 @@
       "properties": {
         "semi:hasState": "status"
       },
-      "key_columns": ["id", "batch_code", "product_code", "product_name", "total_qty", "good_qty", "defect_qty", "status", "current_station_code", "current_station_name", "equipment_code", "equipment_name", "recipe_code"]
+      "key_columns": ["id", "batch_code", "product_code", "product_name", "total_qty", "good_qty", "defect_qty", "status", "current_station_code", "current_station_name", "current_station_id", "work_order_id", "equipment_code", "equipment_name", "recipe_code"]
     },
     {
       "logic_class": "semi:Sublot",
@@ -35,7 +35,7 @@
       "properties": {
         "semi:hasState": "status"
       },
-      "key_columns": ["id", "batch_id", "sub_batch_code", "current_carrier_id", "current_station_id", "total_qty", "good_qty", "defect_qty", "status"]
+      "key_columns": ["id", "batch_id", "sub_batch_code", "current_carrier_id", "current_station_id", "lot_id", "equipment_id", "next_station_id", "total_qty", "good_qty", "defect_qty", "status"]
     },
     {
       "logic_class": "semi:ProcessStation",
@@ -143,14 +143,13 @@
     },
     {
       "logic_class": "semi:Action",
-      "physical_table": null,
-      "primary_key": null,
-      "label_cn": "生产动作",
-      "display_column": null,
-      "virtual": true,
+      "physical_table": "batch_events",
+      "primary_key": "id",
+      "label_cn": "生产动作/事件",
+      "display_column": "event_type",
       "properties": {},
-      "note": "待扩展 — 操作记录散布在各表状态变更中",
-      "key_columns": []
+      "key_columns": ["id", "event_type", "target_type", "target_id", "payload", "triggered_by", "created_at"],
+      "note": "v2新增: 批次事件表，记录所有操作历史（进站/出站/拆并批等），追加写入不可变"
     }
   ],
 
@@ -168,30 +167,26 @@
     },
     {
       "logic_relation": "semi:belongsToSublot",
-      "description": "Wafer 属于哪个 Sublot(子批次)，通过桥接表",
-      "strategy": "JoinTable",
+      "description": "Wafer 属于哪个 Sublot(子批次)，v2直接外键",
+      "strategy": "ForeignKey",
       "join_logic": {
-        "bridge_table": "wafer_carrier_contents",
-        "source_key": "wafer_id",
-        "target_key": "sub_batch_id",
         "source_table": "wafers",
-        "source_pk": "id",
+        "source_key": "sublot_id",
         "target_table": "sub_batches",
-        "target_pk": "id"
+        "target_key": "id",
+        "note": "v2: wafers.sublot_id 直接引用 sub_batches.id，不再需要 wafer_carrier_contents 桥接表"
       }
     },
     {
       "logic_relation": "semi:locatedInSlot",
-      "description": "Wafer 位于哪个载具槽位，通过桥接表",
-      "strategy": "JoinTable",
+      "description": "Wafer 位于哪个载具槽位，v2直接外键",
+      "strategy": "ForeignKey",
       "join_logic": {
-        "bridge_table": "wafer_carrier_contents",
-        "source_key": "wafer_id",
-        "target_key": "carrier_id",
         "source_table": "wafers",
-        "source_pk": "id",
+        "source_key": "carrier_id",
         "target_table": "carriers",
-        "target_pk": "id"
+        "target_key": "id",
+        "note": "v2: wafers.carrier_id + wafers.slot_number 直接存储载具位置，不再需要 wafer_carrier_contents"
       }
     },
     {
@@ -508,8 +503,8 @@
     {
       "id": "batch_station_denormalized",
       "name": "批次-工站反范式",
-      "description": "batches 表直接存储了 current_station_code 和 current_station_name（反范式），查询批次当前工站时可直接取字段而无需 JOIN stations",
-      "applies_to": ["batches.current_station_code", "batches.current_station_name"]
+      "description": "batches 表存储了 current_station_id (v2 外键引用 stations.id) 以及冗余的 current_station_code/current_station_name（反范式）。优先使用 current_station_id JOIN stations 获取站点信息。",
+      "applies_to": ["batches.current_station_id", "batches.current_station_code", "batches.current_station_name"]
     },
     {
       "id": "route_vs_wip",
