@@ -7,23 +7,16 @@ import { Batch, SubBatch, BatchDetailResponse } from '../types/batch.types';
 import { BatchServiceError } from '../middleware/errorHandler';
 
 /**
- * 批量填充 current_station_name：
- * 优先通过 current_station_id 查询，回退到 current_station_code
+ * 批量填充 current_station_name：通过 current_station_id JOIN stations
  */
 async function enrichBatchesWithStationName(batches: Batch[]): Promise<Batch[]> {
   if (!batches.length) return batches;
 
-  // 收集去重的 station IDs 和 station codes
   const stationIds = [...new Set(
     batches.map(b => b.current_station_id).filter(Boolean)
   )] as string[];
-  const stationCodes = [...new Set(
-    batches.map(b => b.current_station_code).filter(Boolean)
-  )] as string[];
 
-  // 优先用 ID 查询
-  const idToName: Record<string, string> = {};
-  const idToCode: Record<string, string> = {};
+  const idToStation: Record<string, { code: string; name: string }> = {};
   if (stationIds.length > 0) {
     const { data } = await supabase
       .from('stations')
@@ -31,34 +24,16 @@ async function enrichBatchesWithStationName(batches: Batch[]): Promise<Batch[]> 
       .in('id', stationIds);
     if (data) {
       for (const s of data) {
-        idToName[s.id] = s.name;
-        idToCode[s.id] = s.code;
+        idToStation[s.id] = { code: s.code, name: s.name };
       }
     }
   }
 
-  // 对未命中 ID 的批次，回退到 code 查询
-  const matchedCodes = new Set(Object.values(idToCode));
-  const unmatchedCodes = stationCodes.filter(c => !matchedCodes.has(c));
-  const codeToName: Record<string, string> = {};
-  if (unmatchedCodes.length > 0) {
-    const { data } = await supabase
-      .from('stations')
-      .select('code, name')
-      .in('code', unmatchedCodes);
-    if (data) {
-      for (const s of data) {
-        codeToName[s.code] = s.name;
-      }
-    }
-  }
-
-  // 回填 current_station_name
   return batches.map(b => ({
     ...b,
     current_station_name: b.current_station_id
-      ? (idToName[b.current_station_id] || b.current_station_name || null)
-      : (codeToName[b.current_station_code] || b.current_station_name || null),
+      ? (idToStation[b.current_station_id]?.name || null)
+      : null,
   }));
 }
 
@@ -108,13 +83,26 @@ export const batchService = {
   },
 
   /**
-   * 按站点查询批次列表（自动填充站点名称）
+   * 按站点查询批次列表（先查 station ID，再用 current_station_id 过滤）
    */
   async getBatchesByStation(stationCode: string): Promise<Batch[]> {
+    // 1. 查找站点 ID
+    const { data: stationRows } = await supabase
+      .from('stations')
+      .select('id')
+      .eq('code', stationCode)
+      .limit(1);
+
+    const stationId = stationRows?.[0]?.id;
+    if (!stationId) {
+      return []; // 无此站点编码，返回空
+    }
+
+    // 2. 用 current_station_id 过滤
     const { data, error } = await supabase
       .from('batches')
       .select('*')
-      .eq('current_station_code', stationCode)
+      .eq('current_station_id', stationId)
       .order('updated_at', { ascending: false });
 
     if (error) {

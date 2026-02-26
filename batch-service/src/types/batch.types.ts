@@ -5,7 +5,7 @@
 
 // ─── 数据库实体类型 ─────────────────────────────────────────
 
-/** 主批次 — 对应 batches 表 (含 v2 新列) */
+/** 主批次 — 对应 batches 表 (v2) */
 export interface Batch {
   id: string;
   batch_code: string;
@@ -15,22 +15,17 @@ export interface Batch {
   good_qty: number;
   defect_qty: number;
   status: BatchStatus;
-  current_station_code: string;
-  current_station_name: string | null;
+  current_station_id: string | null;
+  current_station_name: string | null;  // enrichment 计算字段，非 DB 列
   equipment_code: string | null;
   equipment_name: string | null;
   equipment_chamber: string | null;
-  next_station_code: string | null;
-  next_station_name: string | null;
   product_version: number;
   recipe_code: string;
   ingot_id: string;
   is_small_batch: boolean;
-  is_hold: boolean;
   created_at: string;
   updated_at: string;
-  // ── v2 新列 ──
-  current_station_id: string | null;
   work_order_id: string | null;
 }
 

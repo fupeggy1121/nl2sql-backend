@@ -22,7 +22,7 @@ import { BatchServiceError } from '../middleware/errorHandler';
  * }
  *
  * 业务逻辑（在 RPC 中原子执行）:
- * 1. 校验源批次非 HOLD
+ * 1. 校验源批次 status != '暂停'
  * 2. 为每组晶圆创建新子批次 (含 lot_id)
  * 3. 更新 wafers.sublot_id + carrier_id
  * 4. 写入 batch_events

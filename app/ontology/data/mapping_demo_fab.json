@@ -24,7 +24,7 @@
       "properties": {
         "semi:hasState": "status"
       },
-      "key_columns": ["id", "batch_code", "product_code", "product_name", "total_qty", "good_qty", "defect_qty", "status", "current_station_code", "current_station_name", "current_station_id", "work_order_id", "equipment_code", "equipment_name", "recipe_code"]
+      "key_columns": ["id", "batch_code", "product_code", "product_name", "total_qty", "good_qty", "defect_qty", "status", "current_station_id", "work_order_id", "equipment_code", "equipment_name", "recipe_code"]
     },
     {
       "logic_class": "semi:Sublot",
@@ -318,9 +318,9 @@
       },
       "Hold": {
         "description": "暂停/Hold 状态",
-        "physical_condition": "batches.is_hold = true",
+        "physical_condition": "batches.status = '暂停'",
         "applies_to_table": "batches",
-        "applies_to_column": "is_hold"
+        "applies_to_column": "status"
       }
     },
     "semi:BatchStatus": {
@@ -502,9 +502,9 @@
     },
     {
       "id": "batch_station_denormalized",
-      "name": "批次-工站反范式",
-      "description": "batches 表存储了 current_station_id (v2 外键引用 stations.id) 以及冗余的 current_station_code/current_station_name（反范式）。优先使用 current_station_id JOIN stations 获取站点信息。",
-      "applies_to": ["batches.current_station_id", "batches.current_station_code", "batches.current_station_name"]
+      "name": "批次-工站关联",
+      "description": "batches 表通过 current_station_id (uuid FK) 引用 stations.id。查询批次所在站点时 JOIN stations 获取 code/name。",
+      "applies_to": ["batches.current_station_id"]
     },
     {
       "id": "route_vs_wip",
