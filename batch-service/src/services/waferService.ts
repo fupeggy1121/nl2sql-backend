@@ -1,36 +1,37 @@
 // ============================================================
 // 晶圆服务 — 晶圆查询和载具内容管理
+// v2: 优先从 wafers 表读取（已反规范化），回退到 wafer_carrier_contents
 // ============================================================
 
 import supabase from '../config/supabaseClient';
-import { WaferCarrierContent } from '../types/batch.types';
+import { Wafer, WaferCarrierContent } from '../types/batch.types';
 import { BatchServiceError } from '../middleware/errorHandler';
 
 export const waferService = {
   /**
-   * 根据子批次 ID 列表查询晶圆载具内容
+   * 根据子批次 ID 列表查询晶圆（v2: 从 wafers 表读取）
    * 对应前端 fetchWafersForSubBatches()
    */
-  async getWafersForSubBatches(subBatchIds: string[]): Promise<WaferCarrierContent[]> {
+  async getWafersForSubBatches(subBatchIds: string[]): Promise<Wafer[]> {
     if (subBatchIds.length === 0) return [];
 
     const { data, error } = await supabase
-      .from('wafer_carrier_contents')
+      .from('wafers')
       .select('*')
-      .in('sub_batch_id', subBatchIds)
+      .in('sublot_id', subBatchIds)
       .order('slot_number');
 
     if (error) {
-      throw new BatchServiceError('Failed to query wafer carrier contents', 500, error);
+      throw new BatchServiceError('Failed to query wafers for sub-batches', 500, error);
     }
 
-    return (data || []) as WaferCarrierContent[];
+    return (data || []) as Wafer[];
   },
 
   /**
    * 根据批次 ID 查询晶圆
    */
-  async getWafersByBatchId(batchId: string): Promise<any[]> {
+  async getWafersByBatchId(batchId: string): Promise<Wafer[]> {
     const { data, error } = await supabase
       .from('wafers')
       .select('*')
@@ -41,7 +42,7 @@ export const waferService = {
       throw new BatchServiceError('Failed to query wafers', 500, error);
     }
 
-    return data || [];
+    return (data || []) as Wafer[];
   },
 
   /**
@@ -68,8 +69,8 @@ export const waferService = {
   },
 
   /**
-   * 根据子批次 ID 查询晶圆载具内容，并关联晶圆和检测数据
-   * 提供前端表单所需的完整晶圆信息
+   * 根据子批次 ID 查询晶圆，并关联检测数据
+   * v2: 直接从 wafers 表获取完整信息（不再需要 wafer_carrier_contents JOIN）
    */
   async getWafersWithDetailsForSubBatches(
     subBatchIds: string[],
@@ -78,39 +79,33 @@ export const waferService = {
   ): Promise<any[]> {
     if (subBatchIds.length === 0) return [];
 
-    // 1. 查询载具内容
-    const carrierContents = await waferService.getWafersForSubBatches(subBatchIds);
+    // 1. 直接从 wafers 表获取（已包含 carrier_id, slot_number, wafer_type）
+    const wafers = await waferService.getWafersForSubBatches(subBatchIds);
 
-    if (carrierContents.length === 0) return [];
+    if (wafers.length === 0) return [];
 
-    // 2. 查询关联的晶圆信息
-    const waferIds = carrierContents.map(wc => wc.wafer_id);
-    const { data: wafers } = await supabase
-      .from('wafers')
-      .select('*')
-      .in('id', waferIds);
-
-    // 3. 查询该批次在该站点的检测结果
+    // 2. 查询该批次在该站点的检测结果
     const inspectionResults = await waferService.getInspectionResults(batchId, stationCode);
 
-    // 4. 合并数据
-    const waferMap = new Map((wafers || []).map(w => [w.id, w]));
+    // 3. 构建检测结果映射
     const inspectionMap = new Map(
       inspectionResults.map(ir => [ir.wafer_id_code, ir])
     );
 
-    return carrierContents.map(wc => {
-      const wafer = waferMap.get(wc.wafer_id);
-      const inspection = wafer ? inspectionMap.get(wafer.wafer_id_code) : null;
+    // 4. 合并数据
+    return wafers.map(w => {
+      const inspection = inspectionMap.get(w.wafer_id_code);
 
       return {
-        ...wc,
-        wafer_id_code: wafer?.wafer_id_code || '',
-        wafer_type: wc.wafer_type || 'GOOD',
+        ...w,
+        // 兼容旧的 wafer_carrier_contents 字段名
+        wafer_id: w.id,
+        sub_batch_id: w.sublot_id,
+        wafer_type: w.wafer_type || 'GOOD',
         inspection_data: inspection?.inspection_data || null,
         // 前端兼容字段
-        sublotId: wc.sub_batch_id,
-        type: inspection?.inspection_data?.waferType || wc.wafer_type || 'GOOD',
+        sublotId: w.sublot_id,
+        type: inspection?.inspection_data?.waferType || w.wafer_type || 'GOOD',
       };
     });
   },

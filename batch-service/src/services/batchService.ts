@@ -8,40 +8,57 @@ import { BatchServiceError } from '../middleware/errorHandler';
 
 /**
  * 批量填充 current_station_name：
- * 通过 current_station_code 关联 stations 表获取 name
+ * 优先通过 current_station_id 查询，回退到 current_station_code
  */
 async function enrichBatchesWithStationName(batches: Batch[]): Promise<Batch[]> {
   if (!batches.length) return batches;
 
-  // 收集所有不重复的 station codes
-  const codes = [...new Set(
-    batches
-      .map(b => b.current_station_code)
-      .filter(Boolean)
-  )];
+  // 收集去重的 station IDs 和 station codes
+  const stationIds = [...new Set(
+    batches.map(b => b.current_station_id).filter(Boolean)
+  )] as string[];
+  const stationCodes = [...new Set(
+    batches.map(b => b.current_station_code).filter(Boolean)
+  )] as string[];
 
-  if (!codes.length) return batches;
+  // 优先用 ID 查询
+  const idToName: Record<string, string> = {};
+  const idToCode: Record<string, string> = {};
+  if (stationIds.length > 0) {
+    const { data } = await supabase
+      .from('stations')
+      .select('id, code, name')
+      .in('id', stationIds);
+    if (data) {
+      for (const s of data) {
+        idToName[s.id] = s.name;
+        idToCode[s.id] = s.code;
+      }
+    }
+  }
 
-  // 一次性查询所有相关站点
-  const { data: stations } = await supabase
-    .from('stations')
-    .select('code, name')
-    .in('code', codes);
-
-  // 构建 code → name 映射
+  // 对未命中 ID 的批次，回退到 code 查询
+  const matchedCodes = new Set(Object.values(idToCode));
+  const unmatchedCodes = stationCodes.filter(c => !matchedCodes.has(c));
   const codeToName: Record<string, string> = {};
-  if (stations) {
-    for (const s of stations) {
-      codeToName[s.code] = s.name;
+  if (unmatchedCodes.length > 0) {
+    const { data } = await supabase
+      .from('stations')
+      .select('code, name')
+      .in('code', unmatchedCodes);
+    if (data) {
+      for (const s of data) {
+        codeToName[s.code] = s.name;
+      }
     }
   }
 
   // 回填 current_station_name
   return batches.map(b => ({
     ...b,
-    current_station_name: b.current_station_name
-      || codeToName[b.current_station_code]
-      || null,
+    current_station_name: b.current_station_id
+      ? (idToName[b.current_station_id] || b.current_station_name || null)
+      : (codeToName[b.current_station_code] || b.current_station_name || null),
   }));
 }
 

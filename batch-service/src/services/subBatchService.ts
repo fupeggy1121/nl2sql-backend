@@ -10,7 +10,8 @@ import { BatchServiceError } from '../middleware/errorHandler';
  * 批量填充子批次的关联信息：
  * - current_station_id → stations.code / stations.name
  * - current_carrier_id → carriers.carrier_code
- * - batch_id → batches.equipment_code / equipment_name
+ * - equipment_id (v2) → equipment 信息（如果有）
+ * - 回退：batch_id → batches.equipment_code / equipment_name
  */
 async function enrichSubBatches(subBatches: SubBatch[], batchId?: string): Promise<any[]> {
   if (!subBatches.length) return subBatches;
@@ -30,16 +31,23 @@ async function enrichSubBatches(subBatches: SubBatch[], batchId?: string): Promi
     ? supabase.from('carriers').select('id, carrier_code').in('id', carrierIds)
     : { data: [] as any[], error: null };
 
-  // 3. 查询父批次设备信息（如果有 batchId）
+  // 3. 查询父批次设备信息（回退用，当 sub_batch 没有 equipment_id 时）
   const parentBatchId = batchId || subBatches[0]?.batch_id;
   const batchQuery = parentBatchId
     ? supabase.from('batches').select('id, equipment_code, equipment_name').eq('id', parentBatchId).single()
     : { data: null, error: null };
 
-  const [stationResult, carrierResult, batchResult] = await Promise.all([
+  // 4. 查询 v2 next_station 信息
+  const nextStationIds = [...new Set(subBatches.map(sb => sb.next_station_id).filter(Boolean))] as string[];
+  const nextStationQuery = nextStationIds.length > 0
+    ? supabase.from('stations').select('id, code, name').in('id', nextStationIds)
+    : { data: [] as any[], error: null };
+
+  const [stationResult, carrierResult, batchResult, nextStationResult] = await Promise.all([
     stationQuery,
     carrierQuery,
     batchQuery,
+    nextStationQuery,
   ]);
 
   // 构建映射
@@ -57,6 +65,13 @@ async function enrichSubBatches(subBatches: SubBatch[], batchId?: string): Promi
     }
   }
 
+  const nextStationMap: Record<string, { code: string; name: string }> = {};
+  if (nextStationResult.data) {
+    for (const s of nextStationResult.data) {
+      nextStationMap[s.id] = { code: s.code, name: s.name };
+    }
+  }
+
   const parentBatch = batchResult.data;
 
   // 回填关联字段
@@ -67,9 +82,14 @@ async function enrichSubBatches(subBatches: SubBatch[], batchId?: string): Promi
     station_name: stationMap[sb.current_station_id]?.name || null,
     // 载具编码
     carrier_code: carrierMap[sb.current_carrier_id] || null,
-    // 父批次设备信息
+    // 设备信息（回退到父批次）
     equipment_code: parentBatch?.equipment_code || null,
     equipment_name: parentBatch?.equipment_name || null,
+    // v2: 下一站点
+    next_station_code: sb.next_station_id ? (nextStationMap[sb.next_station_id]?.code || null) : null,
+    next_station_name: sb.next_station_id ? (nextStationMap[sb.next_station_id]?.name || null) : null,
+    // v2: lot_id
+    lot_id: sb.lot_id || null,
   }));
 }
 

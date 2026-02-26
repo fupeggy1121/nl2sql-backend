@@ -1,11 +1,11 @@
 // ============================================================
 // 批次作业 TypeScript 类型定义
-// 基于 Supabase 数据库表结构 + 前端 useBatchOperationsHandlers.ts 类型
+// 基于 Supabase 数据库表结构 + CIM Schema v2 本体模型
 // ============================================================
 
 // ─── 数据库实体类型 ─────────────────────────────────────────
 
-/** 主批次 — 对应 batches 表 (22 列) */
+/** 主批次 — 对应 batches 表 (含 v2 新列) */
 export interface Batch {
   id: string;
   batch_code: string;
@@ -29,9 +29,12 @@ export interface Batch {
   is_hold: boolean;
   created_at: string;
   updated_at: string;
+  // ── v2 新列 ──
+  current_station_id: string | null;
+  work_order_id: string | null;
 }
 
-/** 子批次 — 对应 sub_batches 表 (11 列) */
+/** 子批次 — 对应 sub_batches 表 (含 v2 新列) */
 export interface SubBatch {
   id: string;
   batch_id: string;
@@ -44,9 +47,13 @@ export interface SubBatch {
   status: BatchStatus;
   created_at: string;
   updated_at: string;
+  // ── v2 新列 ──
+  lot_id: string | null;
+  equipment_id: string | null;
+  next_station_id: string | null;
 }
 
-/** 晶圆 — 对应 wafers 表 */
+/** 晶圆 — 对应 wafers 表 (含 v2 新列) */
 export interface Wafer {
   id: string;
   wafer_id_code: string;
@@ -54,9 +61,18 @@ export interface Wafer {
   initial_product_version: string | null;
   created_at: string;
   updated_at: string;
+  // ── v2 新列 (已由 wafer_carrier_contents 反规范化) ──
+  lot_id: string | null;
+  sublot_id: string | null;
+  carrier_id: string | null;
+  slot_number: number | null;
+  wafer_type: string | null;
+  ingot_id: string | null;
+  work_order_id: string | null;
+  wafer_id: string | null;
 }
 
-/** 晶圆载具内容 — 对应 wafer_carrier_contents 表 */
+/** 晶圆载具内容 — 对应 wafer_carrier_contents 表 (v1 遗留，将在 Phase 4 废弃) */
 export interface WaferCarrierContent {
   id: string;
   wafer_id: string;
@@ -76,6 +92,17 @@ export interface Carrier {
   status: string;
   created_at: string;
   updated_at: string;
+}
+
+/** 批次事件 — 对应 batch_events 表 (v2 新增, 替代 batch_operation_logs) */
+export interface BatchEvent {
+  id: string;
+  event_type: string;
+  target_type: 'batch' | 'sublot' | 'wafer' | 'carrier';
+  target_id: string;
+  payload: Record<string, any>;
+  triggered_by: string | null;
+  created_at: string;
 }
 
 /** 站点 — 对应 stations 表 (27 列, 精简) */
@@ -205,5 +232,6 @@ export interface ApiResponse<T = any> {
 export interface BatchDetailResponse {
   batch: Batch;
   subBatches: SubBatch[];
-  wafers?: WaferCarrierContent[];
+  wafers?: Wafer[];
+  events?: BatchEvent[];
 }

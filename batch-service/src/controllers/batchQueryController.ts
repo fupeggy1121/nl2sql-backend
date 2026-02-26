@@ -124,15 +124,16 @@ export async function listProducts(_req: Request, res: Response): Promise<void> 
 
 /**
  * GET /api/batch/loss-wafers  或  GET /api/loss-wafers
- * 查询损耗晶圆记录（wafer_carrier_contents 中 defect 状态的晶圆）
+ * 查询损耗晶圆记录（v2: 从 wafers 表查询非 GOOD 类型的晶圆）
  */
 export async function listLossWafers(req: Request, res: Response): Promise<void> {
   const limit = parseInt(req.query.limit as string) || 200;
 
-  // 查询非 GOOD 类型的晶圆（即损失片）
+  // v2: 从 wafers 表读取（已反规范化，包含 wafer_type）
   const { data, error } = await supabase
-    .from('wafer_carrier_contents')
+    .from('wafers')
     .select('*')
+    .not('wafer_type', 'is', null)
     .neq('wafer_type', 'GOOD')
     .order('updated_at', { ascending: false })
     .limit(limit);
