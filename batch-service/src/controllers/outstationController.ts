@@ -23,7 +23,7 @@ import { BatchServiceError } from '../middleware/errorHandler';
  * 2. 通过 current_station_id + 工艺路线计算下一站点 (v2)
  * 3. 更新主批次: status='待进站', current_station_id=next, 清空设备
  * 4. 逐个更新子批次: status='待进站', 更新 wafers.wafer_type
- * 5. 双写 batch_events + batch_operation_logs
+ * 5. 写入 batch_events
  */
 export async function confirmOutstation(req: Request, res: Response): Promise<void> {
   const { batchId, waferResults, subBatches } = req.body as ConfirmOutstationRequest;

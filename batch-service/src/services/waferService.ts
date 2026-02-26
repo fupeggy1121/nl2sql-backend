@@ -1,10 +1,10 @@
 // ============================================================
-// 晶圆服务 — 晶圆查询和载具内容管理
-// v2: 优先从 wafers 表读取（已反规范化），回退到 wafer_carrier_contents
+// 晶圆服务 — 晶圆查询
+// Phase 5: wafer_carrier_contents 已删除，统一从 wafers 表读取
 // ============================================================
 
 import supabase from '../config/supabaseClient';
-import { Wafer, WaferCarrierContent } from '../types/batch.types';
+import { Wafer } from '../types/batch.types';
 import { BatchServiceError } from '../middleware/errorHandler';
 
 export const waferService = {
@@ -70,7 +70,7 @@ export const waferService = {
 
   /**
    * 根据子批次 ID 查询晶圆，并关联检测数据
-   * v2: 直接从 wafers 表获取完整信息（不再需要 wafer_carrier_contents JOIN）
+   * 从 wafers 表获取完整信息（含 carrier_id, slot_number, wafer_type）
    */
   async getWafersWithDetailsForSubBatches(
     subBatchIds: string[],
@@ -98,7 +98,7 @@ export const waferService = {
 
       return {
         ...w,
-        // 兼容旧的 wafer_carrier_contents 字段名
+        // 兼容前端字段名
         wafer_id: w.id,
         sub_batch_id: w.sublot_id,
         wafer_type: w.wafer_type || 'GOOD',

@@ -311,7 +311,7 @@ def _generate_multi_step_sql(
         f"  WIP状态通过 sub_batches.status != 'completed' 过滤\n"
         f"  v2 JOIN路径(优先): wafers.sublot_id → sub_batches.id → stations(current_station_id=id)\n"
         f"  也可: wafers→batches(batch_id=id)→sub_batches(batch_id)→stations(current_station_id=id)\n"
-        f"- wafers 表(v2)已包含 sublot_id, carrier_id, slot_number, wafer_type，不再需要 wafer_carrier_contents 桥接表\n"
+        f"- wafers 表已包含 sublot_id, carrier_id, slot_number, wafer_type，直接外键关联\n"
         f"- process_route_stations 是工艺路线定义表，不含在制品数据\n"
     )
 

@@ -25,7 +25,7 @@ import { BatchServiceError } from '../middleware/errorHandler';
  * 1. 校验批次状态为 '待进站' 且非 HOLD
  * 2. 更新主批次: status='加工中', 设置设备信息, current_station_id
  * 3. 更新子批次: status='加工中', equipment_id, next_station_id (v2)
- * 4. 双写 batch_events + batch_operation_logs
+ * 4. 写入 batch_events
  */
 export async function confirmInstation(req: Request, res: Response): Promise<void> {
   const body = req.body as ConfirmInstationRequest;

@@ -170,8 +170,8 @@ class EnhancedNL2SQLConverter:
   也可使用: wafers → batches(wafers.batch_id = batches.id) → sub_batches(sub_batches.batch_id = batches.id) → stations(sub_batches.current_station_id = stations.id)
   示例: SELECT s.name, COUNT(DISTINCT w.id) AS wip_count FROM wafers w JOIN sub_batches sb ON w.sublot_id = sb.id JOIN stations s ON sb.current_station_id = s.id WHERE sb.status != 'completed' GROUP BY s.name ORDER BY wip_count DESC
   如果需要按特定站点筛选，加 WHERE s.name = '站点名' AND sb.status != 'completed'
-- wafers 表(v2)已包含: sublot_id(子批次), carrier_id(载具), slot_number(槽位), wafer_type(类型), lot_id(批次), wafer_id(晶圆编号)
-  不再需要通过 wafer_carrier_contents 桥接表关联
+- wafers 表已包含: sublot_id(子批次), carrier_id(载具), slot_number(槽位), wafer_type(类型), lot_id(批次), wafer_id(晶圆编号)
+  直接通过外键关联，无需桥接表
 - batches 表(v2)新增 current_station_id 外键引用 stations.id，优先用它关联站点
 - sub_batches 表(v2)新增 lot_id, equipment_id, next_station_id
 - batch_events 表(v2)记录操作事件: event_type, target_type, target_id, payload(jsonb), triggered_by

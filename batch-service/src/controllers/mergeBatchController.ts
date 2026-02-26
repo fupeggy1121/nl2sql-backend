@@ -22,7 +22,7 @@ import { BatchServiceError } from '../middleware/errorHandler';
  * 2. 将源子批次的 batch_id + lot_id 更新为目标批次 (v2)
  * 3. 重算目标批次的 total_qty / good_qty / defect_qty
  * 4. 更新关联 wafers 的 lot_id / batch_id
- * 5. 双写 batch_events + batch_operation_logs
+ * 5. 写入 batch_events
  */
 export async function confirmMerge(req: Request, res: Response): Promise<void> {
   const { targetBatchId, sourceSubBatchIds } = req.body as ConfirmMergeRequest;

@@ -72,17 +72,8 @@ export interface Wafer {
   wafer_id: string | null;
 }
 
-/** 晶圆载具内容 — 对应 wafer_carrier_contents 表 (v1 遗留，将在 Phase 4 废弃) */
-export interface WaferCarrierContent {
-  id: string;
-  wafer_id: string;
-  carrier_id: string;
-  slot_number: number;
-  sub_batch_id: string;
-  wafer_type: string;
-  created_at: string;
-  updated_at: string;
-}
+/** @deprecated wafer_carrier_contents 表已在 Phase 5 删除，数据已反规范化到 wafers 表 */
+export type WaferCarrierContent = Wafer;
 
 /** 载具 — 对应 carriers 表 */
 export interface Carrier {
@@ -139,7 +130,7 @@ export interface ProcessRouteStation {
   created_at: string;
 }
 
-/** 操作日志 — 对应 batch_operation_logs 表 */
+/** 操作日志 — Phase 5 后统一从 batch_events 表读取，此类型用于 API 响应兼容 */
 export interface BatchOperationLog {
   id: string;
   batch_id: string;

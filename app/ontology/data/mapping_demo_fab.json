@@ -174,7 +174,7 @@
         "source_key": "sublot_id",
         "target_table": "sub_batches",
         "target_key": "id",
-        "note": "v2: wafers.sublot_id 直接引用 sub_batches.id，不再需要 wafer_carrier_contents 桥接表"
+        "note": "wafers.sublot_id 直接引用 sub_batches.id"
       }
     },
     {
@@ -186,7 +186,7 @@
         "source_key": "carrier_id",
         "target_table": "carriers",
         "target_key": "id",
-        "note": "v2: wafers.carrier_id + wafers.slot_number 直接存储载具位置，不再需要 wafer_carrier_contents"
+        "note": "wafers.carrier_id + wafers.slot_number 直接存储载具位置"
       }
     },
     {
