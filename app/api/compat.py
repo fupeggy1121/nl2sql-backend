@@ -135,8 +135,14 @@ async def compat_execute_query(request: Request):
 
         # 统一走 Agent 流水线，返回 pipeline_trace
         agent = get_agent_app()
+        # user_input: 优先用前端传来的 natural_language；若缺失则用 SQL 本身作为占位
+        # （必须非空，否则 intent_router 用空串调 LLM 可能错误路由到 chat）
+        user_input = (
+            query_intent_data.get("natural_language", "").strip()
+            or f"执行SQL: {sql_query[:80]}"
+        )
         initial_state = {
-            "user_input": query_intent_data.get("natural_language", ""),
+            "user_input": user_input,
             "session_id": str(uuid.uuid4()),
             "conversation_history": [],
             "sql_retry_count": 0,
