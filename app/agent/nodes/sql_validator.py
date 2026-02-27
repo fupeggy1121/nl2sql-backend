@@ -29,6 +29,19 @@ def sql_validator_node(state: AgentState) -> dict:
     _t0 = time.perf_counter()
     sql = state.get("sql", "")
 
+    # approved_sql 模式：SQL 在上一轮 /api/v1/query 时已经过验证，前端 Review 后才提交
+    # 直接跳过重复验证，节省一次 schema 检查开销
+    if state.get("approved_sql") and not state.get("sql_error"):
+        logger.info("[sql_validator] approved_sql 模式: 跳过验证，直接转交 data_executor")
+        trace = list(state.get("pipeline_trace", []))
+        trace_step(trace, "sql_validator", _t0,
+                   summary="approved_sql 模式: 跳过验证（SQL 已在上一轮 query 中验证）",
+                   detail={"approved_sql_mode": True, "skipped": True})
+        return {
+            "sql_validation": {"valid": True, "skipped": True, "reason": "approved_sql_mode"},
+            "pipeline_trace": trace,
+        }
+
     if not sql:
         logger.warning("[sql_validator] No SQL to validate")
         return {}
