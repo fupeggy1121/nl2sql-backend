@@ -57,6 +57,7 @@ class AgentState(TypedDict, total=False):
 
     # ── 执行模式 ──
     approved_sql: str                            # 前端已批准的 SQL（/execute 接口传入，跳过 LLM 生成）
+    sql_edited: bool                             # 前端对 SQL 进行了人工编辑（编辑后需重新进行 schema 验证）
 
     # ── 管道追踪 (Pipeline Trace) ──
     pipeline_trace: List[Dict[str, Any]]         # 各步骤的执行追踪记录

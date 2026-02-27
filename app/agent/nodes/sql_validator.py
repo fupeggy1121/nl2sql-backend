@@ -31,7 +31,8 @@ def sql_validator_node(state: AgentState) -> dict:
 
     # approved_sql 模式：SQL 在上一轮 /api/v1/query 时已经过验证，前端 Review 后才提交
     # 直接跳过重复验证，节省一次 schema 检查开销
-    if state.get("approved_sql") and not state.get("sql_error"):
+    # 但如果前端对 SQL 进行了人工编辑（sql_edited=True），则必须重新验证
+    if state.get("approved_sql") and not state.get("sql_error") and not state.get("sql_edited"):
         logger.info("[sql_validator] approved_sql 模式: 跳过验证，直接转交 data_executor")
         trace = list(state.get("pipeline_trace", []))
         trace_step(trace, "sql_validator", _t0,

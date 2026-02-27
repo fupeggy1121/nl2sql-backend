@@ -147,6 +147,7 @@ async def compat_execute_query(request: Request):
             "conversation_history": [],
             "sql_retry_count": 0,
             "approved_sql": sql_query,
+            "sql_edited": bool(body.get("sql_edited", False)),  # 前端手动编辑过 SQL 时为 True
         }
         result = await agent.ainvoke(initial_state)
         response_data = result.get("response", {})
