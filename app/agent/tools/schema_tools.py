@@ -6,6 +6,7 @@ Schema Tools — 数据库 Schema 查询与 SQL 验证工具
 - validate_sql: 验证 SQL 是否可执行（检查表名/列名/语法）
 """
 
+import os
 import re
 import logging
 from typing import Optional
@@ -17,11 +18,75 @@ logger = logging.getLogger(__name__)
 _schema_cache: Optional[dict] = None
 
 
+def _get_schema_metadata_via_psycopg2() -> dict:
+    """DB_BACKEND=postgres 时，通过 psycopg2 直连读取 annotation 表。
+    与 Supabase 路径返回完全相同的 schema 结构。
+    """
+    global _schema_cache
+    try:
+        import psycopg2
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            logger.error("[schema_tools] DB_BACKEND=postgres but DATABASE_URL is not set")
+            return {"tables": {}, "cn_to_table": {}, "all_columns": set()}
+
+        conn = psycopg2.connect(database_url)
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT table_name, name_cn, description_cn, business_meaning
+            FROM table_annotations WHERE is_active = true
+        """)
+        tables_raw = cur.fetchall()
+
+        cur.execute("""
+            SELECT table_name, column_name, column_name_cn, data_type
+            FROM column_annotations WHERE is_active = true
+        """)
+        cols_raw = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        schema = {"tables": {}, "cn_to_table": {}, "all_columns": set()}
+
+        for table_name, name_cn, desc, biz in tables_raw:
+            schema["tables"][table_name] = {
+                "name_cn": name_cn or "",
+                "description": desc or "",
+                "business_meaning": biz or "",
+                "columns": [],
+            }
+            if name_cn:
+                schema["cn_to_table"][name_cn] = table_name
+
+        for tbl, col, col_cn, dtype in cols_raw:
+            if tbl in schema["tables"]:
+                schema["tables"][tbl]["columns"].append({
+                    "name": col, "name_cn": col_cn or "", "type": dtype or ""
+                })
+            schema["all_columns"].add(col.lower())
+
+        _schema_cache = schema
+        logger.info(
+            f"[schema_tools] postgres mode: {len(schema['tables'])} tables, "
+            f"{len(schema['all_columns'])} columns loaded via psycopg2"
+        )
+        return schema
+
+    except Exception as e:
+        logger.error(f"[schema_tools] psycopg2 schema load failed: {e}")
+        return {"tables": {}, "cn_to_table": {}, "all_columns": set()}
+
+
 def _get_schema_metadata() -> dict:
     """获取完整的 schema 元数据（缓存）"""
     global _schema_cache
     if _schema_cache is not None:
         return _schema_cache
+
+    # DB_BACKEND=postgres：跳过 SupabaseClient，直连读注解表
+    if os.getenv("DB_BACKEND", "supabase") == "postgres":
+        return _get_schema_metadata_via_psycopg2()
 
     try:
         from app.services.nl2sql_enhanced import get_enhanced_nl2sql_converter

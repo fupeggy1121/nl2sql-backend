@@ -102,7 +102,30 @@ class BusinessRule:
 # MappingDictionary
 # --------------------------------------------------------------------- #
 
-_MAPPING_FILE = ONTOLOGY_DATA_DIR / "mapping_demo_fab.json"
+def _resolve_mapping_file() -> Path:
+    """解析应使用的映射文件路径。
+
+    优先级:
+      1. 环境变量 MAPPING_FILE — 绝对路径或相对于 ontology/data/ 的文件名
+         例: MAPPING_FILE=mapping_prod.json  或  MAPPING_FILE=/etc/nl2sql/mapping_prod.json
+      2. 默认: mapping_demo_fab.json（测试库）
+    """
+    import os
+    env_val = os.getenv("MAPPING_FILE", "").strip()
+    if env_val:
+        p = Path(env_val)
+        if not p.is_absolute():
+            p = ONTOLOGY_DATA_DIR / p
+        if p.exists():
+            return p
+        import logging
+        logging.getLogger(__name__).warning(
+            f"[mapping] MAPPING_FILE={env_val} not found, falling back to default"
+        )
+    return ONTOLOGY_DATA_DIR / "mapping_demo_fab.json"
+
+
+_MAPPING_FILE = _resolve_mapping_file()
 
 _cached_mapping: Optional["MappingDictionary"] = None
 

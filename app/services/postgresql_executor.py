@@ -40,7 +40,18 @@ class PostgreSQLExecutor:
         self.connection_string = self._build_connection_string()
     
     def _build_connection_string(self) -> str:
-        """构建 PostgreSQL 连接字符串"""
+        """构建 PostgreSQL 连接字符串
+
+        优先级:
+          1. DATABASE_URL  —— 生产库 / 非 Supabase (DB_BACKEND=postgres)
+          2. SUPABASE_DB_* —— Supabase 托管库 (DB_BACKEND=supabase)
+        """
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            logger.info("[PostgreSQLExecutor] Using DATABASE_URL")
+            return database_url
+
+        logger.info("[PostgreSQLExecutor] Using SUPABASE_DB_* vars")
         return (
             f"postgresql://"
             f"{os.getenv('SUPABASE_DB_USER', 'postgres')}:"

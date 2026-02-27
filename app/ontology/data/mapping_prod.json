@@ -1,0 +1,51 @@
+{
+  "version": "2026-V2",
+  "customer": "Prod",
+  "description": "生产库本体→物理表映射字典（模板）。请将 logic_class / physical_table / key_columns 替换为您生产库的真实表结构。",
+
+  "_INSTRUCTIONS": [
+    "1. 将本文件复制并按生产库实际结构修改",
+    "2. 每个 object_mappings 条目对应一张物理表",
+    "   - logic_class: 保持 semi: 前缀即可，前端只显示 label_cn",
+    "   - physical_table: 生产库中实际的表名",
+    "   - primary_key: 主键列名",
+    "   - display_column: 查询结果中首选展示的列",
+    "   - key_columns: 该表最常被查询的列名列表",
+    "3. relation_mappings 描述表间关联（外键），可按需删减",
+    "4. 修改完成后在 .env.prod 中设置 MAPPING_FILE=mapping_prod.json"
+  ],
+
+  "object_mappings": [
+    {
+      "logic_class": "semi:Entity1",
+      "physical_table": "your_table_1",
+      "primary_key": "id",
+      "label_cn": "实体1",
+      "display_column": "name",
+      "properties": {
+        "semi:hasState": "status"
+      },
+      "key_columns": ["id", "name", "status", "created_at"]
+    },
+    {
+      "logic_class": "semi:Entity2",
+      "physical_table": "your_table_2",
+      "primary_key": "id",
+      "label_cn": "实体2",
+      "display_column": "code",
+      "properties": {},
+      "key_columns": ["id", "code", "name", "entity1_id", "created_at"]
+    }
+  ],
+
+  "relation_mappings": [
+    {
+      "logic_property": "semi:belongsTo",
+      "source_table": "your_table_2",
+      "source_column": "entity1_id",
+      "target_table": "your_table_1",
+      "target_column": "id",
+      "label_cn": "属于"
+    }
+  ]
+}

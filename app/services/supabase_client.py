@@ -839,8 +839,17 @@ class SupabaseClient:
 _supabase_client = None
 
 
-def get_supabase_client() -> SupabaseClient:
-    """获取 Supabase 客户端单例"""
+def get_supabase_client():
+    """获取 Supabase 客户端单例。
+
+    DB_BACKEND=postgres 时返回 None：
+      QueryExecutor 会走纯 psycopg2 路径，SupabaseClient 完全跳过。
+    DB_BACKEND=supabase（默认）时返回正常客户端。
+    """
+    import os
+    if os.getenv("DB_BACKEND", "supabase") == "postgres":
+        return None
+
     global _supabase_client
     if _supabase_client is None:
         _supabase_client = SupabaseClient()
