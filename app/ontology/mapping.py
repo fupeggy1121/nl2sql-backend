@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -102,18 +103,33 @@ class BusinessRule:
 # MappingDictionary
 # --------------------------------------------------------------------- #
 
+
+# Runtime mode override，由前端「切换库」按钮写入，优先级高于 env var
+# 值: "prod" | "demo" | None（None = 由 env var / auto-detect 决定）
+_RUNTIME_MODE_OVERRIDE: Optional[str] = None
+
+_PROD_FILE  = "mapping_prod.json"
+_DEMO_FILE  = "mapping_demo_fab.json"
+
+
 def _resolve_mapping_file() -> Path:
     """解析应使用的映射文件路径。
 
     优先级:
-      1. 环境变量 MAPPING_FILE — 绝对路径或相对于 ontology/data/ 的文件名
-         例: MAPPING_FILE=mapping_prod.json  或  MAPPING_FILE=/etc/nl2sql/mapping_prod.json
-      2. mapping_prod.json（若文件存在）
-      3. mapping_demo_fab.json（测试库兜底）
+      1. 运行时 override（前端切换按钮写入）：prod | demo
+      2. 环境变量 MAPPING_FILE — 绝对路径或相对于 ontology/data/ 的文件名
+         例: MAPPING_FILE=mapping_prod.json
+      3. mapping_prod.json（若文件存在则自动选用）
+      4. mapping_demo_fab.json（兜底）
     """
-    import os
     import logging
     log = logging.getLogger(__name__)
+
+    if _RUNTIME_MODE_OVERRIDE == "prod":
+        return ONTOLOGY_DATA_DIR / _PROD_FILE
+    if _RUNTIME_MODE_OVERRIDE == "demo":
+        return ONTOLOGY_DATA_DIR / _DEMO_FILE
+
     env_val = os.getenv("MAPPING_FILE", "").strip()
     if env_val:
         p = Path(env_val)
@@ -122,13 +138,66 @@ def _resolve_mapping_file() -> Path:
         if p.exists():
             log.info("[mapping] Using MAPPING_FILE env: %s", p)
             return p
-        log.warning("[mapping] MAPPING_FILE=%s not found, falling back to auto-detect", env_val)
-    # Auto-detect: prefer mapping_prod.json when present
-    prod = ONTOLOGY_DATA_DIR / "mapping_prod.json"
+        log.warning("[mapping] MAPPING_FILE=%s not found, falling back", env_val)
+
+    prod = ONTOLOGY_DATA_DIR / _PROD_FILE
     if prod.exists():
         log.info("[mapping] Auto-selected mapping_prod.json")
         return prod
-    return ONTOLOGY_DATA_DIR / "mapping_demo_fab.json"
+    return ONTOLOGY_DATA_DIR / _DEMO_FILE
+
+
+def set_mapping_mode(mode: str) -> Path:
+    """切换运行时映射模式。
+
+    Args:
+        mode: "prod" | "demo" | "auto" (auto = 清除 override，回归 env/auto-detect)
+
+    Returns:
+        切换后实际使用的文件路径
+    """
+    global _RUNTIME_MODE_OVERRIDE, _MAPPING_FILE, _cached_mapping
+    import logging
+    log = logging.getLogger(__name__)
+
+    if mode == "auto":
+        _RUNTIME_MODE_OVERRIDE = None
+    elif mode in ("prod", "demo"):
+        _RUNTIME_MODE_OVERRIDE = mode
+    else:
+        raise ValueError(f"Invalid mode: {mode!r}. Use 'prod', 'demo', or 'auto'.")
+
+    _MAPPING_FILE = _resolve_mapping_file()
+    _cached_mapping = None          # 强制下次访问时重载
+    log.info("[mapping] Mode switched to '%s', file: %s", mode, _MAPPING_FILE)
+    return _MAPPING_FILE
+
+
+def get_current_mode() -> dict:
+    """返回当前映射模式信息。"""
+    file = _resolve_mapping_file()
+    if _RUNTIME_MODE_OVERRIDE:
+        source = f"runtime_override({_RUNTIME_MODE_OVERRIDE})"
+    elif os.getenv("MAPPING_FILE", "").strip():
+        source = "env_var(MAPPING_FILE)"
+    else:
+        source = "auto_detect"
+
+    name = file.name
+    if name == _PROD_FILE:
+        mode = "prod"
+    elif name == _DEMO_FILE:
+        mode = "demo"
+    else:
+        mode = "custom"
+
+    return {
+        "mode": mode,
+        "source": source,
+        "file": name,
+        "runtime_override": _RUNTIME_MODE_OVERRIDE,
+        "env_mapping_file": os.getenv("MAPPING_FILE", ""),
+    }
 
 
 _MAPPING_FILE = _resolve_mapping_file()

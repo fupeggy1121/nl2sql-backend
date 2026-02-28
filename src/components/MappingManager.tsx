@@ -1211,10 +1211,15 @@ export default function MappingManager() {
   const [tab, setTab] = useState<Tab>('objects');
   const [summary, setSummary] = useState<Summary | null>(null);
   const [reloading, setReloading] = useState(false);
+  const [dbMode, setDbMode] = useState<'prod' | 'demo' | null>(null);
+  const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
     mappingApi.getSummary()
       .then(res => setSummary(res.data))
+      .catch(() => { });
+    mappingApi.getMode()
+      .then(res => setDbMode(res.data?.mode ?? null))
       .catch(() => { });
   }, []);
 
@@ -1225,6 +1230,18 @@ export default function MappingManager() {
       setSummary(res.data?.summary);
     } catch { }
     setReloading(false);
+  };
+
+  const handleSwitchMode = async () => {
+    setSwitching(true);
+    try {
+      const nextMode = dbMode === 'prod' ? 'demo' : 'prod';
+      const res = await mappingApi.switchMode(nextMode);
+      setDbMode(res.data?.mode ?? nextMode);
+      const s = await mappingApi.getSummary();
+      setSummary(s.data);
+    } catch { }
+    setSwitching(false);
   };
 
   const TABS: { key: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
@@ -1250,6 +1267,7 @@ export default function MappingManager() {
               </p>
             )}
           </div>
+          <div className="flex items-center gap-2">
           <button
             onClick={handleReload}
             disabled={reloading}
@@ -1258,6 +1276,20 @@ export default function MappingManager() {
             <RotateCcw size={15} className={reloading ? 'animate-spin' : ''} />
             重载缓存
           </button>
+          <button
+            onClick={handleSwitchMode}
+            disabled={switching || dbMode === null}
+            className={`flex items-center gap-2 px-4 py-2 text-sm border rounded-lg transition-colors disabled:opacity-50 ${
+              dbMode === 'prod'
+                ? 'text-green-700 bg-green-50 border-green-300 hover:bg-green-100'
+                : 'text-yellow-700 bg-yellow-50 border-yellow-300 hover:bg-yellow-100'
+            }`}
+          >
+            <Database size={15} />
+            {dbMode === 'prod' ? '生产库' : dbMode === 'demo' ? '测试库' : '…'}
+            <span className="text-xs opacity-60">点击切换</span>
+          </button>
+          </div>
         </div>
 
         {/* Summary cards */}

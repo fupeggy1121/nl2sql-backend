@@ -34,20 +34,9 @@ router = APIRouter(prefix="/api/mapping", tags=["Mapping"])
 # ══════════════════════════════════════════════════════════════════
 
 def _get_mapping_path() -> Path:
-    from app.ontology.config import ONTOLOGY_DATA_DIR
-    env_val = os.getenv("MAPPING_FILE", "").strip()
-    if env_val:
-        p = Path(env_val)
-        if not p.is_absolute():
-            p = ONTOLOGY_DATA_DIR / p
-        if p.exists():
-            return p
-        logger.warning("MAPPING_FILE=%s not found, falling back to auto-detect", env_val)
-    # Auto-detect: prefer mapping_prod.json when present
-    prod = ONTOLOGY_DATA_DIR / "mapping_prod.json"
-    if prod.exists():
-        return prod
-    return ONTOLOGY_DATA_DIR / "mapping_demo_fab.json"
+    """委托 app.ontology.mapping 模块决定当前文件，保证与缓存逻辑完全一致。"""
+    from app.ontology.mapping import _resolve_mapping_file
+    return _resolve_mapping_file()
 
 
 def _changelog_path() -> Path:
@@ -167,6 +156,10 @@ class BusinessRuleUpdate(BaseModel):
     semantic_pattern: Optional[str] = None
 
 
+class SwitchModeIn(BaseModel):
+    mode: str  # "prod" | "demo" | "auto"
+
+
 # ══════════════════════════════════════════════════════════════════
 # Summary & Reload
 # ══════════════════════════════════════════════════════════════════
@@ -184,6 +177,38 @@ async def get_summary():
             "version": data.get("version", ""),
             "customer": data.get("customer", ""),
             "object_mappings": len(om) if isinstance(om, dict) else len(om),
+            "relation_mappings": len(rm),
+            "value_domains": len(vm),
+            "business_rules": len(br),
+        }
+    }
+
+
+@router.get("/mode")
+async def get_mode():
+    """返回当前映射模式（prod / demo / custom）及来源信息。"""
+    from app.ontology.mapping import get_current_mode
+    return {"data": get_current_mode()}
+
+
+@router.post("/switch")
+async def switch_mode(body: SwitchModeIn):
+    """切换运行时映射模式。\n\nmode: \"prod\" | \"demo\" | \"auto\"（auto = 清除 override，回归 env/auto-detect）"""
+    from app.ontology.mapping import set_mapping_mode, get_current_mode
+    try:
+        new_file = set_mapping_mode(body.mode)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    data = _load_raw()
+    om = data.get("object_mappings", {})
+    rm = data.get("relation_mappings", [])
+    vm = data.get("value_mappings", {})
+    br = data.get("business_rules", [])
+    return {
+        "message": f"Switched to {body.mode}",
+        "data": {
+            **get_current_mode(),
+            "object_mappings": len(om),
             "relation_mappings": len(rm),
             "value_domains": len(vm),
             "business_rules": len(br),

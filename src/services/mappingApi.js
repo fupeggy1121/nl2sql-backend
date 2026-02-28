@@ -162,4 +162,19 @@ export const mappingApi = {
     ).toString();
     return request('/changelog' + (qs ? `?${qs}` : ''));
   },
+
+  // ── 映射模式切换 ──────────────────────────────────────────────
+
+  /**
+   * 获取当前映射模式（prod / demo / custom）
+   * 返回: { mode, source, file, runtime_override, env_mapping_file }
+   */
+  getMode: () => request('/mode'),
+
+  /**
+   * 切换运行时映射模式
+   * @param {"prod"|"demo"|"auto"} mode
+   */
+  switchMode: (mode) =>
+    request('/switch', { method: 'POST', body: JSON.stringify({ mode }) }),
 };
