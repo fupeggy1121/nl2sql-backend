@@ -85,6 +85,38 @@ def _decode_key(raw: str) -> str:
     return urllib.parse.unquote(raw)
 
 
+def _om_as_dict(raw_om: Any) -> Dict[str, Any]:
+    """
+    将 mapping_prod.json 中的 object_mappings 规范化为
+    { logic_class: {...rest} } 字典，兼容 list 和 dict 两种存储格式。
+    """
+    if isinstance(raw_om, list):
+        result = {}
+        for item in raw_om:
+            if isinstance(item, dict) and "logic_class" in item:
+                lc = item["logic_class"]
+                result[lc] = {k: v for k, v in item.items() if k != "logic_class"}
+        return result
+    if isinstance(raw_om, dict):
+        return raw_om
+    return {}
+
+
+def _om_save_back(data: Dict[str, Any], om_dict: Dict[str, Any]) -> None:
+    """
+    将 om_dict 写回 data["object_mappings"]，保留原始存储格式：
+    - 原来是 list → 转回 list  
+    - 原来是 dict → 保持 dict
+    """
+    original = data.get("object_mappings")
+    if isinstance(original, list):
+        data["object_mappings"] = [
+            {"logic_class": lc, **props} for lc, props in om_dict.items()
+        ]
+    else:
+        data["object_mappings"] = om_dict
+
+
 # ══════════════════════════════════════════════════════════════════
 # 请求/响应模型
 # ══════════════════════════════════════════════════════════════════
@@ -257,7 +289,7 @@ async def list_objects(
     page_size: int = Query(30, ge=1, le=200),
 ):
     data = _load_raw()
-    om: Dict[str, Any] = data.get("object_mappings", {})
+    om = _om_as_dict(data.get("object_mappings", {}))
 
     items = []
     for logic_class, obj in om.items():
@@ -282,7 +314,7 @@ async def list_objects(
 async def get_object(logic_class_raw: str):
     logic_class = _decode_key(logic_class_raw)
     data = _load_raw()
-    om: Dict[str, Any] = data.get("object_mappings", {})
+    om = _om_as_dict(data.get("object_mappings", {}))
     if logic_class not in om:
         raise HTTPException(status_code=404, detail=f"Not found: {logic_class}")
     return {"data": {"logic_class": logic_class, **om[logic_class]}}
@@ -291,11 +323,12 @@ async def get_object(logic_class_raw: str):
 @router.post("/objects", status_code=201)
 async def create_object(body: ObjectMappingIn):
     data = _load_raw()
-    om: Dict[str, Any] = data.setdefault("object_mappings", {})
+    om = _om_as_dict(data.get("object_mappings", {}))
     if body.logic_class in om:
         raise HTTPException(status_code=409, detail=f"Already exists: {body.logic_class}")
     entry = body.dict(exclude={"logic_class"})
     om[body.logic_class] = entry
+    _om_save_back(data, om)
     _save_raw(data)
     _append_changelog("create", "object_mapping", body.logic_class, None, entry)
     _reload_cache()
@@ -306,12 +339,13 @@ async def create_object(body: ObjectMappingIn):
 async def update_object(logic_class_raw: str, body: ObjectMappingUpdate):
     logic_class = _decode_key(logic_class_raw)
     data = _load_raw()
-    om: Dict[str, Any] = data.get("object_mappings", {})
+    om = _om_as_dict(data.get("object_mappings", {}))
     if logic_class not in om:
         raise HTTPException(status_code=404, detail=f"Not found: {logic_class}")
     before = dict(om[logic_class])
     updates = {k: v for k, v in body.dict().items() if v is not None}
     om[logic_class].update(updates)
+    _om_save_back(data, om)
     _save_raw(data)
     _append_changelog("update", "object_mapping", logic_class, before, om[logic_class])
     _reload_cache()
@@ -322,10 +356,11 @@ async def update_object(logic_class_raw: str, body: ObjectMappingUpdate):
 async def delete_object(logic_class_raw: str):
     logic_class = _decode_key(logic_class_raw)
     data = _load_raw()
-    om: Dict[str, Any] = data.get("object_mappings", {})
+    om = _om_as_dict(data.get("object_mappings", {}))
     if logic_class not in om:
         raise HTTPException(status_code=404, detail=f"Not found: {logic_class}")
     before = om.pop(logic_class)
+    _om_save_back(data, om)
     _save_raw(data)
     _append_changelog("delete", "object_mapping", logic_class, before, None)
     _reload_cache()
