@@ -76,6 +76,10 @@ def _register_routes(app: FastAPI):
     from app.api.v1.ontology import router as ontology_router
     app.include_router(ontology_router)
 
+    # 映射字典管理 API (Phase 1)
+    from app.api.v1.mapping import router as mapping_router
+    app.include_router(mapping_router)
+
     # 旧 API 兼容层
     from app.api.compat import router as compat_router
     app.include_router(compat_router)
