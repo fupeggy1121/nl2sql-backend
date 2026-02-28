@@ -1219,7 +1219,7 @@ export default function MappingManager() {
       .then(res => setSummary(res.data))
       .catch(() => { });
     mappingApi.getMode()
-      .then(res => setDbMode(res.data?.mode ?? null))
+      .then(res => setDbMode(res.data?.mapping?.mode ?? res.data?.mode ?? null))
       .catch(() => { });
   }, []);
 
@@ -1237,7 +1237,8 @@ export default function MappingManager() {
     try {
       const nextMode = dbMode === 'prod' ? 'demo' : 'prod';
       const res = await mappingApi.switchMode(nextMode);
-      setDbMode(res.data?.mode ?? nextMode);
+      // response: { data: { mapping: { mode }, database: { mode } } }
+      setDbMode(res.data?.mapping?.mode ?? res.data?.mode ?? nextMode);
       const s = await mappingApi.getSummary();
       setSummary(s.data);
     } catch { }
@@ -1279,6 +1280,7 @@ export default function MappingManager() {
           <button
             onClick={handleSwitchMode}
             disabled={switching || dbMode === null}
+            title="同时切换映射字典和查询目标数据库"
             className={`flex items-center gap-2 px-4 py-2 text-sm border rounded-lg transition-colors disabled:opacity-50 ${
               dbMode === 'prod'
                 ? 'text-green-700 bg-green-50 border-green-300 hover:bg-green-100'
@@ -1287,7 +1289,7 @@ export default function MappingManager() {
           >
             <Database size={15} />
             {dbMode === 'prod' ? '生产库' : dbMode === 'demo' ? '测试库' : '…'}
-            <span className="text-xs opacity-60">点击切换</span>
+            <span className="text-xs opacity-60">{switching ? '切换中…' : '点击切换'}</span>
           </button>
           </div>
         </div>

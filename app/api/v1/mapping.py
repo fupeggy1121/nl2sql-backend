@@ -186,17 +186,25 @@ async def get_summary():
 
 @router.get("/mode")
 async def get_mode():
-    """返回当前映射模式（prod / demo / custom）及来源信息。"""
+    """返回当前映射模式及数据库连接模式的完整信息。"""
     from app.ontology.mapping import get_current_mode
-    return {"data": get_current_mode()}
+    from app.services.db_mode import get_current_db_mode
+    return {
+        "data": {
+            "mapping": get_current_mode(),
+            "database": get_current_db_mode(),
+        }
+    }
 
 
 @router.post("/switch")
 async def switch_mode(body: SwitchModeIn):
-    """切换运行时映射模式。\n\nmode: \"prod\" | \"demo\" | \"auto\"（auto = 清除 override，回归 env/auto-detect）"""
+    """同时切换映射模式和查询数据库目标。\n\nmode: \"prod\" | \"demo\" | \"auto\"（auto = 清除 override，回归 env/auto-detect）"""
     from app.ontology.mapping import set_mapping_mode, get_current_mode
+    from app.services.db_mode import set_db_mode, get_current_db_mode
     try:
         new_file = set_mapping_mode(body.mode)
+        db_info  = set_db_mode(body.mode)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     data = _load_raw()
@@ -207,11 +215,12 @@ async def switch_mode(body: SwitchModeIn):
     return {
         "message": f"Switched to {body.mode}",
         "data": {
-            **get_current_mode(),
-            "object_mappings": len(om),
+            "mapping":  get_current_mode(),
+            "database": get_current_db_mode(),
+            "object_mappings":   len(om),
             "relation_mappings": len(rm),
-            "value_domains": len(vm),
-            "business_rules": len(br),
+            "value_domains":     len(vm),
+            "business_rules":    len(br),
         }
     }
 

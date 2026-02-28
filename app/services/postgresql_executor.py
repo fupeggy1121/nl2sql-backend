@@ -43,14 +43,28 @@ class PostgreSQLExecutor:
         """构建 PostgreSQL 连接字符串
 
         优先级:
-          1. DATABASE_URL  —— 生产库 / 非 Supabase (DB_BACKEND=postgres)
-          2. SUPABASE_DB_* —— Supabase 托管库 (DB_BACKEND=supabase)
+          1. db_mode 当前模式对应的 DATABASE_URL_PROD / DATABASE_URL_DEMO
+          2. DATABASE_URL  —— 通用环境变量
+          3. SUPABASE_DB_* —— Supabase 托管库组合凭证
         """
+        # 1. 从 db_mode 获取当前模式对应的 DATABASE_URL
+        try:
+            from app.services.db_mode import get_db_credentials
+            creds = get_db_credentials()
+            mode_db_url = creds.get("database_url")
+            if mode_db_url:
+                logger.info(f"[PostgreSQLExecutor] Using DATABASE_URL from db_mode (source={creds['source']})")
+                return mode_db_url
+        except Exception as e:
+            logger.warning(f"[PostgreSQLExecutor] db_mode unavailable: {e}")
+
+        # 2. 通用 DATABASE_URL
         database_url = os.getenv("DATABASE_URL")
         if database_url:
             logger.info("[PostgreSQLExecutor] Using DATABASE_URL")
             return database_url
 
+        # 3. SUPABASE_DB_* 组合
         logger.info("[PostgreSQLExecutor] Using SUPABASE_DB_* vars")
         return (
             f"postgresql://"

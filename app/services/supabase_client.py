@@ -22,11 +22,20 @@ except ImportError:
 
 class SupabaseClient:
     """Supabase 客户端 - 使用官方 SDK"""
-    
-    def __init__(self):
-        """初始化 Supabase 客户端"""
-        self.url = os.getenv('SUPABASE_URL')
-        self.key = os.getenv('SUPABASE_ANON_KEY')
+
+    def __init__(self, url: Optional[str] = None, key: Optional[str] = None):
+        """初始化 Supabase 客户端
+
+        url / key 为 None 时从 db_mode 获取当前模式对应的凭证。
+        """
+        try:
+            from app.services.db_mode import get_db_credentials
+            creds = get_db_credentials()
+            self.url = url or creds["supabase_url"]
+            self.key = key or creds["supabase_key"]
+        except Exception:
+            self.url = url or os.getenv('SUPABASE_URL')
+            self.key = key or os.getenv('SUPABASE_ANON_KEY')
         self.client: Optional[Client] = None
         self.init_error: Optional[str] = None  # 保存初始化错误
         self._connect()

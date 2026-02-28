@@ -24,6 +24,12 @@ class QueryExecutor:
         self.supabase_client = supabase_client
         self.pg_executor = None  # 延迟初始化PostgreSQL执行器
         self._cache = None       # 延迟初始化查询缓存
+        # 记录初始化时的 db 模式，用于检测切换
+        try:
+            from app.services.db_mode import get_current_db_mode
+            self._db_mode_at_init = get_current_db_mode()["mode"]
+        except Exception:
+            self._db_mode_at_init = "auto"
     
     @property
     def cache(self):
@@ -85,13 +91,27 @@ class QueryExecutor:
         执行 SQL 查询 - 优先命中缓存 → PostgreSQL → Supabase PostgREST
         """
         try:
+            # ── 0. 检测 db 模式是否已切换，若切换则重置直连执行器 ──
+            try:
+                from app.services.db_mode import get_current_db_mode
+                current_mode = get_current_db_mode()["mode"]
+                if current_mode != self._db_mode_at_init:
+                    logger.info(
+                        f"[QueryExecutor] DB mode changed "
+                        f"{self._db_mode_at_init!r} → {current_mode!r}, resetting pg_executor"
+                    )
+                    self.pg_executor = None
+                    self._db_mode_at_init = current_mode
+            except Exception:
+                pass
+
             # ── 1. 查缓存 ──
             if self.cache:
                 cached = self.cache.get(sql)
                 if cached is not None:
                     logger.info(f"✅ Cache HIT for SQL: {sql[:60]}...")
                     return cached
-            
+
             # ── 2. 直连数据库（PostgreSQL 或 MySQL）──
             import os
             if self.pg_executor is None:
