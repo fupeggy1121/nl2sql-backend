@@ -66,16 +66,27 @@ def setup_logging():
 def register_blueprints(app):
     """
     注册蓝图
-    
+
     Args:
         app: Flask 应用实例
     """
+    import logging
+    log = logging.getLogger(__name__)
+
     from app.routes import query_routes, schema_routes, unified_query_routes
-    from app.routes import synonym_routes, admin_routes, mapping_routes
-    
     app.register_blueprint(query_routes.bp)
     app.register_blueprint(schema_routes.bp)
     app.register_blueprint(unified_query_routes.bp)
+
+    from app.routes import synonym_routes, admin_routes
     app.register_blueprint(synonym_routes.bp)
     app.register_blueprint(admin_routes.bp)
-    app.register_blueprint(mapping_routes.bp)
+
+    # 映射字典管理 Blueprint（独立 try/except，防止启动失败影响其他路由）
+    try:
+        from app.routes import mapping_routes
+        app.register_blueprint(mapping_routes.bp)
+        log.info("✅ mapping_manager blueprint registered at /api/mapping (%d routes)",
+                 sum(1 for r in app.url_map.iter_rules() if '/api/mapping' in r.rule))
+    except Exception as exc:  # noqa: BLE001
+        log.error("❌ Failed to register mapping_manager blueprint: %s", exc, exc_info=True)
