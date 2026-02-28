@@ -336,6 +336,72 @@ _VALUE_KEYWORDS: Dict[str, Tuple[str, str]] = {
     # ── ProductStatus (Phase 4) ──
     "停产": ("semi:ProductStatus", "Inactive"),
     "在产": ("semi:ProductStatus", "Active"),
+
+    # ══════════════════════════════════════════════════════════════
+    # 以下为生产库 cc_semi_mvp 专用关键词（整数枚举，physical_condition 格式）
+    # ══════════════════════════════════════════════════════════════
+
+    # ── BatchStatus (local_production_batch.status) ──
+    "在制品": ("semi:BatchStatus", "Running"),
+    "wip": ("semi:BatchStatus", "Running"),
+    "在制": ("semi:BatchStatus", "Running"),
+    "执行中": ("semi:BatchStatus", "Running"),
+    "待执行": ("semi:BatchStatus", "Pending"),
+    "完工": ("semi:BatchStatus", "Completed"),
+    "已完成批次": ("semi:BatchStatus", "Completed"),
+    "取消批次": ("semi:BatchStatus", "Cancelled"),
+
+    # ── HoldStatus (matrix_routerx_operation_lot_hold_action.status) ──
+    "hold": ("semi:HoldStatus", "Held"),
+    "暂停": ("semi:HoldStatus", "Held"),
+    "hold中": ("semi:HoldStatus", "Held"),
+    "已release": ("semi:HoldStatus", "Released"),
+    "已释放": ("semi:HoldStatus", "Released"),
+
+    # ── EquipmentStatus prod (equipment.status 0/1) ──
+    "设备启用": ("semi:EquipmentStatus", "Active"),
+    "设备开启": ("semi:EquipmentStatus", "Active"),
+    "设备停用": ("semi:EquipmentStatus", "Inactive"),
+    "设备关闭": ("semi:EquipmentStatus", "Inactive"),
+    "宕机": ("semi:EquipmentStatus", "Down"),
+    "故障": ("semi:EquipmentStatus", "Down"),
+
+    # ── ProductStatus prod (product_model.product_status 0/1/2) ──
+    "草稿产品": ("semi:ProductStatus", "Draft"),
+    "待审核产品": ("semi:ProductStatus", "PendingApproval"),
+    "激活产品": ("semi:ProductStatus", "Active"),
+    "在产产品": ("semi:ProductStatus", "Active"),
+
+    # ── ApproveStatus (product_model_approve.approve_status 0/1/2) ──
+    "待审批": ("semi:ApproveStatus", "Pending"),
+    "审批通过": ("semi:ApproveStatus", "Approved"),
+    "审批拒绝": ("semi:ApproveStatus", "Rejected"),
+
+    # ── BOMStatus (product_bom.status 0/1) ──
+    "生效bom": ("semi:BOMStatus", "Active"),
+    "失效bom": ("semi:BOMStatus", "Inactive"),
+
+    # ── AccessoryStatus (accy_accessory.status 0/1/2/3) ──
+    "待上机": ("semi:AccessoryStatus", "Pending"),
+    "上机中": ("semi:AccessoryStatus", "InUse"),
+    "退库待确认": ("semi:AccessoryStatus", "PendingReturn"),
+    "已退库": ("semi:AccessoryStatus", "Returned"),
+
+    # ── WarnStatus ──
+    "已预警": ("semi:WarnStatus", "Warned"),
+    "预警中": ("semi:WarnStatus", "Warned"),
+
+    # ── TransferJobStatus (mcs_transfer_job.status 0/1/2) ──
+    "搬运中": ("semi:TransferJobStatus", "Running"),
+    "搬运完成": ("semi:TransferJobStatus", "Completed"),
+
+    # ── ProductionOrderStatus (production_order.production_status 0/1) ──
+    "工单开启": ("semi:ProductionOrderStatus", "Open"),
+    "工单关闭": ("semi:ProductionOrderStatus", "Closed"),
+
+    # ── ReportStatus (report_record_info.status 0/1) ──
+    "待报工": ("semi:ReportStatus", "Pending"),
+    "已报工": ("semi:ReportStatus", "Reported"),
 }
 
 

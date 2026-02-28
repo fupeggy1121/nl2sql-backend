@@ -30722,5 +30722,387 @@
       }
     }
   ],
-  "relation_mappings": []
+  "relation_mappings": [],
+  "value_mappings": {
+    "semi:BatchStatus": {
+      "Pending": {
+        "description": "待执行批次",
+        "physical_condition": "local_production_batch.status = 0",
+        "applies_to_table": "local_production_batch",
+        "applies_to_column": "status",
+        "note": "status=0 待执行"
+      },
+      "Running": {
+        "description": "执行中批次（在制品/WIP）",
+        "physical_condition": "local_production_batch.status = 1",
+        "applies_to_table": "local_production_batch",
+        "applies_to_column": "status",
+        "count_target_table": "local_production_batch",
+        "count_target_column": "id",
+        "note": "status=1 执行中 — WIP 查询时 COUNT 此表"
+      },
+      "Completed": {
+        "description": "已完成批次",
+        "physical_condition": "local_production_batch.status = 3",
+        "applies_to_table": "local_production_batch",
+        "applies_to_column": "status",
+        "note": "status=3 已完成（2未使用）"
+      },
+      "Cancelled": {
+        "description": "已取消批次",
+        "physical_condition": "local_production_batch.status = 4",
+        "applies_to_table": "local_production_batch",
+        "applies_to_column": "status",
+        "note": "status=4 取消"
+      }
+    },
+    "semi:LotStatus": {
+      "Active": {
+        "description": "批次在制/进行中",
+        "physical_condition": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition — lot_list.lot_status = ?",
+        "applies_to_table": "lot_list",
+        "applies_to_column": "lot_status",
+        "note": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition"
+      },
+      "Completed": {
+        "description": "批次已完成",
+        "physical_condition": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition — lot_list.lot_status = ?",
+        "applies_to_table": "lot_list",
+        "applies_to_column": "lot_status",
+        "note": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition"
+      },
+      "OnHold": {
+        "description": "批次 Hold 中",
+        "physical_condition": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition — lot_list.lot_status = ?",
+        "applies_to_table": "lot_list",
+        "applies_to_column": "lot_status",
+        "note": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition"
+      }
+    },
+    "semi:HoldStatus": {
+      "Held": {
+        "description": "批次处于 Hold 未释放",
+        "physical_condition": "matrix_routerx_operation_lot_hold_action.status = 0",
+        "applies_to_table": "matrix_routerx_operation_lot_hold_action",
+        "applies_to_column": "status",
+        "note": "status=0 未 release"
+      },
+      "Released": {
+        "description": "Hold 已释放",
+        "physical_condition": "matrix_routerx_operation_lot_hold_action.status = 1",
+        "applies_to_table": "matrix_routerx_operation_lot_hold_action",
+        "applies_to_column": "status",
+        "note": "status=1 已 release"
+      }
+    },
+    "semi:EquipmentStatus": {
+      "Active": {
+        "description": "设备启用中（OPEN）",
+        "physical_condition": "equipment.status = 1",
+        "applies_to_table": "equipment",
+        "applies_to_column": "status",
+        "note": "status=1 OPEN"
+      },
+      "Inactive": {
+        "description": "设备停用/关闭（CLOSE）",
+        "physical_condition": "equipment.status = 0",
+        "applies_to_table": "equipment",
+        "applies_to_column": "status",
+        "note": "status=0 CLOSE"
+      },
+      "Running": {
+        "description": "设备运行中（OEE 维度）",
+        "physical_condition": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition — equipment_oee_status.status_code = ?",
+        "applies_to_table": "equipment_oee_status",
+        "applies_to_column": "status_code",
+        "note": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition"
+      },
+      "Down": {
+        "description": "设备宕机/故障（OEE 维度）",
+        "physical_condition": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition — equipment_oee_status.status_code = ?",
+        "applies_to_table": "equipment_oee_status",
+        "applies_to_column": "status_code",
+        "note": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition"
+      }
+    },
+    "semi:CarrierStatus": {
+      "Available": {
+        "description": "载具可用/空闲",
+        "physical_condition": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition — carrier_info.status = ?",
+        "applies_to_table": "carrier_info",
+        "applies_to_column": "status",
+        "note": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition"
+      },
+      "InUse": {
+        "description": "载具使用中",
+        "physical_condition": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition — carrier_info.status = ?",
+        "applies_to_table": "carrier_info",
+        "applies_to_column": "status",
+        "note": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition"
+      }
+    },
+    "semi:ProductStatus": {
+      "Draft": {
+        "description": "产品草稿",
+        "physical_condition": "product_model.product_status = 0",
+        "applies_to_table": "product_model",
+        "applies_to_column": "product_status",
+        "note": "product_status=0"
+      },
+      "PendingApproval": {
+        "description": "产品待审核",
+        "physical_condition": "product_model.product_status = 1",
+        "applies_to_table": "product_model",
+        "applies_to_column": "product_status",
+        "note": "product_status=1"
+      },
+      "Active": {
+        "description": "产品激活/在产",
+        "physical_condition": "product_model.product_status = 2",
+        "applies_to_table": "product_model",
+        "applies_to_column": "product_status",
+        "note": "product_status=2"
+      }
+    },
+    "semi:ApproveStatus": {
+      "Pending": {
+        "description": "审批待处理",
+        "physical_condition": "product_model_approve.approve_status = 0",
+        "applies_to_table": "product_model_approve",
+        "applies_to_column": "approve_status",
+        "note": "0 待审批"
+      },
+      "Approved": {
+        "description": "审批通过",
+        "physical_condition": "product_model_approve.approve_status = 1",
+        "applies_to_table": "product_model_approve",
+        "applies_to_column": "approve_status",
+        "note": "1 通过"
+      },
+      "Rejected": {
+        "description": "审批拒绝",
+        "physical_condition": "product_model_approve.approve_status = 2",
+        "applies_to_table": "product_model_approve",
+        "applies_to_column": "approve_status",
+        "note": "2 拒绝"
+      }
+    },
+    "semi:BOMStatus": {
+      "Active": {
+        "description": "BOM 生效",
+        "physical_condition": "product_bom.status = 1",
+        "applies_to_table": "product_bom",
+        "applies_to_column": "status",
+        "note": "1 生效"
+      },
+      "Inactive": {
+        "description": "BOM 失效",
+        "physical_condition": "product_bom.status = 0",
+        "applies_to_table": "product_bom",
+        "applies_to_column": "status",
+        "note": "0 失效"
+      }
+    },
+    "semi:AccessoryStatus": {
+      "Pending": {
+        "description": "辅料待上机",
+        "physical_condition": "accy_accessory.status = 0",
+        "applies_to_table": "accy_accessory",
+        "applies_to_column": "status",
+        "note": "0"
+      },
+      "InUse": {
+        "description": "辅料上机中",
+        "physical_condition": "accy_accessory.status = 1",
+        "applies_to_table": "accy_accessory",
+        "applies_to_column": "status",
+        "note": "1"
+      },
+      "PendingReturn": {
+        "description": "辅料退库待确认",
+        "physical_condition": "accy_accessory.status = 2",
+        "applies_to_table": "accy_accessory",
+        "applies_to_column": "status",
+        "note": "2"
+      },
+      "Returned": {
+        "description": "辅料已退库",
+        "physical_condition": "accy_accessory.status = 3",
+        "applies_to_table": "accy_accessory",
+        "applies_to_column": "status",
+        "note": "3"
+      }
+    },
+    "semi:AccessoryApplyStatus": {
+      "Pending": {
+        "description": "辅料申请待出库",
+        "physical_condition": "accy_apply_record.status = 0",
+        "applies_to_table": "accy_apply_record",
+        "applies_to_column": "status",
+        "note": "0"
+      },
+      "Issued": {
+        "description": "辅料已出库",
+        "physical_condition": "accy_apply_record.status = 1",
+        "applies_to_table": "accy_apply_record",
+        "applies_to_column": "status",
+        "note": "1"
+      },
+      "Rejected": {
+        "description": "辅料申请被拒绝",
+        "physical_condition": "accy_apply_record.status = 2",
+        "applies_to_table": "accy_apply_record",
+        "applies_to_column": "status",
+        "note": "2"
+      }
+    },
+    "semi:WarnStatus": {
+      "Normal": {
+        "description": "无预警",
+        "physical_condition": "accy_accessory.warn_status = 0",
+        "applies_to_table": "accy_accessory",
+        "applies_to_column": "warn_status",
+        "note": "0"
+      },
+      "Warned": {
+        "description": "已触发预警",
+        "physical_condition": "accy_accessory.warn_status = 1",
+        "applies_to_table": "accy_accessory",
+        "applies_to_column": "warn_status",
+        "note": "1"
+      }
+    },
+    "semi:TransferJobStatus": {
+      "Submitted": {
+        "description": "搞运任务已提交",
+        "physical_condition": "mcs_transfer_job.status = 0",
+        "applies_to_table": "mcs_transfer_job",
+        "applies_to_column": "status",
+        "note": "0"
+      },
+      "Running": {
+        "description": "搞运任务运行中",
+        "physical_condition": "mcs_transfer_job.status = 1",
+        "applies_to_table": "mcs_transfer_job",
+        "applies_to_column": "status",
+        "note": "1"
+      },
+      "Completed": {
+        "description": "搞运任务已结束",
+        "physical_condition": "mcs_transfer_job.status = 2",
+        "applies_to_table": "mcs_transfer_job",
+        "applies_to_column": "status",
+        "note": "2"
+      }
+    },
+    "semi:TransferJobSubStatus": {
+      "Pending": {
+        "description": "搞运待处理",
+        "physical_condition": "mcs_transfer_job.sub_status = 1",
+        "applies_to_table": "mcs_transfer_job",
+        "applies_to_column": "sub_status",
+        "note": "1"
+      },
+      "InTransfer": {
+        "description": "搞运中",
+        "physical_condition": "mcs_transfer_job.sub_status = 2",
+        "applies_to_table": "mcs_transfer_job",
+        "applies_to_column": "sub_status",
+        "note": "2"
+      },
+      "Completed": {
+        "description": "搞运已完成",
+        "physical_condition": "mcs_transfer_job.sub_status = 3",
+        "applies_to_table": "mcs_transfer_job",
+        "applies_to_column": "sub_status",
+        "note": "3"
+      },
+      "Cancelled": {
+        "description": "搞运已取消",
+        "physical_condition": "mcs_transfer_job.sub_status = 4",
+        "applies_to_table": "mcs_transfer_job",
+        "applies_to_column": "sub_status",
+        "note": "4"
+      },
+      "Error": {
+        "description": "搞运异常",
+        "physical_condition": "mcs_transfer_job.sub_status = 5",
+        "applies_to_table": "mcs_transfer_job",
+        "applies_to_column": "sub_status",
+        "note": "5"
+      }
+    },
+    "semi:MarkStatus": {
+      "Pending": {
+        "description": "待打标",
+        "physical_condition": "mark_gen_code_record.status = 0",
+        "applies_to_table": "mark_gen_code_record",
+        "applies_to_column": "status",
+        "note": "0"
+      },
+      "CodeGenerated": {
+        "description": "已生成打标码",
+        "physical_condition": "mark_gen_code_record.status = 1",
+        "applies_to_table": "mark_gen_code_record",
+        "applies_to_column": "status",
+        "note": "1"
+      },
+      "Completed": {
+        "description": "打标已完成",
+        "physical_condition": "mark_gen_code_record.status = 2",
+        "applies_to_table": "mark_gen_code_record",
+        "applies_to_column": "status",
+        "note": "2"
+      }
+    },
+    "semi:WarehouseStatus": {
+      "Normal": {
+        "description": "库位正常",
+        "physical_condition": "equipment_warehouse.status = 0",
+        "applies_to_table": "equipment_warehouse",
+        "applies_to_column": "status",
+        "note": "0"
+      },
+      "Disabled": {
+        "description": "库位禁用",
+        "physical_condition": "equipment_warehouse.status = 1",
+        "applies_to_table": "equipment_warehouse",
+        "applies_to_column": "status",
+        "note": "1"
+      }
+    },
+    "semi:ReportStatus": {
+      "Pending": {
+        "description": "待报工",
+        "physical_condition": "report_record_info.status = 0",
+        "applies_to_table": "report_record_info",
+        "applies_to_column": "status",
+        "note": "0"
+      },
+      "Reported": {
+        "description": "已报工",
+        "physical_condition": "report_record_info.status = 1",
+        "applies_to_table": "report_record_info",
+        "applies_to_column": "status",
+        "note": "1"
+      }
+    },
+    "semi:ProductionOrderStatus": {
+      "Open": {
+        "description": "工单开启中",
+        "physical_condition": "production_order.production_status = 0",
+        "applies_to_table": "production_order",
+        "applies_to_column": "production_status",
+        "note": "0 开启"
+      },
+      "Closed": {
+        "description": "工单已关闭",
+        "physical_condition": "production_order.production_status = 1",
+        "applies_to_table": "production_order",
+        "applies_to_column": "production_status",
+        "note": "1 关闭"
+      }
+    }
+  },
+  "business_rules": []
 }
