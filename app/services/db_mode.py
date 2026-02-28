@@ -105,3 +105,11 @@ def _reset_cached_connections():
         logger.info("[db_mode] ✅ database_tools executor invalidated")
     except Exception as e:
         logger.warning(f"[db_mode] Could not reset database_tools executor: {e}")
+
+    # 3. UnifiedQueryService 单例（NL2SQL 查询主路径）
+    try:
+        import app.services.unified_query_service as _uqs
+        _uqs._unified_query_service = None
+        logger.info("[db_mode] ✅ UnifiedQueryService singleton invalidated")
+    except Exception as e:
+        logger.warning(f"[db_mode] Could not reset UnifiedQueryService: {e}")

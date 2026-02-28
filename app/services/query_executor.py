@@ -102,6 +102,12 @@ class QueryExecutor:
                     )
                     self.pg_executor = None
                     self._db_mode_at_init = current_mode
+                    # 同时刷新 supabase_client，确保 Supabase 路径也切换
+                    try:
+                        from app.services.supabase_client import get_supabase_client
+                        self.supabase_client = get_supabase_client()
+                    except Exception as e:
+                        logger.warning(f"[QueryExecutor] Could not refresh supabase_client: {e}")
             except Exception:
                 pass
 
