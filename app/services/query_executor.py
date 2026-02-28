@@ -92,66 +92,72 @@ class QueryExecutor:
                     logger.info(f"✅ Cache HIT for SQL: {sql[:60]}...")
                     return cached
             
-            # ── 2. PostgreSQL 直连 ──
+            # ── 2. 直连数据库（PostgreSQL 或 MySQL）──
+            import os
             if self.pg_executor is None:
                 try:
-                    # 延迟导入 PostgreSQLExecutor，这样如果 psycopg2 不可用也不会导致应用启动失败
-                    from app.services.postgresql_executor import PostgreSQLExecutor
-                    self.pg_executor = PostgreSQLExecutor()
+                    db_backend = os.getenv("DB_BACKEND", "supabase")
+                    if db_backend == "mysql":
+                        from app.services.mysql_executor import MySQLExecutor
+                        self.pg_executor = MySQLExecutor()
+                    else:
+                        from app.services.postgresql_executor import PostgreSQLExecutor
+                        self.pg_executor = PostgreSQLExecutor()
                 except ImportError as e:
-                    logger.warning(f"Cannot import PostgreSQLExecutor: {str(e)}, falling back to Supabase")
+                    logger.warning(f"Cannot import DB executor: {str(e)}, falling back to Supabase")
                     self.pg_executor = False  # 标记为不可用
-            
-            # 如果 PostgreSQL 可用，尝试使用它
+
+            # 如果直连执行器可用，尝试使用它
             if self.pg_executor and self.pg_executor is not False:
                 # 连接到数据库
                 if not self.pg_executor.conn:
                     if not self.pg_executor.connect():
-                        logger.warning("PostgreSQL direct connection failed, falling back to Supabase")
+                        logger.warning("DB direct connection failed, falling back to Supabase")
                         return self._execute_via_supabase(sql)
-                
+
                 # 执行 SQL 查询
-                logger.info(f"Executing SQL via PostgreSQL: {sql}")
-                
+                logger.info(f"Executing SQL via direct DB: {sql}")
+
                 try:
                     self.pg_executor.cursor.execute(sql)
-                    
+
                     # 获取所有结果
                     rows = self.pg_executor.cursor.fetchall()
-                    
-                    # 获取列名
-                    column_names = [desc[0] for desc in self.pg_executor.cursor.description]
-                    
-                    # 将结果转换为字典列表
-                    data = []
-                    for row in rows:
-                        row_dict = {}
-                        for i, col_name in enumerate(column_names):
-                            row_dict[col_name] = row[i]
-                        data.append(row_dict)
-                    
+
+                    # 处理结果——pymysql DictCursor 返回 dict，psycopg2 返回 tuple
+                    if rows and isinstance(rows[0], dict):
+                        data = [dict(row) for row in rows]
+                    else:
+                        column_names = [desc[0] for desc in self.pg_executor.cursor.description]
+                        data = [
+                            {col: row[i] for i, col in enumerate(column_names)}
+                            for row in rows
+                        ]
+
                     logger.info(f"✅ Query executed successfully: {len(data)} rows returned")
-                    
+
                     result = {
                         'success': True,
                         'data': data,
                         'count': len(data),
                         'message': f'成功返回 {len(data)} 条记录'
                     }
-                    
+
                     # 缓存结果
                     if self.cache:
                         self.cache.set(sql, result)
-                    
+
                     return result
-                    
+
                 except Exception as query_error:
-                    logger.error(f"PostgreSQL query execution failed: {str(query_error)}")
-                    # 查询执行失败，尝试回退到Supabase
+                    logger.error(f"DB query execution failed: {str(query_error)}")
+                    # MySQL 模式不回退到 Supabase
+                    if os.getenv("DB_BACKEND", "supabase") == "mysql":
+                        return {'success': False, 'error': str(query_error), 'data': []}
                     return self._execute_via_supabase(sql)
             else:
-                # PostgreSQL 不可用，直接使用 Supabase
-                logger.info("PostgreSQL executor not available, using Supabase")
+                # 直连不可用，使用 Supabase
+                logger.info("Direct DB executor not available, using Supabase")
                 return self._execute_via_supabase(sql)
             
         except Exception as e:

@@ -244,9 +244,10 @@ def execute_query():
                 'error': 'SQL cannot be empty'
             }), 400
         
-        # 获取 Supabase 客户端
-        sb = get_supabase()
-        if not sb:
+        # 获取数据库客户端（MySQL 模式下 supabase 为 None，由 QueryExecutor 自行处理）
+        import os
+        sb = get_supabase() if os.getenv("DB_BACKEND", "supabase") != "mysql" else None
+        if not sb and os.getenv("DB_BACKEND", "supabase") not in ("mysql", "postgres"):
             logger.error("Failed to initialize Supabase client")
             return jsonify({
                 'success': False,
@@ -254,7 +255,7 @@ def execute_query():
                 'message': 'Could not initialize Supabase client'
             }), 500
         
-        # 创建或获取 QueryExecutor（需要传入 Supabase 客户端）
+        # 创建或获取 QueryExecutor
         query_executor = QueryExecutor(sb)
         
         # 执行查询
@@ -313,16 +314,17 @@ def nl_execute():
                 'error': 'Failed to convert natural language to SQL'
             }), 500
         
-        # 获取 Supabase 客户端
-        sb = get_supabase()
-        if not sb:
+        # 获取 Supabase 客户端（MySQL 模式下 supabase 为 None，由 QueryExecutor 自行处理）
+        import os as _os
+        sb = get_supabase() if _os.getenv("DB_BACKEND", "supabase") != "mysql" else None
+        if not sb and _os.getenv("DB_BACKEND", "supabase") not in ("mysql", "postgres"):
             logger.error("Failed to initialize Supabase client for nl-execute")
             return jsonify({
                 'success': False,
                 'error': 'Database connection failed'
             }), 500
         
-        # 第二步：执行查询 - 创建 QueryExecutor 实例
+        # 第二步：执行查询
         query_executor = QueryExecutor(sb)
         result = query_executor.execute_query(sql)
         

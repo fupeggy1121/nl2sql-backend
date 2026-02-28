@@ -18,6 +18,78 @@ logger = logging.getLogger(__name__)
 _schema_cache: Optional[dict] = None
 
 
+def _get_schema_metadata_via_mysql() -> dict:
+    """DB_BACKEND=mysql 时，直接从 MySQL information_schema 读取表/列中文注释。"""
+    global _schema_cache
+    try:
+        import pymysql
+        import pymysql.cursors
+        kwargs = dict(
+            host=os.getenv("MYSQL_HOST",     os.getenv("PROD_DB_HOST",     "10.60.120.33")),
+            port=int(os.getenv("MYSQL_PORT", os.getenv("PROD_DB_PORT",     "3336"))),
+            db=os.getenv("MYSQL_DB",         os.getenv("PROD_DB_NAME",     "cc_semi_mvp")),
+            user=os.getenv("MYSQL_USER",     os.getenv("PROD_DB_USER",     "root")),
+            password=os.getenv("MYSQL_PASSWORD", os.getenv("PROD_DB_PASSWORD", "")),
+            connect_timeout=10, charset="utf8mb4",
+            cursorclass=pymysql.cursors.DictCursor
+        )
+        conn = pymysql.connect(**kwargs)
+        cur  = conn.cursor()
+
+        db_name = kwargs["db"]
+        cur.execute("""
+            SELECT TABLE_NAME, TABLE_COMMENT
+            FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA = %s AND TABLE_TYPE = 'BASE TABLE'
+        """, (db_name,))
+        tables_raw = cur.fetchall()
+
+        cur.execute("""
+            SELECT TABLE_NAME, COLUMN_NAME, COLUMN_COMMENT, DATA_TYPE
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = %s
+            ORDER BY TABLE_NAME, ORDINAL_POSITION
+        """, (db_name,))
+        cols_raw = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        schema: dict = {"tables": {}, "cn_to_table": {}, "all_columns": set()}
+        for row in tables_raw:
+            tname   = row["TABLE_NAME"]
+            comment = (row["TABLE_COMMENT"] or "").strip()
+            schema["tables"][tname] = {
+                "name_cn":           comment or tname,
+                "description":       comment,
+                "business_meaning":   "",
+                "columns":           [],
+            }
+            if comment:
+                schema["cn_to_table"][comment] = tname
+
+        for row in cols_raw:
+            tname   = row["TABLE_NAME"]
+            col_cn  = (row["COLUMN_COMMENT"] or "").strip()
+            if tname in schema["tables"]:
+                schema["tables"][tname]["columns"].append({
+                    "name":    row["COLUMN_NAME"],
+                    "name_cn": col_cn,
+                    "type":    row["DATA_TYPE"],
+                })
+            schema["all_columns"].add(row["COLUMN_NAME"].lower())
+
+        _schema_cache = schema
+        logger.info(
+            "[schema_tools] mysql mode: %d tables, %d columns loaded",
+            len(schema["tables"]), len(schema["all_columns"])
+        )
+        return schema
+
+    except Exception as e:
+        logger.error("[schema_tools] MySQL schema load failed: %s", e)
+        return {"tables": {}, "cn_to_table": {}, "all_columns": set()}
+
+
 def _get_schema_metadata_via_psycopg2() -> dict:
     """DB_BACKEND=postgres 时，通过 psycopg2 直连读取 annotation 表。
     与 Supabase 路径返回完全相同的 schema 结构。
@@ -84,8 +156,11 @@ def _get_schema_metadata() -> dict:
     if _schema_cache is not None:
         return _schema_cache
 
-    # DB_BACKEND=postgres：跳过 SupabaseClient，直连读注解表
-    if os.getenv("DB_BACKEND", "supabase") == "postgres":
+    # 直连模式：跳过 SupabaseClient
+    db_backend = os.getenv("DB_BACKEND", "supabase")
+    if db_backend == "mysql":
+        return _get_schema_metadata_via_mysql()
+    if db_backend == "postgres":
         return _get_schema_metadata_via_psycopg2()
 
     try:
