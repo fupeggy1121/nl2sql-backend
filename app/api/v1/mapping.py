@@ -42,6 +42,11 @@ def _get_mapping_path() -> Path:
             p = ONTOLOGY_DATA_DIR / p
         if p.exists():
             return p
+        logger.warning("MAPPING_FILE=%s not found, falling back to auto-detect", env_val)
+    # Auto-detect: prefer mapping_prod.json when present
+    prod = ONTOLOGY_DATA_DIR / "mapping_prod.json"
+    if prod.exists():
+        return prod
     return ONTOLOGY_DATA_DIR / "mapping_demo_fab.json"
 
 

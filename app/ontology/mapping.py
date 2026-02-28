@@ -108,20 +108,26 @@ def _resolve_mapping_file() -> Path:
     优先级:
       1. 环境变量 MAPPING_FILE — 绝对路径或相对于 ontology/data/ 的文件名
          例: MAPPING_FILE=mapping_prod.json  或  MAPPING_FILE=/etc/nl2sql/mapping_prod.json
-      2. 默认: mapping_demo_fab.json（测试库）
+      2. mapping_prod.json（若文件存在）
+      3. mapping_demo_fab.json（测试库兜底）
     """
     import os
+    import logging
+    log = logging.getLogger(__name__)
     env_val = os.getenv("MAPPING_FILE", "").strip()
     if env_val:
         p = Path(env_val)
         if not p.is_absolute():
             p = ONTOLOGY_DATA_DIR / p
         if p.exists():
+            log.info("[mapping] Using MAPPING_FILE env: %s", p)
             return p
-        import logging
-        logging.getLogger(__name__).warning(
-            f"[mapping] MAPPING_FILE={env_val} not found, falling back to default"
-        )
+        log.warning("[mapping] MAPPING_FILE=%s not found, falling back to auto-detect", env_val)
+    # Auto-detect: prefer mapping_prod.json when present
+    prod = ONTOLOGY_DATA_DIR / "mapping_prod.json"
+    if prod.exists():
+        log.info("[mapping] Auto-selected mapping_prod.json")
+        return prod
     return ONTOLOGY_DATA_DIR / "mapping_demo_fab.json"
 
 
