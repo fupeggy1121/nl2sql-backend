@@ -84,7 +84,7 @@ def sql_generator_node(state: AgentState) -> dict:
     if sql_error and retry_count > 0:
         previous_sql = state.get("sql", "")
         error_context = _build_correction_context(
-            previous_sql, sql_error, retry_count, schema_ctx
+            previous_sql, sql_error, retry_count, schema_ctx, semantic_ctx
         )
         logger.info(
             f"[sql_generator] Self-correction #{retry_count}: "
@@ -154,6 +154,35 @@ def sql_generator_node(state: AgentState) -> dict:
         }
 
 
+def _extract_mandatory_table_constraint(semantic_ctx: dict) -> str:
+    """
+    从语义上下文中提取物理表名，生成强制约束文本，放在 prompt 最前面。
+    这确保 LLM 不会使用英文猜测名（如 stations），而使用真实物理表名。
+    """
+    if not semantic_ctx:
+        return ""
+    classes = semantic_ctx.get("matched_classes", [])
+    if not classes:
+        return ""
+    lines = []
+    for c in classes:
+        if c.get("virtual"):
+            continue
+        keyword = c.get("keyword") or c.get("label_cn", "")
+        physical = c.get("physical_table", "")
+        if physical and keyword:
+            lines.append(f"  - 「{keyword}」→ 物理表: {physical}")
+    if not lines:
+        return ""
+    return (
+        "【强制表名约束 - 最高优先级】\n"
+        "语义引擎已识别以下真实物理表名，必须在 SQL 中直接使用，"
+        "禁止使用英文翻译或猜测名称（如 stations, equipment 等）：\n"
+        + "\n".join(lines)
+        + "\n"
+    )
+
+
 def _build_optimized_query(
     user_input: str, query_plan: dict, schema_ctx: str,
     few_shot_ctx: str = "", semantic_ctx: dict = None,
@@ -161,7 +190,12 @@ def _build_optimized_query(
     """
     结合 query_plan 的结构化信息、Schema 上下文、语义上下文和 few-shot 案例优化自然语言查询。
     """
-    parts = [user_input]
+    # 强制表名约束放在最前面，优先级最高
+    mandatory_constraint = _extract_mandatory_table_constraint(semantic_ctx)
+    if mandatory_constraint:
+        parts = [mandatory_constraint, user_input]
+    else:
+        parts = [user_input]
 
     table = query_plan.get("table")
     if table:
@@ -201,7 +235,8 @@ def _build_optimized_query(
 
 
 def _build_correction_context(
-    previous_sql: str, error: str, retry_count: int, schema_ctx: str
+    previous_sql: str, error: str, retry_count: int, schema_ctx: str,
+    semantic_ctx: dict = None,
 ) -> str:
     """
     构建智能错误修正上下文。
@@ -215,6 +250,10 @@ def _build_correction_context(
 
     if "not found" in error_lower or "does not exist" in error_lower:
         guidance.append("表名或列名不存在。请参照下方 Schema 使用正确的名称。")
+        # 注入语义引擎的物理表名映射，帮助 LLM 修正
+        mandatory = _extract_mandatory_table_constraint(semantic_ctx)
+        if mandatory:
+            guidance.append(mandatory)
     elif "validation" in error_lower:
         guidance.append("SQL 预验证失败。请参照 Schema 修正表名/列名。")
     elif "syntax" in error_lower:

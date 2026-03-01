@@ -175,7 +175,6 @@ class EnhancedNL2SQLConverter:
 - batches 表(v2)新增 current_station_id 外键引用 stations.id，优先用它关联站点
 - sub_batches 表(v2)新增 lot_id, equipment_id, next_station_id
 - batch_events 表(v2)记录操作事件: event_type, target_type, target_id, payload(jsonb), triggered_by
-- 站点(station)相关查询用 stations 表，通过 name 列筛选中文名
 - 批次(batch/sub_batch)当前所在站点用 sub_batches.current_station_id
 - process_route_stations 是工艺路线定义表（定义流程步骤），不是在制品数据
 
@@ -395,6 +394,8 @@ class EnhancedNL2SQLConverter:
         tables = self.annotation_metadata.get('tables', {})
         
         # 明确的映射规则（常见错误）
+        # 注意：不要在此处硬编码 stations/station，因为不同DB环境的真实表名不同
+        # 物理表名映射应由语义引擎(semantic_resolver)通过ontology动态确定
         specific_mappings = {
             'vehicles': 'carriers',
             'vehicle': 'carriers',
@@ -407,8 +408,6 @@ class EnhancedNL2SQLConverter:
             'batch': 'batches',
             'wafers': 'wafers',
             'wafer': 'wafers',
-            'stations': 'stations',
-            'station': 'stations',
             'carriers': 'carriers',
             'carrier': 'carriers',
         }
