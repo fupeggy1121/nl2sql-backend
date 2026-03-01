@@ -206,7 +206,9 @@ def _get_schema_metadata() -> dict:
 
     except Exception as e:
         logger.error(f"Failed to load schema metadata: {e}")
-        return {"tables": {}, "cn_to_table": {}, "all_columns": set()}
+        # 缓存空结果，避免每次请求都重试，导致30s 超时 × 重试次数
+        _schema_cache = {"tables": {}, "cn_to_table": {}, "all_columns": set()}
+        return _schema_cache
 
 
 @tool
@@ -306,6 +308,14 @@ def validate_sql(sql: str) -> dict:
 
     # 3. 提取表名并验证
     valid_tables = {t.lower() for t in schema["tables"]}
+    # 补充本体映射中的生产库表名（MySQL 生产表），避免将正确表名误判为 missing
+    try:
+        from app.ontology.mapping import get_mapping
+        for _pt in get_mapping().list_physical_tables():
+            if _pt.table_name:
+                valid_tables.add(_pt.table_name.lower())
+    except Exception:
+        pass
     # FROM table, JOIN table
     from_pattern = r'(?:FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_]*)'
     found = re.findall(from_pattern, sql, re.IGNORECASE)
