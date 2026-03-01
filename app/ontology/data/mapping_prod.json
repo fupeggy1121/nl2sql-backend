@@ -4033,10 +4033,10 @@
       }
     },
     {
-      "logic_class": "semi:Route",
+      "logic_class": "semi:ProcessStation",
       "physical_table": "matrix_routerx_config_process",
       "primary_key": "id",
-      "label_cn": "站点信息表",
+      "label_cn": "站点",
       "display_column": "name",
       "properties": {},
       "key_columns": [
@@ -8449,7 +8449,7 @@
       }
     },
     {
-      "logic_class": "semi:ProcessStation",
+      "logic_class": "semi:QTimeConfig",
       "physical_table": "station_q_time_config",
       "primary_key": "id",
       "label_cn": "q_time",
@@ -29705,7 +29705,7 @@
       }
     },
     {
-      "logic_class": "semi:ProcessStation",
+      "logic_class": "semi:ZFormTestStationIn",
       "physical_table": "z_form_teststation_in_form",
       "primary_key": "id",
       "label_cn": "z_form_teststation_in_form",
@@ -29743,7 +29743,7 @@
       }
     },
     {
-      "logic_class": "semi:ProcessStation",
+      "logic_class": "semi:ZFormTestStationOut",
       "physical_table": "z_form_teststation_out_form",
       "primary_key": "id",
       "label_cn": "z_form_teststation_out_form",
