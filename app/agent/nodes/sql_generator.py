@@ -384,20 +384,30 @@ def _generate_multi_step_sql(
 def _get_schema_context_with_rag(user_input: str) -> str:
     """
     获取 schema 上下文，优先使用 RAG，降级到 schema_tools。
+    RAG 调用超时3秒则降级。
     """
-    try:
-        from app.agent.tools.rag_tools import rag_search_schema, _rag_available
+    import concurrent.futures
 
-        if _rag_available():
-            ctx = rag_search_schema.invoke({
-                "query": user_input,
-                "top_k": 4,
-            })
-            if ctx and len(ctx) > 20:
-                logger.info(f"[sql_generator] Using RAG schema context ({len(ctx)} chars)")
-                return ctx
+    def _do_rag():
+        from app.agent.tools.rag_tools import rag_search_schema, _rag_available
+        if not _rag_available():
+            return None
+        return rag_search_schema.invoke({"query": user_input, "top_k": 4})
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(_do_rag)
+            try:
+                ctx = fut.result(timeout=3.0)
+                if ctx and len(ctx) > 20:
+                    logger.info(f"[sql_generator] Using RAG schema context ({len(ctx)} chars)")
+                    return ctx
+            except concurrent.futures.TimeoutError:
+                logger.warning("[sql_generator] RAG schema lookup timed out (3s), using schema_tools")
+            except Exception as e:
+                logger.debug(f"[sql_generator] RAG schema lookup failed: {e}")
     except Exception as e:
-        logger.debug(f"[sql_generator] RAG schema lookup failed: {e}")
+        logger.debug(f"[sql_generator] RAG executor failed: {e}")
 
     # 降级
     return get_schema_context.invoke({"user_input": user_input})
@@ -406,21 +416,30 @@ def _get_schema_context_with_rag(user_input: str) -> str:
 def _get_sql_few_shots(user_input: str) -> str:
     """
     Phase D: 检索历史 SQL 案例作为 few-shot 参考。
-    如果 RAG 不可用或无结果，返回空字符串。
+    如果 RAG 不可用或无结果或超时，返回空字符串。
     """
-    try:
-        from app.agent.tools.rag_tools import rag_search_sql_examples, _rag_available
+    import concurrent.futures
 
-        if _rag_available():
-            examples = rag_search_sql_examples.invoke({
-                "query": user_input,
-                "top_k": 2,
-            })
-            if examples and "用户问题:" in examples:
-                logger.info("[sql_generator] SQL few-shot examples retrieved")
-                return examples
+    def _do_rag():
+        from app.agent.tools.rag_tools import rag_search_sql_examples, _rag_available
+        if not _rag_available():
+            return None
+        return rag_search_sql_examples.invoke({"query": user_input, "top_k": 2})
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(_do_rag)
+            try:
+                examples = fut.result(timeout=3.0)
+                if examples and "用户问题:" in examples:
+                    logger.info("[sql_generator] SQL few-shot examples retrieved")
+                    return examples
+            except concurrent.futures.TimeoutError:
+                logger.debug("[sql_generator] SQL few-shot lookup timed out")
+            except Exception as e:
+                logger.debug(f"[sql_generator] SQL few-shot lookup failed: {e}")
     except Exception as e:
-        logger.debug(f"[sql_generator] SQL few-shot lookup failed: {e}")
+        logger.debug(f"[sql_generator] few-shot executor failed: {e}")
 
     return ""
 

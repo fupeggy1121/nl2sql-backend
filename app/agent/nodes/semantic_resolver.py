@@ -61,14 +61,14 @@ def _inject_entity_filters(sql: str, ctx: Any, user_input: str) -> str:
     从用户输入中提取实体名限定词，注入到 SQL 模板的 {station_filter} 等占位符中。
 
     当前支持：
-      - stations 表：从 "XX站点" / "XX工站" 中提取 XX，生成 s.name LIKE '%XX%'
+      - ProcessStation 类：从 "XX站点" / "XX工站" 中提取 XX，生成 s.name LIKE '%XX%'
 
     如查询未指定特定实体（如"所有站点"），占位符替换为空字符串，SQL 返回全量数据。
     """
-    # ── stations 实体过滤 ──────────────────────────────────────────────
+    # ── ProcessStation 实体过滤 ──────────────────────────────────────────────────
     station_filter = ""
     has_station_class = any(
-        getattr(mc, "physical_table", None) == "stations"
+        getattr(mc, "logic_class", "") == "semi:ProcessStation"
         for mc in getattr(ctx, "matched_classes", [])
     )
     if has_station_class:
@@ -100,9 +100,18 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
         logger.warning("[semantic_resolver] Empty input, skipping")
         return {"semantic_context": {}}
 
+    # 快速路径: approved_sql 模式——SQL已确定，语义解析结果不影响SQL生成
+    if state.get("approved_sql") and not state.get("sql_error"):
+        trace = list(state.get("pipeline_trace", []))
+        t0_skip = time.perf_counter()
+        trace_step(trace, "semantic_resolver", t0_skip,
+                   summary="approved_sql 模式: 跳过语义解析，SQL已确定",
+                   detail={"approved_sql_mode": True, "skipped": True})
+        return {"semantic_context": {}, "pipeline_trace": trace}
+
     # ── B2: 语义缓存查找（追问不使用缓存，避免上下文依赖）──
-    # v2: 业务规则版本前缀——当规则/模板发生重大变更时更新版本号可立即淘汰旧缓存
-    _SEMANTIC_CACHE_VERSION = "v3"
+    # v4: 本体类版本前缀——当规则/模板发生重大变更时更新版本号可立即淘汰旧缓存
+    _SEMANTIC_CACHE_VERSION = "v4"
     _cache_key = f"{_SEMANTIC_CACHE_VERSION}:{effective_input}"
     _cache_hit = False
     if not is_followup:

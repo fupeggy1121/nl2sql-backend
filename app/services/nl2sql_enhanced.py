@@ -328,7 +328,17 @@ class EnhancedNL2SQLConverter:
         
         if not valid_table_names:
             return sql
-        
+
+        # 补充加载本体映射文件中的物理表名，避免将生产库表名误改为测试库表名
+        try:
+            from app.ontology.mapping import get_mapping
+            _ont_tables = get_mapping().list_physical_tables()
+            for _pt in _ont_tables:
+                if _pt.table_name:
+                    valid_table_names.add(_pt.table_name)
+        except Exception:
+            pass
+
         # 提取 CTE 别名（WITH name AS ...），避免将其误修正为真实表名
         cte_aliases = set()
         cte_pattern = r'\bWITH\b\s+([\w_]+)\s+AS\b'

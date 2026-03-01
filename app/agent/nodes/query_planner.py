@@ -71,6 +71,14 @@ def query_planner_node(state: AgentState) -> dict:
     logger.info(f"[query_planner] Plan: table={query_plan['table']}, "
                 f"metrics={query_plan['metrics']}")
 
+    # ── 快速路径: approved_sql 模式——sql_generator 直接使用已批准SQL，无需RAG上下文 ──
+    if state.get("approved_sql") and not state.get("sql_error"):
+        trace = list(state.get("pipeline_trace", []))
+        trace_step(trace, "query_planner", _t0,
+                   summary="approved_sql 模式: 跳过RAG检索，不需要查询规划",
+                   detail={"approved_sql_mode": True, "skipped": True})
+        return {"query_plan": query_plan, "rag_context": "", "pipeline_trace": trace}
+
     # ── Phase D: RAG 检索 schema 上下文 ──
     rag_context = _retrieve_rag_context(effective_input)
 
@@ -106,24 +114,42 @@ def _extract_table_from_sql(sql: str) -> str:
 def _retrieve_rag_context(user_input: str) -> str:
     """
     Phase D: 使用 RAG 检索相关 schema 上下文。
-    如果 RAG 不可用，降级到旧的关键词匹配。
+    如果 RAG 不可用或超时（3s），降级到旧的关键词匹配。
     """
-    try:
-        from app.agent.tools.rag_tools import rag_search, _rag_available
+    import concurrent.futures
 
-        if _rag_available():
-            # RAG 可用时：检索 schema + 同义词文档
-            context = rag_search.invoke({
-                "query": user_input,
-                "doc_type": "schema",
-                "top_k": 4,
-            })
-            logger.info(f"[query_planner] RAG context retrieved ({len(context)} chars)")
-            return context
-        else:
-            # 降级到旧的 schema_tools
-            from app.agent.tools.schema_tools import get_schema_context
-            return get_schema_context.invoke({"user_input": user_input})
+    def _do_rag():
+        from app.agent.tools.rag_tools import rag_search, _rag_available
+        if not _rag_available():
+            return None
+        return rag_search.invoke({
+            "query": user_input,
+            "doc_type": "schema",
+            "top_k": 4,
+        })
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(_do_rag)
+            try:
+                context = fut.result(timeout=3.0)
+                if context:
+                    logger.info(f"[query_planner] RAG context retrieved ({len(context)} chars)")
+                    return context
+            except concurrent.futures.TimeoutError:
+                logger.warning("[query_planner] RAG call timed out (3s), falling back to schema_tools")
+            except Exception as e:
+                logger.debug(f"[query_planner] RAG call failed: {e}")
+    except Exception as e:
+        logger.debug(f"[query_planner] RAG executor failed: {e}")
+
+    # 降级到旧的 schema_tools
+    try:
+        from app.agent.tools.schema_tools import get_schema_context
+        return get_schema_context.invoke({"user_input": user_input})
+    except Exception as e:
+        logger.debug(f"[query_planner] schema_tools fallback failed: {e}")
+        return ""
 
     except Exception as e:
         logger.warning(f"[query_planner] RAG retrieval failed, using fallback: {e}")
