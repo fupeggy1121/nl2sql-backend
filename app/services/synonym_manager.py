@@ -124,9 +124,9 @@ class SynonymManagerService:
                 query = query.eq('is_active', is_active)
             query = query.order('target_uri').order('synonym')
             response = query.execute()
-            if response.data is not None:
+            if response.data:  # non-empty list — class_synonyms table is populated
                 logger.info(f"✅ Supabase REST class_synonyms: {len(response.data)} 条")
-                return response.data or []
+                return response.data
         except Exception as e:
             logger.warning(f"Supabase REST class_synonyms 查询失败: {e}")
 
@@ -232,10 +232,17 @@ class SynonymManagerService:
                 response = client.table('class_synonyms').select('synonym,target_uri').eq('is_active', True).execute()
                 self._cache = {r['synonym'].lower(): r['target_uri'] for r in (response.data or [])}
             except Exception:
-                response = client.table('table_synonyms').select('synonym,table_name').eq('is_active', True).execute()
-                self._cache = {r['synonym'].lower(): r['table_name'] for r in (response.data or [])}
-            logger.info(f"✅ Supabase REST 加载同义词映射: {len(self._cache)} 条")
-            return self._cache
+                pass
+            if not self._cache:
+                # class_synonyms empty or missing — try table_synonyms
+                try:
+                    response = client.table('table_synonyms').select('synonym,table_name').eq('is_active', True).execute()
+                    self._cache = {r['synonym'].lower(): r['table_name'] for r in (response.data or [])}
+                except Exception:
+                    pass
+            if self._cache:
+                logger.info(f"✅ Supabase REST 加载同义词映射: {len(self._cache)} 条")
+                return self._cache
         except Exception:
             pass
 
