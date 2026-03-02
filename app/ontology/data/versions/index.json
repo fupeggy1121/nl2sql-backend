@@ -1,0 +1,18 @@
+[
+  {
+    "version": 1,
+    "filename": "v0001.ttl",
+    "timestamp": "2026-03-02T07:32:40.993241+00:00",
+    "message": "Initial version (auto-snapshot before first upload)",
+    "author": "system",
+    "size_bytes": 8720
+  },
+  {
+    "version": 2,
+    "filename": "v0002.ttl",
+    "timestamp": "2026-03-02T07:32:40.994775+00:00",
+    "message": "Version 2",
+    "author": "web-ui",
+    "size_bytes": 8720
+  }
+]

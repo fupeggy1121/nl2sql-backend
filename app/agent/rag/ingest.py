@@ -249,24 +249,23 @@ class KnowledgeIngestor:
 
         # 2. 从静态配置补充
         try:
-            from app.config.table_synonyms import TABLE_SYNONYMS
-            for tn, syns in TABLE_SYNONYMS.items():
-                # 避免重复
-                existing_tables = {
-                    d["metadata"]["table_name"] for d in documents
-                }
-                if tn not in existing_tables:
+            from app.config.ontology_synonyms import CLASS_SYNONYMS
+            existing_tables = {d["metadata"]["table_name"] for d in documents}
+            for uri, info in CLASS_SYNONYMS.items():
+                if uri not in existing_tables:
+                    label_cn = info["label_cn"]
+                    syns = info["synonyms"]
                     doc_text = (
-                        f"表名: {tn}\n"
+                        f"本体类: {uri} ({label_cn})\n"
                         f"同义词/别名: {', '.join(syns)}\n"
-                        f"当用户提到 {' 或 '.join(syns)} 时，"
-                        f"指的是数据库表 {tn}"
+                        f"当用户提到 {' 或 '.join(syns[:5])} 时，"
+                        f"指的是本体类 {label_cn}（{uri}）"
                     )
                     documents.append({
                         "content": doc_text,
                         "doc_type": DOC_TYPE_SYNONYM,
                         "metadata": {
-                            "table_name": tn,
+                            "table_name": uri,
                             "synonyms": list(syns),
                             "source": "static_config",
                         },

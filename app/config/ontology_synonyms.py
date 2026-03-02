@@ -164,63 +164,171 @@ CLASS_SYNONYMS: dict = {
 
 
 # ─── 本体关系同义词 ────────────────────────────────────────────────────────────
-# 本体关系描述两个类之间的业务联系，用于跨表查询的意图识别
-# 当用户表达"设备处理的批次"/"批次所在的工艺站"等跨表查询意图时触发
+# 对应 semi-cim-ontology.ttl 中定义的 owl:ObjectProperty
+# URI 与 TTL 实际属性名完全一致
 
 RELATION_SYNONYMS: dict = {
 
+    # 2.1 Wafer 核心状态向量
+    "semi:belongsToLot": {
+        "label_cn": "晶圆属于批次",
+        "domain": "semi:Wafer", "range": "semi:ProductionLot",
+        "synonyms": [
+            "晶圆属于哪个批次", "晶圆对应工单", "晶圆批次",
+            "晶圆归属批次", "wafer属于哪个lot",
+        ],
+    },
+
+    "semi:belongsToSublot": {
+        "label_cn": "晶圆属于子批次",
+        "domain": "semi:Wafer", "range": "semi:Sublot",
+        "synonyms": [
+            "晶圆属于子批次", "晶圆对应子批次", "wafer的sublot",
+        ],
+    },
+
+    "semi:locatedInSlot": {
+        "label_cn": "晶圆位于载具槽位",
+        "domain": "semi:Wafer", "range": "semi:Carrier",
+        "synonyms": [
+            "晶圆在哪个载具", "载具里的晶圆", "片篮中的晶片",
+            "载具装载晶圆", "晶圆在哪个片篮",
+        ],
+    },
+
+    "semi:atStation": {
+        "label_cn": "当前所处工序",
+        "domain": "semi:Wafer", "range": "semi:ProcessStation",
+        "synonyms": [
+            "当前工序", "当前站点", "在制工序", "批次在哪个站",
+            "工序进度", "当前制程", "在哪个工序",
+        ],
+    },
+
+    "semi:currentlyOnRoute": {
+        "label_cn": "当前工艺路径",
+        "domain": "semi:Wafer", "range": "semi:Route",
+        "synonyms": [
+            "当前工艺路线", "晶圆走哪条路线", "初始化路径",
+        ],
+    },
+
+    # 2.2 生产管理层级
+    "semi:basedOnOrder": {
+        "label_cn": "批次基于工单创建",
+        "domain": "semi:ProductionLot", "range": "semi:ProductionOrder",
+        "synonyms": [
+            "批次对应工单", "这个批次属于哪个工单",
+            "批次来自哪个工单", "工单下的批次",
+        ],
+    },
+
+    "semi:containsSublot": {
+        "label_cn": "批次包含子批次",
+        "domain": "semi:ProductionLot", "range": "semi:Sublot",
+        "synonyms": [
+            "批次包含哪些子批", "批次分拆的子批次", "子批次列表",
+        ],
+    },
+
+    "semi:isCarriedBy": {
+        "label_cn": "子批次由载具承载",
+        "domain": "semi:Sublot", "range": "semi:Carrier",
+        "synonyms": [
+            "子批次在哪个载具", "载具承载的子批次",
+        ],
+    },
+
     "semi:hasParentLot": {
-        "label_cn": "父批次关联",
+        "label_cn": "父批次(溯源)",
+        "domain": "semi:ProductionLot", "range": "semi:ProductionLot",
         "synonyms": [
             "父批次", "上级批次", "parent lot", "批次溯源",
             "分批来源", "原始批次",
         ],
     },
 
-    "semi:EquipmentProcessesLot": {
-        "label_cn": "设备加工批次",
+    # 2.3 工艺约束注入
+    "semi:usesRoute": {
+        "label_cn": "产品使用工艺路线",
+        "domain": "semi:ProductModel", "range": "semi:Route",
         "synonyms": [
-            "设备加工", "批次加工设备", "加工记录",
-            "设备处理批次", "哪台设备加工",
+            "产品走哪条路线", "型号对应工艺路线",
+            "产品工艺路径", "产品模型工序流程",
         ],
     },
 
-    "semi:LotAtStation": {
-        "label_cn": "批次所在站点",
+    "semi:consistsOfStation": {
+        "label_cn": "路线包含工序节点",
+        "domain": "semi:Route", "range": "semi:ProcessStation",
         "synonyms": [
-            "批次在哪个站", "当前工序", "当前站点",
-            "在制站点", "工序进度",
+            "路线包含哪些工序", "工艺路径中的工序", "路线的工序列表",
         ],
     },
 
-    "semi:CarrierContainsWafer": {
-        "label_cn": "载具包含晶圆",
+    "semi:requiresEquipment": {
+        "label_cn": "工序需要设备执行",
+        "domain": "semi:ProcessStation", "range": "semi:Equipment",
         "synonyms": [
-            "载具里的晶圆", "片篮中的晶片", "载具装载",
-            "晶圆在哪个载具",
+            "工序需要哪台设备", "工序指定设备", "这个工序用哪个机台",
         ],
     },
 
-    "semi:WaferBelongsToLot": {
-        "label_cn": "晶圆所属批次",
+    "semi:hostsRecipe": {
+        "label_cn": "设备驻留配方",
+        "domain": "semi:Equipment", "range": "semi:Recipe",
         "synonyms": [
-            "晶圆属于哪个批次", "晶圆对应工单",
-            "晶圆批次",
+            "设备运行哪个配方", "机台驻留配方", "设备对应工艺配方",
         ],
     },
 
-    "semi:ProductUsesRecipe": {
-        "label_cn": "产品使用配方",
+    # 2.4 物料与BOM
+    "semi:hasBOM": {
+        "label_cn": "产品关联BOM定义",
+        "domain": "semi:ProductModel", "range": "semi:BOM",
         "synonyms": [
-            "产品配方", "型号对应工艺", "产品工艺配方",
+            "产品BOM", "产品物料清单", "型号对应耗材", "产品物料",
         ],
     },
 
-    "semi:LotFollowsRoute": {
-        "label_cn": "批次走工艺路线",
+    "semi:consumesRawMaterial": {
+        "label_cn": "BOM消耗原料",
+        "domain": "semi:BOM", "range": "semi:RawMaterial",
         "synonyms": [
-            "批次工艺路线", "工单路线", "工单流程",
-            "批次走哪条路线",
+            "消耗原料", "BOM用哪些原料", "原料消耗明细",
+        ],
+    },
+
+    "semi:consumesAuxiliary": {
+        "label_cn": "BOM消耗辅料",
+        "domain": "semi:BOM", "range": "semi:Auxiliary",
+        "synonyms": [
+            "消耗辅料", "BOM用哪些辅料", "耗材明细",
+        ],
+    },
+
+    "semi:requiresSparePart": {
+        "label_cn": "设备需要备件",
+        "domain": "semi:Equipment", "range": "semi:SparePart",
+        "synonyms": [
+            "设备需要哪种备件", "维修备件", "设备备件清单",
+        ],
+    },
+
+    # 2.5 动作驱动
+    "semi:hasInput": {
+        "label_cn": "动作输入对象",
+        "domain": "semi:Action", "range": "semi:ProductionLot | semi:Wafer",
+        "synonyms": [
+            "动作处理对象", "这次操作对象", "加工的批次或晶圆",
+        ],
+    },
+
+    "semi:hasOutput": {
+        "label_cn": "动作输出结果",
+        "domain": "semi:Action", "range": "semi:ProductionLot | semi:Wafer",
+        "synonyms": [
+            "动作产出", "操作结果", "加工后的批次或晶圆",
         ],
     },
 }
