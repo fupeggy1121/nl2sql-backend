@@ -1,157 +1,118 @@
 {
-  "version": "2026-V2",
+  "version": "2026-V3",
   "customer": "Prod_cc_semi_mvp",
-  "description": "生产库 cc_semi_mvp（MySQL 8.0）本体→物理表映射字典（自动生成，请审查 label_cn / display_column）",
-  "db_type": "mysql",
+  "description": "半导体CIM本体→MySQL本地库物理表映射字典（TTL-first，v3全量对齐semi-cim-ontology.ttl）",
   "object_mappings": [
     {
-      "logic_class": "semi:Material",
-      "physical_table": "warehouse_material_unpack_record",
+      "logic_class": "semi:Wafer",
+      "physical_table": null,
+      "primary_key": null,
+      "label_cn": "晶圆",
+      "display_column": null,
+      "virtual": true,
+      "properties": {},
+      "key_columns": [],
+      "note": "MySQL生产执行层无独立晶圆级跟踪表，生产流转以批次(lot)为最小管理单元。晶圆实体信息在仓库域：warehouse_approval_wafer（入库）、warehouse_approval_wafer_record（入库记录），不属于生产执行语义。"
+    },
+    {
+      "logic_class": "semi:ProductionLot",
+      "physical_table": "routerx_lot",
       "primary_key": "id",
-      "label_cn": "原料拆包记录表",
-      "display_column": "code",
+      "label_cn": "生产批次",
+      "display_column": "lot_code",
+      "properties": {
+        "semi:hasState": "lot_status"
+      },
+      "key_columns": [
+        "id",
+        "lot_code",
+        "lot_no",
+        "product_id",
+        "lot_status",
+        "current_station_id",
+        "route_id",
+        "work_order_id",
+        "good_qty",
+        "defect_qty",
+        "total_qty",
+        "gmt_create",
+        "gmt_update"
+      ]
+    },
+    {
+      "logic_class": "semi:Sublot",
+      "physical_table": "local_production_batch",
+      "primary_key": "id",
+      "label_cn": "子批次/本地批次",
+      "display_column": "batch_no",
       "properties": {
         "semi:hasState": "status"
       },
       "key_columns": [
         "id",
-        "code",
+        "batch_no",
+        "lot_id",
+        "product_id",
         "status",
-        "description",
-        "material_type_id",
-        "material_type_name",
-        "material_code",
-        "material_version",
-        "bill_no",
-        "qty",
-        "unit",
-        "unit_id",
-        "user_create",
-        "gmt_create",
-        "user_update",
-        "gmt_update",
-        "del",
-        "origin_code"
+        "current_station_id",
+        "carrier_id",
+        "good_qty",
+        "defect_qty",
+        "total_qty",
+        "gmt_create"
       ],
-      "key_column_comments": {
-        "id": "主键(自增策略)",
-        "code": "唯一码",
-        "material_type_id": "原料类型ID",
-        "material_type_name": "原料类型名称",
-        "material_code": "原料料号",
-        "material_version": "原料版本",
-        "bill_no": "批次号",
-        "qty": "拆包重量",
-        "unit": "单位名称",
-        "unit_id": "单位ID",
-        "description": "备注",
-        "status": "拆包后物料使用状态",
-        "user_create": "创建者",
-        "gmt_create": "创建时间",
-        "user_update": "更新者",
-        "gmt_update": "更新时间",
-        "del": "是否删除",
-        "origin_code": "原厂码"
-      }
+      "note": "MySQL中无严格Sublot概念。local_production_batch 对应批次下的分拆调度单元，语义近似Sublot。status: 0=待执行, 1=执行中, 3=已完成, 4=取消。"
+    },
+    {
+      "logic_class": "semi:ProcessStation",
+      "physical_table": "matrix_routerx_config_process",
+      "primary_key": "id",
+      "label_cn": "工艺站点(工序)",
+      "display_column": "name",
+      "properties": {},
+      "key_columns": [
+        "id",
+        "name",
+        "code",
+        "type",
+        "description",
+        "version",
+        "equipment_group_list",
+        "recipe_group_id",
+        "process_data_group_list",
+        "measurement_data_group_list",
+        "load_carrier_group_id",
+        "unload_carrier_group_id",
+        "gmt_create"
+      ]
     },
     {
       "logic_class": "semi:Equipment",
-      "physical_table": "sys_eqpinfo_tree",
+      "physical_table": "equipment",
       "primary_key": "id",
-      "label_cn": "工厂模型树",
-      "display_column": "node_name",
-      "properties": {},
+      "label_cn": "设备",
+      "display_column": "name",
+      "properties": {
+        "semi:hasState": "status",
+        "semi:isQualified": null
+      },
       "key_columns": [
         "id",
-        "node_name",
-        "remark",
-        "level_name",
-        "parent_id",
-        "create_user_name",
-        "update_user_name",
-        "create_time",
-        "update_time",
-        "create_user",
-        "create_user_id",
-        "gmt_create",
-        "update_user_id",
-        "update_user",
-        "gmt_update",
-        "deleted",
-        "trace_id"
+        "name",
+        "code",
+        "status",
+        "classify_id",
+        "description",
+        "station_id",
+        "gmt_create"
       ],
-      "key_column_comments": {
-        "id": "id",
-        "node_name": "节点名称",
-        "level_name": "层级名称",
-        "parent_id": "上一层级id",
-        "create_user_name": "创建者",
-        "update_user_name": "修改者用户id",
-        "create_time": "创建时间",
-        "update_time": "修改时间",
-        "remark": "描述",
-        "create_user": "创建人",
-        "create_user_id": "创建人ID",
-        "gmt_create": "创建时间",
-        "update_user_id": "修改人ID",
-        "update_user": "修改人名称",
-        "gmt_update": "修改时间",
-        "deleted": "是否删除",
-        "trace_id": "链路追踪编号"
-      }
-    },
-    {
-      "logic_class": "semi:BOM",
-      "physical_table": "bom_list",
-      "primary_key": "id",
-      "label_cn": "bom_list",
-      "display_column": "material_name",
-      "properties": {},
-      "key_columns": [
-        "id",
-        "material_name",
-        "order_id",
-        "material_code",
-        "material_type",
-        "material_cat",
-        "quantity",
-        "unit",
-        "replace_code",
-        "replace_name",
-        "replace_cat",
-        "replace_ver",
-        "replace_quantity",
-        "create_user_id",
-        "create_user",
-        "gmt_create",
-        "update_user_id",
-        "update_user"
-      ],
-      "key_column_comments": {
-        "id": "主键",
-        "material_name": "物料名称",
-        "material_code": "物料编码",
-        "material_type": "物料类别",
-        "material_cat": "物料规格",
-        "quantity": "用量",
-        "unit": "单位",
-        "replace_code": "替代料code",
-        "replace_name": "替代料name",
-        "replace_cat": "替代料规格",
-        "replace_ver": "替代料版本",
-        "replace_quantity": "替代料用量",
-        "create_user_id": "创建者",
-        "create_user": "创建者id",
-        "gmt_create": "创建时间",
-        "update_user_id": "更新者id",
-        "update_user": "更新者"
-      }
+      "note": "status: 0=CLOSE(停用), 1=OPEN(启用)。sys_eqpinfo_tree 是设备树结构表，用于层级展示，不是设备实体表。"
     },
     {
       "logic_class": "semi:Carrier",
       "physical_table": "carrier",
       "primary_key": "id",
-      "label_cn": "载具列表",
+      "label_cn": "载具",
       "display_column": "carrier_code",
       "properties": {
         "semi:hasState": "status"
@@ -163,121 +124,15 @@
         "smif_pod_code",
         "sub_lot_code",
         "lot_code",
-        "extra",
-        "create_user_id",
-        "create_user",
         "gmt_create",
-        "update_user_id",
-        "update_user",
-        "gmt_update",
-        "deleted",
-        "trace_id"
-      ],
-      "key_column_comments": {
-        "id": "主键",
-        "carrier_code": "载具code",
-        "smif_pod_code": "smifpod code",
-        "status": "状态 0:绑定,1:解绑",
-        "extra": "页面扩展字段",
-        "create_user_id": "创建者id",
-        "create_user": "创建者",
-        "gmt_create": "创建时间",
-        "update_user_id": "更新者id",
-        "update_user": "更新者",
-        "gmt_update": "更新时间",
-        "trace_id": "链路追踪编号"
-      }
-    },
-    {
-      "logic_class": "semi:ProductionLot",
-      "physical_table": "warehouse_batch_property_value",
-      "primary_key": "id",
-      "label_cn": "Warehouse Batch Property Value Table",
-      "display_column": "serial_no",
-      "properties": {},
-      "key_columns": [
-        "id",
-        "serial_no",
-        "property_id",
-        "inventory_id",
-        "batch_no",
-        "material_id",
-        "property_value",
-        "create_user_id",
-        "create_user",
-        "trace_id",
-        "gmt_create",
-        "update_user_id",
-        "update_user",
-        "gmt_update",
-        "deleted",
-        "extra"
-      ],
-      "key_column_comments": {
-        "id": "ID",
-        "property_id": "属性id",
-        "inventory_id": "库存表编号(冗余)",
-        "batch_no": "批次编号(冗余)",
-        "serial_no": "序列号",
-        "material_id": "物料id(冗余)",
-        "property_value": "属性值",
-        "create_user_id": "创建者id",
-        "create_user": "创建者",
-        "trace_id": "trace id",
-        "gmt_create": "创建时间",
-        "update_user_id": "更新者id",
-        "update_user": "更新者",
-        "gmt_update": "更新时间",
-        "extra": "扩展字段"
-      }
-    },
-    {
-      "logic_class": "semi:Wafer",
-      "physical_table": "warehouse_approval_wafer_record",
-      "primary_key": "id",
-      "label_cn": "入库审批wafer记录信息",
-      "display_column": "wafer_id",
-      "properties": {},
-      "key_columns": [
-        "id",
-        "wafer_id",
-        "sub_lot_id",
-        "warehouse_approval_sub_lot_record_id",
-        "wafer_code",
-        "slot_no",
-        "create_user_id",
-        "create_user",
-        "trace_id",
-        "gmt_create",
-        "update_user_id",
-        "update_user",
-        "gmt_update",
-        "deleted",
-        "extra"
-      ],
-      "key_column_comments": {
-        "id": "主键",
-        "sub_lot_id": "子批id",
-        "warehouse_approval_sub_lot_record_id": "入库审批子批记录id",
-        "wafer_id": "片盒id",
-        "wafer_code": "片盒编码",
-        "slot_no": "槽位号",
-        "create_user_id": "创建者ID",
-        "create_user": "创建者",
-        "trace_id": "Trace ID",
-        "gmt_create": "创建时间",
-        "update_user_id": "更新者ID",
-        "update_user": "更新者",
-        "gmt_update": "更新时间",
-        "deleted": "是否删除",
-        "extra": "扩展字段"
-      }
+        "gmt_update"
+      ]
     },
     {
       "logic_class": "semi:Route",
       "physical_table": "routerx_router_config",
       "primary_key": "id",
-      "label_cn": "routerx_router_config",
+      "label_cn": "工艺路径",
       "display_column": "name",
       "properties": {},
       "key_columns": [
@@ -290,80 +145,62 @@
         "gateways",
         "flows",
         "version_n",
-        "create_user_id",
-        "create_user",
         "gmt_create",
-        "update_user_id",
-        "update_user",
-        "gmt_update",
-        "deleted",
-        "trace_id",
-        "extra"
+        "gmt_update"
       ],
-      "key_column_comments": {
-        "route_type": "路径类型",
-        "create_user_id": "创建者id",
-        "create_user": "创建者",
-        "gmt_create": "创建时间",
-        "update_user_id": "更新者id",
-        "update_user": "更新者",
-        "gmt_update": "更新时间",
-        "trace_id": "链路追踪编号"
-      }
+      "note": "processes/gateways/flows 为jsonb字段，嵌入工序节点的有序引用（process_id列表）。"
     },
     {
-      "logic_class": "semi:ProcessStation",
-      "physical_table": "matrix_routerx_config_process",
+      "logic_class": "semi:ProductModel",
+      "physical_table": "product_model",
       "primary_key": "id",
-      "label_cn": "站点",
+      "label_cn": "产品模型",
       "display_column": "name",
-      "properties": {},
+      "properties": {
+        "semi:hasState": "product_status"
+      },
       "key_columns": [
         "id",
         "name",
         "code",
-        "type",
-        "description",
-        "version",
-        "equipment_group_list",
-        "process_data_group_list",
-        "measurement_data_group_list",
-        "recipe_group_id",
-        "unload_carrier_group_id",
-        "load_carrier_group_id",
-        "hold_code_group_id",
-        "reject_code_group_id",
-        "release_code_group_id",
-        "target_process",
-        "pass_type_in",
-        "pass_type_out"
+        "material_id",
+        "product_status",
+        "version_n",
+        "route_id",
+        "recipe_id",
+        "gmt_create",
+        "gmt_update"
       ],
-      "key_column_comments": {
-        "id": "批次ID，内部唯一的流转ID",
-        "code": "编码",
-        "name": "站点名称",
-        "description": "站点描述",
-        "version": "站点版本",
-        "type": "类型 1工艺站点 2 量测站点",
-        "equipment_group_list": "设备组列表",
-        "process_data_group_list": "制程参数组列表",
-        "measurement_data_group_list": "量测参数组列表",
-        "recipe_group_id": "配方组ID",
-        "unload_carrier_group_id": "上料载具组ID",
-        "load_carrier_group_id": "下料载具组ID",
-        "hold_code_group_id": "Hold原因组ID",
-        "reject_code_group_id": "Reject原因组ID",
-        "release_code_group_id": "release原因代码组ID",
-        "target_process": "目标站点",
-        "pass_type_in": "进站类型(1 lot 2 片篮（子批）)",
-        "pass_type_out": "出站类型(1 lot 2 片篮（子批）)"
-      }
+      "note": "product_status: 0=草稿, 1=待审核, 2=激活/在产。material_id→material.id 关联物料主数据；route_id→routerx_router_config.id 关联工艺路线。"
     },
     {
-      "logic_class": "semi:Recipe",
-      "physical_table": "recipe_manage",
+      "logic_class": "semi:ProductionOrder",
+      "physical_table": "production_scheduling",
       "primary_key": "id",
-      "label_cn": "物料主数据表",
+      "label_cn": "生产工单/排程",
+      "display_column": "schedule_no",
+      "properties": {
+        "semi:hasState": "status"
+      },
+      "key_columns": [
+        "id",
+        "schedule_no",
+        "classify_id",
+        "classify_type",
+        "status",
+        "product_id",
+        "product_code",
+        "total_qty",
+        "plan_start_time",
+        "plan_end_time",
+        "gmt_create"
+      ]
+    },
+    {
+      "logic_class": "semi:BOM",
+      "physical_table": "product_bom",
+      "primary_key": "id",
+      "label_cn": "物料清单(BOM)",
       "display_column": "name",
       "properties": {
         "semi:hasState": "status"
@@ -371,1202 +208,496 @@
       "key_columns": [
         "id",
         "name",
-        "status",
         "code",
+        "material_id",
+        "status",
+        "version_n",
+        "gmt_create",
+        "gmt_update"
+      ],
+      "note": "status: 0=失效, 1=生效。material_id→material.id 关联产品物料。product_bom_material 是BOM下的物料明细行表。"
+    },
+    {
+      "logic_class": "semi:Recipe",
+      "physical_table": "recipe_manage",
+      "primary_key": "id",
+      "label_cn": "配方",
+      "display_column": "name",
+      "properties": {
+        "semi:hasState": "status"
+      },
+      "key_columns": [
+        "id",
+        "name",
+        "code",
+        "status",
         "description",
         "equipment_list",
         "version_n",
-        "create_user_id",
-        "create_user",
         "gmt_create",
-        "update_user_id",
-        "update_user",
-        "gmt_update",
-        "deleted",
-        "trace_id",
-        "extra"
+        "gmt_update"
       ],
-      "key_column_comments": {
-        "id": "配方主键",
-        "code": "配方编码",
-        "name": "配方名称",
-        "description": "配方描述",
-        "equipment_list": "设备列表",
-        "version_n": "版本号列表",
-        "status": "配方状态",
-        "create_user_id": "创建者id",
-        "create_user": "创建者",
-        "gmt_create": "创建时间",
-        "update_user_id": "更新者id",
-        "update_user": "更新者",
-        "gmt_update": "更新时间",
-        "deleted": "是否删除",
-        "trace_id": "链路追踪编号",
-        "extra": "扩展字段"
-      }
+      "note": "equipment_list 为jsonb数组，记录该配方可运行的设备ID列表。recipe_group_id 在 matrix_routerx_config_process 中引用配方组。"
     },
     {
-      "logic_class": "semi:Sublot",
-      "physical_table": "warehouse_approval_sub_lot_record",
+      "logic_class": "semi:Material",
+      "physical_table": "material",
       "primary_key": "id",
-      "label_cn": "入库审批子批记录",
-      "display_column": "sub_lot_code",
+      "label_cn": "物料主数据",
+      "display_column": "name",
       "properties": {},
       "key_columns": [
         "id",
-        "sub_lot_code",
-        "remark",
-        "warehouse_approval_record_id",
-        "sub_lot_id",
-        "packing_code",
-        "product_code",
-        "product_num",
-        "compliance_state",
-        "approval_state",
-        "create_user_id",
-        "create_user",
-        "trace_id",
-        "gmt_create",
-        "update_user_id",
-        "update_user",
-        "gmt_update",
-        "deleted"
+        "name",
+        "code",
+        "material_type",
+        "material_type_id",
+        "spec",
+        "unit",
+        "classify_id",
+        "status",
+        "gmt_create"
       ],
-      "key_column_comments": {
-        "id": "主键",
-        "warehouse_approval_record_id": "入库审批记录id",
-        "sub_lot_id": "子批次id",
-        "sub_lot_code": "子批次号",
-        "packing_code": "包装编码",
-        "product_code": "产品料号",
-        "product_num": "产品数量",
-        "compliance_state": "合规状态",
-        "approval_state": "审批状态 0待审批 1 已成功 2 已拒绝，默认0",
-        "remark": "备注",
-        "create_user_id": "创建者ID",
-        "create_user": "创建者",
-        "trace_id": "Trace ID",
-        "gmt_create": "创建时间",
-        "update_user_id": "更新者ID",
-        "update_user": "更新者",
-        "gmt_update": "更新时间",
-        "deleted": "是否删除"
-      }
+      "note": "通用物料主数据表，通过 material_type 区分子类（原料/辅料/备件等）。"
+    },
+    {
+      "logic_class": "semi:RawMaterial",
+      "physical_table": "material",
+      "primary_key": "id",
+      "label_cn": "原料",
+      "display_column": "name",
+      "filter_condition": "material_type IN ('raw', 'wafer', '原料', '硅片')",
+      "properties": {},
+      "key_columns": [
+        "id",
+        "name",
+        "code",
+        "material_type",
+        "spec",
+        "unit",
+        "classify_id",
+        "status"
+      ],
+      "note": "使用 material 表，通过 material_type 筛选原料类型行。具体枚举值需对照实际数据库中的 material_type 字段值确认。"
+    },
+    {
+      "logic_class": "semi:Auxiliary",
+      "physical_table": "accy_model",
+      "primary_key": "id",
+      "label_cn": "辅料主数据",
+      "display_column": "name",
+      "properties": {
+        "semi:hasState": "status"
+      },
+      "key_columns": [
+        "id",
+        "name",
+        "code",
+        "status",
+        "accy_type",
+        "spec",
+        "unit",
+        "classify_id",
+        "gmt_create"
+      ],
+      "note": "accy_model 是辅料主数据定义表（型号/规格）。accy_accessory 是辅料实体上机记录，status:0=待上机,1=上机中,2=退库待确认,3=已退库。"
+    },
+    {
+      "logic_class": "semi:SparePart",
+      "physical_table": "material",
+      "primary_key": "id",
+      "label_cn": "备件",
+      "display_column": "name",
+      "filter_condition": "material_type IN ('spare_part', 'spare', '备件')",
+      "properties": {},
+      "key_columns": [
+        "id",
+        "name",
+        "code",
+        "material_type",
+        "spec",
+        "unit",
+        "classify_id",
+        "status"
+      ],
+      "note": "使用 material 表，通过 material_type 筛选备件类型行。如存在独立备件表则优先使用。"
+    },
+    {
+      "logic_class": "semi:ProcessConstraint",
+      "physical_table": null,
+      "primary_key": null,
+      "label_cn": "工艺约束",
+      "display_column": null,
+      "virtual": true,
+      "properties": {},
+      "note": "中间类。在MySQL中约束信息分散：product_model 中的 recipe_id（工序默认配方），matrix_routerx_config_process 中的 equipment_group_list/recipe_group_id。无单独工艺约束表。",
+      "key_columns": []
     },
     {
       "logic_class": "semi:Product",
-      "physical_table": "production_scheduling_detail",
+      "physical_table": "product",
       "primary_key": "id",
-      "label_cn": "批次接收",
-      "display_column": "lot_id",
+      "label_cn": "产品",
+      "display_column": "name",
+      "properties": {},
+      "key_columns": [
+        "id",
+        "name",
+        "code",
+        "material_id",
+        "product_model_id",
+        "status",
+        "gmt_create"
+      ],
+      "note": "product 是具体的产品实体或型号记录。通过 product_model_id 关联 product_model（semi:ProductModel）。routerx_lot.product_id → product.id。"
+    },
+    {
+      "logic_class": "semi:Action",
+      "physical_table": "routerx_lot_log",
+      "primary_key": "id",
+      "label_cn": "生产动作/操作日志",
+      "display_column": "operation_type",
       "properties": {},
       "key_columns": [
         "id",
         "lot_id",
-        "schedule_id",
-        "schedule_no",
-        "bind_process",
-        "bind_production_order",
-        "bind_material_lot",
-        "bind_product",
-        "bind_product_id",
-        "theoretical_output",
-        "bind_eqp",
-        "lot_note",
-        "classify_id",
-        "classify_type",
-        "glue_order",
-        "material_order",
-        "class_no",
-        "product_time"
+        "lot_code",
+        "operation_type",
+        "station_id",
+        "equipment_id",
+        "product_id",
+        "operator_id",
+        "before_state",
+        "after_state",
+        "gmt_create"
       ],
-      "key_column_comments": {
-        "id": "主键",
-        "schedule_id": "排产Id",
-        "schedule_no": "排产计划单号",
-        "bind_process": "关联排产站点",
-        "bind_production_order": "关联生产工单号",
-        "bind_material_lot": "关联物料批次号",
-        "lot_id": "生产批次号",
-        "bind_product": "关联产品料号",
-        "bind_product_id": "料号ID",
-        "theoretical_output": "理论产量",
-        "bind_eqp": "关联生产设备",
-        "lot_note": "批次备注",
-        "classify_id": "分类ID",
-        "classify_type": "排产分类",
-        "glue_order": "粘棒顺序",
-        "material_order": "备料顺序",
-        "class_no": "班次",
-        "product_time": "生产时间"
-      }
+      "note": "批次流水表，记录批次进站/出站/拆批/并批/Hold/Release等所有操作历史。追加写入不可变。"
     }
   ],
   "relation_mappings": [
     {
-      "logic_relation": "semi:AccyaccessorRelatesToMaterial",
-      "description": "辅料寿命监控表（accy_accessory）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
+      "logic_relation": "semi:belongsToLot",
+      "description": "Wafer 属于哪个 ProductionLot — 虚拟关系(MySQL无独立晶圆表)",
+      "strategy": "Virtual",
       "join_logic": {
-        "source_table": "accy_accessory",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料id"
+        "note": "Wafer在MySQL生产执行层为虚拟类，暂无物理实现。"
       }
     },
     {
-      "logic_relation": "semi:AccyapplyrecRelatesToMaterial",
-      "description": "辅料申请记录表（accy_apply_record）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
+      "logic_relation": "semi:belongsToSublot",
+      "description": "Wafer 属于哪个 Sublot — 虚拟关系",
+      "strategy": "Virtual",
       "join_logic": {
-        "source_table": "accy_apply_record",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料id"
+        "note": "Wafer在MySQL生产执行层为虚拟类，暂无物理实现。"
       }
     },
     {
-      "logic_relation": "semi:AccylifemodeRelatesToEquipment",
-      "description": "辅料寿命模型关联设备（accy_life_model_eqp）通过 equipment_id 关联 设备表（equipment）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
+      "logic_relation": "semi:locatedInSlot",
+      "description": "Wafer 位于哪个 Carrier 槽位 — 虚拟关系",
+      "strategy": "Virtual",
       "join_logic": {
-        "source_table": "accy_life_model_eqp",
-        "source_key": "equipment_id",
+        "note": "Wafer在MySQL生产执行层为虚拟类。Carrier与批次关联：carrier.lot_code = routerx_lot.lot_code（批次整体粒度）。"
+      }
+    },
+    {
+      "logic_relation": "semi:atStation",
+      "description": "Lot/Batch 当前所处工序",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "routerx_lot",
+        "source_key": "current_station_id",
+        "target_table": "matrix_routerx_config_process",
+        "target_key": "id",
+        "note": "routerx_lot.current_station_id → matrix_routerx_config_process.id"
+      }
+    },
+    {
+      "logic_relation": "semi:currentlyFollowsModel",
+      "description": "Lot 当前遵循的 ProductModel — 通过 product→product_model",
+      "strategy": "Indirect",
+      "join_logic": {
+        "path": [
+          {
+            "from_table": "routerx_lot",
+            "from_key": "product_id",
+            "to_table": "product",
+            "to_key": "id"
+          },
+          {
+            "from_table": "product",
+            "from_key": "product_model_id",
+            "to_table": "product_model",
+            "to_key": "id"
+          }
+        ],
+        "note": "routerx_lot.product_id → product.id → product.product_model_id → product_model.id"
+      }
+    },
+    {
+      "logic_relation": "semi:currentlyOnRoute",
+      "description": "Lot 当前所走工艺路径",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "routerx_lot",
+        "source_key": "route_id",
+        "target_table": "routerx_router_config",
+        "target_key": "id",
+        "note": "若 routerx_lot 无直接 route_id，则需通过 product_model.id 间接获取"
+      }
+    },
+    {
+      "logic_relation": "semi:basedOnOrder",
+      "description": "Lot(批次) 基于哪个 ProductionOrder(排程工单) 创建",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "routerx_lot",
+        "source_key": "work_order_id",
+        "target_table": "production_scheduling",
+        "target_key": "id",
+        "note": "routerx_lot.work_order_id → production_scheduling.id（通过工单号或ID关联）"
+      }
+    },
+    {
+      "logic_relation": "semi:definesRequirementFor",
+      "description": "ProductionOrder(排程) 定义了哪个 ProductModel",
+      "strategy": "Indirect",
+      "join_logic": {
+        "path": [
+          {
+            "from_table": "production_scheduling",
+            "from_key": "product_id",
+            "to_table": "product",
+            "to_key": "id"
+          },
+          {
+            "from_table": "product",
+            "from_key": "product_model_id",
+            "to_table": "product_model",
+            "to_key": "id"
+          }
+        ]
+      }
+    },
+    {
+      "logic_relation": "semi:containsSublot",
+      "description": "Lot(批次) 包含哪些 Sublot(local_production_batch)",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "routerx_lot",
+        "source_key": "id",
+        "target_table": "local_production_batch",
+        "target_key": "lot_id"
+      }
+    },
+    {
+      "logic_relation": "semi:isCarriedBy",
+      "description": "批次由哪个 Carrier(载具) 承载",
+      "strategy": "Denormalized",
+      "join_logic": {
+        "source_table": "carrier",
+        "source_key": "lot_code",
+        "target_table": "routerx_lot",
+        "target_key": "lot_code",
+        "note": "carrier.lot_code 冗余存储关联的批次号，反向查找即可。批次粒度关联，非晶圆粒度。"
+      }
+    },
+    {
+      "logic_relation": "semi:usesRoute",
+      "description": "ProductModel 使用哪条 Route(工艺路径)",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "product_model",
+        "source_key": "route_id",
+        "target_table": "routerx_router_config",
+        "target_key": "id"
+      }
+    },
+    {
+      "logic_relation": "semi:consistsOfStation",
+      "description": "Route 包含哪些 ProcessStation(工序)，有序嵌入JSON",
+      "strategy": "EmbeddedJSON",
+      "join_logic": {
+        "source_table": "routerx_router_config",
+        "jsonb_column": "processes",
+        "inner_key": "process_id",
+        "target_table": "matrix_routerx_config_process",
+        "target_key": "id",
+        "note": "routerx_router_config.processes 是jsonb数组，每项含 process_id 引用 matrix_routerx_config_process.id，顺序即工序序列。"
+      }
+    },
+    {
+      "logic_relation": "semi:requiresEquipment",
+      "description": "ProcessStation 要求哪些 Equipment(设备) 执行",
+      "strategy": "EmbeddedJSON",
+      "join_logic": {
+        "source_table": "matrix_routerx_config_process",
+        "jsonb_column": "equipment_group_list",
+        "target_table": "equipment",
+        "target_key": "classify_id",
+        "note": "equipment_group_list 是jsonb数组，存储设备分类组ID，通过 equipment.classify_id 关联。"
+      }
+    },
+    {
+      "logic_relation": "semi:hostsRecipe",
+      "description": "Equipment 关联哪个 Recipe(配方)",
+      "strategy": "EmbeddedJSON",
+      "join_logic": {
+        "source_table": "recipe_manage",
+        "jsonb_column": "equipment_list",
         "target_table": "equipment",
         "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 设备ID"
+        "note": "反向：recipe_manage.equipment_list jsonb数组记录可运行该配方的设备ID。正向：equipment→recipe关联需通过 matrix_routerx_config_process.recipe_group_id 或 product_model.recipe_id 间接推导。"
       }
     },
     {
-      "logic_relation": "semi:AccylifemodeRelatesToMaterial",
-      "description": "辅料寿命模型关联辅料表（accy_life_model_material）通过 material_id 关联 物料主数据表（material）",
+      "logic_relation": "semi:hasBOM",
+      "description": "ProductModel 关联哪个 BOM",
       "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "accy_life_model_material",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料id"
-      }
-    },
-    {
-      "logic_relation": "semi:CommonauthroRelatesToWarehouse",
-      "description": "【系统域—系统管理】角色-线边仓模型关联表（common_auth_role_warehouse）通过 warehouse_model_id 关联 【线边仓管理】线边库模型（warehouse_model）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "common_auth_role_warehouse",
-        "source_key": "warehouse_model_id",
-        "target_table": "warehouse_model",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 线边仓模型ID"
-      }
-    },
-    {
-      "logic_relation": "semi:DictionarythRelatesToClassify",
-      "description": "字典主题表（dictionary_theme）通过 classify_id 关联 物料分类对象（classify）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "dictionary_theme",
-        "source_key": "classify_id",
-        "target_table": "classify",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 主题分类编号"
-      }
-    },
-    {
-      "logic_relation": "semi:EqpclassifytRelatesToClassify",
-      "description": "物料分类对象（eqp_classify_tree）通过 classify_id 关联 物料分类对象（classify）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "eqp_classify_tree",
-        "source_key": "classify_id",
-        "target_table": "classify",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 树id"
-      }
-    },
-    {
-      "logic_relation": "semi:EquipmentRelatesToClassify",
-      "description": "设备表（equipment）通过 classify_id 关联 物料分类对象（classify）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "equipment",
-        "source_key": "classify_id",
-        "target_table": "classify",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 关联工厂模型中的层级"
-      }
-    },
-    {
-      "logic_relation": "semi:EquipmentbakRelatesToClassify",
-      "description": "设备表（equipment_bak）通过 classify_id 关联 物料分类对象（classify）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "equipment_bak",
-        "source_key": "classify_id",
-        "target_table": "classify",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 分类ID"
-      }
-    },
-    {
-      "logic_relation": "semi:EquipmentdetRelatesToEquipment",
-      "description": "设备加工履历明细（equipment_detail_log）通过 equipment_log_id 关联 设备加工履历（equipment_log）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "equipment_detail_log",
-        "source_key": "equipment_log_id",
-        "target_table": "equipment_log",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 设备履历id"
-      }
-    },
-    {
-      "logic_relation": "semi:EquipmentlogRelatesToProduct",
-      "description": "设备加工履历（equipment_log）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "equipment_log",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品id"
-      }
-    },
-    {
-      "logic_relation": "semi:EquipmentporRelatesToCarrier",
-      "description": "设备PORT实时信息表（equipment_port_realtime_info）通过 carrier_id 关联 载具信息管理（carrier）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "equipment_port_realtime_info",
-        "source_key": "carrier_id",
-        "target_table": "carrier",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 载具ID"
-      }
-    },
-    {
-      "logic_relation": "semi:EquipmentporRelatesToCarrier",
-      "description": "设备PORT实时信息表（equipment_port_realtime_record）通过 carrier_id 关联 载具信息管理（carrier）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "equipment_port_realtime_record",
-        "source_key": "carrier_id",
-        "target_table": "carrier",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 载具ID"
-      }
-    },
-    {
-      "logic_relation": "semi:FieldconfigRelatesToDictionary",
-      "description": "通用数据展示页面配置（field_config）通过 dictionary_item_id 关联 字典item对象（dictionary_item）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "field_config",
-        "source_key": "dictionary_item_id",
-        "target_table": "dictionary_item",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 数据库存储对应item的id"
-      }
-    },
-    {
-      "logic_relation": "semi:FieldrelevanRelatesToTable",
-      "description": "通用数据展示页面表字段关联配置（field_relevancy_config）通过 table_relevancy_config_id 关联 通用数据页面表关联配置（table_relevancy_config）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "field_relevancy_config",
-        "source_key": "table_relevancy_config_id",
-        "target_table": "table_relevancy_config",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 通用数据页面表关联配置ID"
-      }
-    },
-    {
-      "logic_relation": "semi:LocalproductRelatesToProduct",
-      "description": "本地批次（local_production_batch）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "local_production_batch",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品id"
-      }
-    },
-    {
-      "logic_relation": "semi:MaterialRelatesToClassify",
-      "description": "物料主数据表（material）通过 classify_id 关联 物料分类对象（classify）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "material",
-        "source_key": "classify_id",
-        "target_table": "classify",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料分类id"
-      }
-    },
-    {
-      "logic_relation": "semi:MateriallotlRelatesToClassify",
-      "description": "物料主数据表（material_lot_list）通过 classify_id 关联 物料分类对象（classify）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "material_lot_list",
-        "source_key": "classify_id",
-        "target_table": "classify",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料所属仓库id"
-      }
-    },
-    {
-      "logic_relation": "semi:MaterialmodeRelatesToClassify",
-      "description": "物料主数据表（material_model）通过 classify_id 关联 物料分类对象（classify）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "material_model",
-        "source_key": "classify_id",
-        "target_table": "classify",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料分类id"
-      }
-    },
-    {
-      "logic_relation": "semi:MatrixrouterRelatesToEquipment",
-      "description": "批次信息表（matrix_routerx_config_process_bak）通过 equipment_group_id 关联 equipment_group（equipment_group）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "matrix_routerx_config_process_bak",
-        "source_key": "equipment_group_id",
-        "target_table": "equipment_group",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high"
-      }
-    },
-    {
-      "logic_relation": "semi:MatrixrouterRelatesToEquipment",
-      "description": "批次信息表（matrix_routerx_operation_lot）通过 equipment_id 关联 设备表（equipment）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot",
-        "source_key": "equipment_id",
-        "target_table": "equipment",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 设备id"
-      }
-    },
-    {
-      "logic_relation": "semi:MatrixrouterRelatesToProduct",
-      "description": "批次信息表（matrix_routerx_operation_lot）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品ID"
-      }
-    },
-    {
-      "logic_relation": "semi:MatrixrouterRelatesToProduct",
-      "description": "批次操作履历表（matrix_routerx_operation_lot_batch_resume_log）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot_batch_resume_log",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品id"
-      }
-    },
-    {
-      "logic_relation": "semi:MatrixrouterRelatesToEquipment",
-      "description": "批次信息表（matrix_routerx_operation_lot_copy1）通过 equipment_id 关联 设备表（equipment）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot_copy1",
-        "source_key": "equipment_id",
-        "target_table": "equipment",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 设备id"
-      }
-    },
-    {
-      "logic_relation": "semi:MatrixrouterRelatesToProduct",
-      "description": "批次信息表（matrix_routerx_operation_lot_copy1）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot_copy1",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品ID"
-      }
-    },
-    {
-      "logic_relation": "semi:MatrixrouterRelatesToProduct",
-      "description": "过站履历（matrix_routerx_operation_lot_log）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot_log",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品ID"
-      }
-    },
-    {
-      "logic_relation": "semi:MatrixrouterRelatesToProduct",
-      "description": "批次信息表（matrix_routerx_operation_lot_log_20250528）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot_log_20250528",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high"
-      }
-    },
-    {
-      "logic_relation": "semi:MatrixrouterRelatesToProduct",
-      "description": "包装模版表（matrix_routerx_operation_lot_print_template）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot_print_template",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 关联产品模型Id或订单号"
-      }
-    },
-    {
-      "logic_relation": "semi:MatrixrouterRelatesToMaterial",
-      "description": "包装模版表（matrix_routerx_operation_lot_print_template）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot_print_template",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 包装物料Id"
-      }
-    },
-    {
-      "logic_relation": "semi:MatrixrouterRelatesToProduct",
-      "description": "批次信息表（matrix_routerx_operation_lot_product）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot_product",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high"
-      }
-    },
-    {
-      "logic_relation": "semi:MatrixrouterRelatesToProduct",
-      "description": "晶圆不良原因记录（matrix_routerx_operation_lot_wafer_ng）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot_wafer_ng",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品id"
-      }
-    },
-    {
-      "logic_relation": "semi:MatrixrouterRelatesToProduct",
-      "description": "综合良率宽表（matrix_routerx_operation_lot_wafer_yield）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot_wafer_yield",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品id"
-      }
-    },
-    {
-      "logic_relation": "semi:PagefieldconRelatesToPage",
-      "description": "通用数据展示页面字段关联配置（page_field_config）通过 page_config_id 关联 通用数据展示页面配置（page_config）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "page_field_config",
-        "source_key": "page_config_id",
-        "target_table": "page_config",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 页面ID"
-      }
-    },
-    {
-      "logic_relation": "semi:PagefieldconRelatesToField",
-      "description": "通用数据展示页面字段关联配置（page_field_config）通过 field_config_id 关联 通用数据展示页面配置（field_config）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "page_field_config",
-        "source_key": "field_config_id",
-        "target_table": "field_config",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 字段ID"
-      }
-    },
-    {
-      "logic_relation": "semi:PagefieldconRelatesToDictionary",
-      "description": "通用数据展示页面字段关联配置（page_field_config）通过 dictionary_item_id 关联 字典item对象（dictionary_item）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "page_field_config",
-        "source_key": "dictionary_item_id",
-        "target_table": "dictionary_item",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 数据库存储对应item的id"
-      }
-    },
-    {
-      "logic_relation": "semi:PagefieldrelRelatesToPage",
-      "description": "通用页面之间字段关联配置（page_field_relevancy_config）通过 page_relevancy_config_id 关联 通用页面子页面关联配置（page_relevancy_config）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "page_field_relevancy_config",
-        "source_key": "page_relevancy_config_id",
-        "target_table": "page_relevancy_config",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 页面配置ID"
-      }
-    },
-    {
-      "logic_relation": "semi:PagerelevancRelatesToPage",
-      "description": "通用页面子页面关联配置（page_relevancy_config）通过 page_config_id 关联 通用数据展示页面配置（page_config）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "page_relevancy_config",
-        "source_key": "page_config_id",
-        "target_table": "page_config",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 页面配置ID"
-      }
-    },
-    {
-      "logic_relation": "semi:ParammodelRelatesToClassify",
-      "description": "param_model（param_model）通过 classify_id 关联 物料分类对象（classify）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "param_model",
-        "source_key": "classify_id",
-        "target_table": "classify",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 关联工厂模型中的层级"
-      }
-    },
-    {
-      "logic_relation": "semi:ProcessmeasuRelatesToParam",
-      "description": "量测工艺参数数据库（process_measure_data）通过 param_model_id 关联 param_model（param_model）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "process_measure_data",
-        "source_key": "param_model_id",
-        "target_table": "param_model",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 参数id"
-      }
-    },
-    {
-      "logic_relation": "semi:ProcessmeasuRelatesToParam",
-      "description": "量测工艺参数数据库（process_measure_data）通过 param_group_id 关联 param_group（param_group）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "process_measure_data",
-        "source_key": "param_group_id",
-        "target_table": "param_group",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 参数组id"
-      }
-    },
-    {
-      "logic_relation": "semi:ProcessmeasuRelatesToParam",
-      "description": "量测制程人工录入参数（process_measure_data_raw）通过 param_model_id 关联 param_model（param_model）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "process_measure_data_raw",
-        "source_key": "param_model_id",
-        "target_table": "param_model",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 参数id"
-      }
-    },
-    {
-      "logic_relation": "semi:ProcessmeasuRelatesToParam",
-      "description": "量测制程人工录入参数（process_measure_data_raw）通过 param_group_id 关联 param_group（param_group）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "process_measure_data_raw",
-        "source_key": "param_group_id",
-        "target_table": "param_group",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 参数组id"
-      }
-    },
-    {
-      "logic_relation": "semi:ProductRelatesToMaterial",
-      "description": "产品模型（product）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "product",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料ID"
-      }
-    },
-    {
-      "logic_relation": "semi:ProductbomRelatesToMaterial",
-      "description": "产品BOM模板（product_bom）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "product_bom",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品关联的物料id"
-      }
-    },
-    {
-      "logic_relation": "semi:ProductbommaRelatesToMaterial",
-      "description": "产品BOM物料（product_bom_material）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "product_bom_material",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料id"
-      }
-    },
-    {
-      "logic_relation": "semi:ProductdetaiRelatesToMaterial",
-      "description": "产品组详情（product_detail）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "product_detail",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料id"
-      }
-    },
-    {
-      "logic_relation": "semi:ProductmodelRelatesToMaterial",
-      "description": "product_model（product_model）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
       "join_logic": {
         "source_table": "product_model",
         "source_key": "material_id",
+        "target_table": "product_bom",
+        "target_key": "material_id",
+        "note": "product_model.material_id 与 product_bom.material_id 通过相同物料ID关联，同时过滤 product_bom.status=1(生效)"
+      }
+    },
+    {
+      "logic_relation": "semi:consumesRawMaterial",
+      "description": "BOM 消耗哪些原料 — 通过 product_bom_material 明细行",
+      "strategy": "JoinTable",
+      "join_logic": {
+        "bridge_table": "product_bom_material",
+        "source_table": "product_bom",
+        "source_pk": "id",
+        "source_key": "bom_id",
         "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料id"
+        "target_pk": "id",
+        "target_key": "material_id",
+        "filter_condition": "material.material_type IN ('raw', 'wafer', '原料')",
+        "note": "product_bom_material 连接bom与物料，通过 material.material_type 筛选原料类型"
       }
     },
     {
-      "logic_relation": "semi:ProductmodelRelatesToMaterial",
-      "description": "product_model_0714（product_model_0714）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
+      "logic_relation": "semi:consumesAuxiliary",
+      "description": "BOM 消耗哪些辅料 — 通过 product_bom_material 关联 accy_model",
+      "strategy": "JoinTable",
       "join_logic": {
-        "source_table": "product_model_0714",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料id"
+        "bridge_table": "product_bom_material",
+        "source_table": "product_bom",
+        "source_pk": "id",
+        "source_key": "bom_id",
+        "target_table": "accy_model",
+        "target_pk": "id",
+        "target_key": "material_id",
+        "note": "若辅料主数据在 material 表则使用 material_type筛选；若在 accy_model 则通过 material_id 关联。"
       }
     },
     {
-      "logic_relation": "semi:ProductmodelRelatesToMaterial",
-      "description": "产品模型审批表（product_model_approve）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
+      "logic_relation": "semi:requiresSparePart",
+      "description": "Equipment 需要哪些备件 — 通过 material 表筛选备件类型",
+      "strategy": "Virtual",
       "join_logic": {
-        "source_table": "product_model_approve",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料id"
+        "note": "MySQL中设备与备件的直接关联关系未明确定义。可通过 material 表 material_type='spare_part' 以及设备维修记录间接推导，暂标记为虚拟关系。"
       }
     },
     {
-      "logic_relation": "semi:ProductmodelRelatesToMaterial",
-      "description": "产品模型更新日志记录表（product_model_log）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
+      "logic_relation": "semi:hasConstraint",
+      "description": "ProductModel 注入 ProcessConstraint — 通过 product_model 配置字段",
+      "strategy": "Virtual",
       "join_logic": {
-        "source_table": "product_model_log",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料id"
+        "note": "MySQL中工艺约束嵌入在 product_model（含route_id/recipe_id）和 matrix_routerx_config_process（含equipment_group_list/recipe_group_id）中。ProcessConstraint是虚拟中间类，无独立表。"
       }
     },
     {
-      "logic_relation": "semi:ProductionboRelatesToMaterial",
-      "description": "工单BOM模板（production_bom）通过 material_id 关联 物料主数据表（material）",
+      "logic_relation": "semi:appliesAtStation",
+      "description": "ProcessConstraint 应用于哪个 ProcessStation",
       "strategy": "ForeignKey",
-      "confidence": "high",
       "join_logic": {
-        "source_table": "production_bom",
-        "source_key": "material_id",
-        "target_table": "material",
+        "source_table": "matrix_routerx_config_process",
+        "source_key": "id",
+        "target_table": "matrix_routerx_config_process",
         "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品id"
+        "note": "ProcessConstraint在MySQL中直接体现为 matrix_routerx_config_process 行本身，无需跨表JOIN。"
       }
     },
     {
-      "logic_relation": "semi:ProductionboRelatesToMaterial",
-      "description": "工单BOM物料（production_bom_material）通过 material_id 关联 物料主数据表（material）",
+      "logic_relation": "semi:specifiesRecipe",
+      "description": "ProcessConstraint 在该工序指定 Recipe",
       "strategy": "ForeignKey",
-      "confidence": "high",
       "join_logic": {
-        "source_table": "production_bom_material",
-        "source_key": "material_id",
-        "target_table": "material",
+        "source_table": "matrix_routerx_config_process",
+        "source_key": "recipe_group_id",
+        "target_table": "recipe_manage",
         "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料id"
+        "note": "matrix_routerx_config_process.recipe_group_id → recipe_manage.id，指定此工序使用的配方组。"
       }
     },
     {
-      "logic_relation": "semi:ProductionscRelatesToClassify",
-      "description": "production_scheduling（production_scheduling）通过 classify_id 关联 物料分类对象（classify）",
+      "logic_relation": "semi:isDefinedBy",
+      "description": "Product(产品实例) 由 ProductModel 定义",
       "strategy": "ForeignKey",
-      "confidence": "high",
       "join_logic": {
-        "source_table": "production_scheduling",
-        "source_key": "classify_id",
-        "target_table": "classify",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 分类ID"
+        "source_table": "product",
+        "source_key": "product_model_id",
+        "target_table": "product_model",
+        "target_key": "id"
       }
     },
     {
-      "logic_relation": "semi:ProductionscRelatesToClassify",
-      "description": "批次接收（production_scheduling_detail）通过 classify_id 关联 物料分类对象（classify）",
+      "logic_relation": "semi:anchoredAtStation",
+      "description": "BOM 物料消耗锚定到哪个 ProcessStation",
       "strategy": "ForeignKey",
-      "confidence": "high",
       "join_logic": {
-        "source_table": "production_scheduling_detail",
-        "source_key": "classify_id",
-        "target_table": "classify",
+        "source_table": "product_bom_material",
+        "source_key": "station_id",
+        "target_table": "matrix_routerx_config_process",
         "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 分类ID"
+        "note": "若 product_bom_material 含 station_id 字段则直接关联；否则此关系虚拟（待确认字段）。"
       }
     },
     {
-      "logic_relation": "semi:RemarkdataRelatesToProduct",
-      "description": "备注信息（remark_data）通过 product_id 关联 产品模型（product）",
+      "logic_relation": "semi:hasInput",
+      "description": "Action(操作日志) 的输入 Lot",
       "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "remark_data",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high"
-      }
-    },
-    {
-      "logic_relation": "semi:RolefieldconRelatesToDictionary",
-      "description": "角色展示页面字段关联配置（role_field_config）通过 dictionary_item_id 关联 字典item对象（dictionary_item）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "role_field_config",
-        "source_key": "dictionary_item_id",
-        "target_table": "dictionary_item",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 数据库存储对应item的id"
-      }
-    },
-    {
-      "logic_relation": "semi:RouterxlotRelatesToProduct",
-      "description": "批次信息表（routerx_lot）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "routerx_lot",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品ID"
-      }
-    },
-    {
-      "logic_relation": "semi:RouterxlotloRelatesToProduct",
-      "description": "批次流水表（routerx_lot_log）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
       "join_logic": {
         "source_table": "routerx_lot_log",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品ID"
+        "source_key": "lot_id",
+        "target_table": "routerx_lot",
+        "target_key": "id"
       }
     },
     {
-      "logic_relation": "semi:RouterxlotprRelatesToProduct",
-      "description": "批次产品快照表（routerx_lot_product_snapshot）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
+      "logic_relation": "semi:hasOutput",
+      "description": "Action(操作日志) 的输出结果 — 状态变迁记录",
+      "strategy": "Denormalized",
       "join_logic": {
-        "source_table": "routerx_lot_product_snapshot",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品ID"
+        "source_table": "routerx_lot_log",
+        "output_field": "after_state",
+        "note": "routerx_lot_log.after_state 记录操作后批次的新状态；before_state 记录操作前状态。"
       }
     },
     {
-      "logic_relation": "semi:StationqtimeRelatesToProduct",
-      "description": "q_time（station_q_time_config）通过 product_id 关联 产品模型（product）",
+      "logic_relation": "semi:modifiesStateVector",
+      "description": "Action(操作日志) 修改 Lot 状态向量",
       "strategy": "ForeignKey",
-      "confidence": "high",
       "join_logic": {
-        "source_table": "station_q_time_config",
-        "source_key": "product_id",
-        "target_table": "product",
+        "source_table": "routerx_lot_log",
+        "source_key": "lot_id",
+        "target_table": "routerx_lot",
         "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品id,-1代表所有产品"
+        "note": "routerx_lot_log记录的每条操作行为都对应 routerx_lot 的状态跳转（lot_status变化）"
       }
     },
     {
-      "logic_relation": "semi:TablerelevanRelatesToPage",
-      "description": "通用数据页面表关联配置（table_relevancy_config）通过 page_config_id 关联 通用数据展示页面配置（page_config）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
+      "logic_relation": "semi:hasParentLot",
+      "description": "Lot 的父批次(溯源递归)",
+      "strategy": "Recursive",
       "join_logic": {
-        "source_table": "table_relevancy_config",
-        "source_key": "page_config_id",
-        "target_table": "page_config",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 页面配置ID"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseallRelatesToMaterial",
-      "description": "【线边仓管理】调拨单明细（warehouse_allot_bill_detail）通过 material_model_id 关联 物料主数据表（material_model）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_allot_bill_detail",
-        "source_key": "material_model_id",
-        "target_table": "material_model",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料主数据ID"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseallRelatesToMaterial",
-      "description": "【线边仓管理】调拨审核记录单明细（warehouse_allot_record_bill_detail）通过 material_model_id 关联 物料主数据表（material_model）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_allot_record_bill_detail",
-        "source_key": "material_model_id",
-        "target_table": "material_model",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料主数据ID"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseappRelatesToProduct",
-      "description": "入库审批（warehouse_approval）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_approval",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品id"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseappRelatesToProduct",
-      "description": "入库审批详细配置表（warehouse_approval_detail_config）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_approval_detail_config",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品id"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseappRelatesToProduct",
-      "description": "入库审批记录（warehouse_approval_record）通过 product_id 关联 产品模型（product）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_approval_record",
-        "source_key": "product_id",
-        "target_table": "product",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 产品id"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseappRelatesToWarehouse",
-      "description": "入库审批子批记录（warehouse_approval_sub_lot_record）通过 warehouse_approval_record_id 关联 入库审批记录（warehouse_approval_record）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_approval_sub_lot_record",
-        "source_key": "warehouse_approval_record_id",
-        "target_table": "warehouse_approval_record",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 入库审批记录id"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseappRelatesToWarehouse",
-      "description": "入库审批wafer信息（warehouse_approval_wafer）通过 warehouse_approval_sub_lot_id 关联 入库审批子批（warehouse_approval_sub_lot）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_approval_wafer",
-        "source_key": "warehouse_approval_sub_lot_id",
-        "target_table": "warehouse_approval_sub_lot",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 入库审批子批id"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseappRelatesToWarehouse",
-      "description": "入库审批wafer记录信息（warehouse_approval_wafer_record）通过 warehouse_approval_sub_lot_record_id 关联 入库审批子批记录（warehouse_approval_sub_lot_record）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_approval_wafer_record",
-        "source_key": "warehouse_approval_sub_lot_record_id",
-        "target_table": "warehouse_approval_sub_lot_record",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 入库审批子批记录id"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehousebatRelatesToMaterial",
-      "description": "Warehouse Batch Property Value Table（warehouse_batch_property_value）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_batch_property_value",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料id(冗余)"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehousebilRelatesToMaterial",
-      "description": "单据表（warehouse_bill）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_bill",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料编号"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehousebilRelatesToMaterial",
-      "description": "单据明细表（warehouse_bill_detail）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_bill_detail",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料编号"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseinpRelatesToMaterial",
-      "description": "【线边仓管理】入库单明细（warehouse_input_bill_detail）通过 material_model_id 关联 物料主数据表（material_model）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_input_bill_detail",
-        "source_key": "material_model_id",
-        "target_table": "material_model",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料主数据ID"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseinpRelatesToMaterial",
-      "description": "【线边仓管理】入库审核记录单明细（warehouse_input_record_bill_detail）通过 material_model_id 关联 物料主数据表（material_model）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_input_record_bill_detail",
-        "source_key": "material_model_id",
-        "target_table": "material_model",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料主数据ID"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseinvRelatesToMaterial",
-      "description": "【线边仓管理】库存表（warehouse_inventory）通过 material_model_id 关联 物料主数据表（material_model）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_inventory",
-        "source_key": "material_model_id",
-        "target_table": "material_model",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料主数据ID"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseinvRelatesToMaterial",
-      "description": "仓库库存表（warehouse_inventory_copy1）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_inventory_copy1",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料编号"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseinvRelatesToClassify",
-      "description": "仓库库存表（warehouse_inventory_copy1）通过 classify_id 关联 物料分类对象（classify）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_inventory_copy1",
-        "source_key": "classify_id",
-        "target_table": "classify",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 关联仓库树"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseinvRelatesToMaterial",
-      "description": "库存追踪表（warehouse_inventory_transaction）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_inventory_transaction",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料编号"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehousematRelatesToMaterial",
-      "description": "【线边仓管理】线边库-物料模型（warehouse_material）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_material",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料ID"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehousematRelatesToMaterial",
-      "description": "库位属性值表（warehouse_material_property_value）通过 material_id 关联 物料主数据表（material）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_material_property_value",
-        "source_key": "material_id",
-        "target_table": "material",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料ID（冗余）"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseoutRelatesToMaterial",
-      "description": "【线边仓管理】出库单明细（warehouse_output_bill_detail）通过 material_model_id 关联 物料主数据表（material_model）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_output_bill_detail",
-        "source_key": "material_model_id",
-        "target_table": "material_model",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料主数据ID"
-      }
-    },
-    {
-      "logic_relation": "semi:WarehouseoutRelatesToMaterial",
-      "description": "【线边仓管理】出库审核记录单明细（warehouse_output_record_bill_detail）通过 material_model_id 关联 物料主数据表（material_model）",
-      "strategy": "ForeignKey",
-      "confidence": "high",
-      "join_logic": {
-        "source_table": "warehouse_output_record_bill_detail",
-        "source_key": "material_model_id",
-        "target_table": "material_model",
-        "target_key": "id",
-        "note": "[AUTO-GENERATED] confidence=high | col_comment: 物料主数据ID"
+        "table": "routerx_lot",
+        "self_key": "id",
+        "parent_key": "parent_lot_id",
+        "max_depth": 20,
+        "note": "需要 WITH RECURSIVE CTE（MySQL 8.0+支持）; parent_lot_id 为自引用外键（如不存在则此关系虚拟，需确认字段）。"
       }
     }
   ],
@@ -1580,20 +711,20 @@
         "note": "status=0 待执行"
       },
       "Running": {
-        "description": "执行中批次（在制品/WIP）",
+        "description": "执行中批次（WIP）",
         "physical_condition": "local_production_batch.status = 1",
         "applies_to_table": "local_production_batch",
         "applies_to_column": "status",
         "count_target_table": "local_production_batch",
         "count_target_column": "id",
-        "note": "status=1 执行中 — WIP 查询时 COUNT 此表"
+        "note": "status=1 执行中—WIP查询时COUNT此表"
       },
       "Completed": {
         "description": "已完成批次",
         "physical_condition": "local_production_batch.status = 3",
         "applies_to_table": "local_production_batch",
         "applies_to_column": "status",
-        "note": "status=3 已完成（2未使用）"
+        "note": "status=3 已完成"
       },
       "Cancelled": {
         "description": "已取消批次",
@@ -1603,89 +734,20 @@
         "note": "status=4 取消"
       }
     },
-    "semi:LotStatus": {
-      "Active": {
-        "description": "批次在制/进行中",
-        "physical_condition": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition — lot_list.lot_status = ?",
-        "applies_to_table": "lot_list",
-        "applies_to_column": "lot_status",
-        "note": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition"
-      },
-      "Completed": {
-        "description": "批次已完成",
-        "physical_condition": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition — lot_list.lot_status = ?",
-        "applies_to_table": "lot_list",
-        "applies_to_column": "lot_status",
-        "note": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition"
-      },
-      "OnHold": {
-        "description": "批次 Hold 中",
-        "physical_condition": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition — lot_list.lot_status = ?",
-        "applies_to_table": "lot_list",
-        "applies_to_column": "lot_status",
-        "note": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition"
-      }
-    },
-    "semi:HoldStatus": {
-      "Held": {
-        "description": "批次处于 Hold 未释放",
-        "physical_condition": "matrix_routerx_operation_lot_hold_action.status = 0",
-        "applies_to_table": "matrix_routerx_operation_lot_hold_action",
-        "applies_to_column": "status",
-        "note": "status=0 未 release"
-      },
-      "Released": {
-        "description": "Hold 已释放",
-        "physical_condition": "matrix_routerx_operation_lot_hold_action.status = 1",
-        "applies_to_table": "matrix_routerx_operation_lot_hold_action",
-        "applies_to_column": "status",
-        "note": "status=1 已 release"
-      }
-    },
     "semi:EquipmentStatus": {
       "Active": {
-        "description": "设备启用中（OPEN）",
+        "description": "设备启用中(OPEN)",
         "physical_condition": "equipment.status = 1",
         "applies_to_table": "equipment",
         "applies_to_column": "status",
         "note": "status=1 OPEN"
       },
       "Inactive": {
-        "description": "设备停用/关闭（CLOSE）",
+        "description": "设备停用/关闭(CLOSE)",
         "physical_condition": "equipment.status = 0",
         "applies_to_table": "equipment",
         "applies_to_column": "status",
         "note": "status=0 CLOSE"
-      },
-      "Running": {
-        "description": "设备运行中（OEE 维度）",
-        "physical_condition": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition — equipment_oee_status.status_code = ?",
-        "applies_to_table": "equipment_oee_status",
-        "applies_to_column": "status_code",
-        "note": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition"
-      },
-      "Down": {
-        "description": "设备宕机/故障（OEE 维度）",
-        "physical_condition": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition — equipment_oee_status.status_code = ?",
-        "applies_to_table": "equipment_oee_status",
-        "applies_to_column": "status_code",
-        "note": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition"
-      }
-    },
-    "semi:CarrierStatus": {
-      "Available": {
-        "description": "载具可用/空闲",
-        "physical_condition": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition — carrier_info.status = ?",
-        "applies_to_table": "carrier_info",
-        "applies_to_column": "status",
-        "note": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition"
-      },
-      "InUse": {
-        "description": "载具使用中",
-        "physical_condition": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition — carrier_info.status = ?",
-        "applies_to_table": "carrier_info",
-        "applies_to_column": "status",
-        "note": "⚠️ TODO: 请对照真实数据库枚举値确认后修改 physical_condition"
       }
     },
     "semi:ProductStatus": {
@@ -1711,245 +773,100 @@
         "note": "product_status=2"
       }
     },
-    "semi:ApproveStatus": {
-      "Pending": {
-        "description": "审批待处理",
-        "physical_condition": "product_model_approve.approve_status = 0",
-        "applies_to_table": "product_model_approve",
-        "applies_to_column": "approve_status",
-        "note": "0 待审批"
-      },
-      "Approved": {
-        "description": "审批通过",
-        "physical_condition": "product_model_approve.approve_status = 1",
-        "applies_to_table": "product_model_approve",
-        "applies_to_column": "approve_status",
-        "note": "1 通过"
-      },
-      "Rejected": {
-        "description": "审批拒绝",
-        "physical_condition": "product_model_approve.approve_status = 2",
-        "applies_to_table": "product_model_approve",
-        "applies_to_column": "approve_status",
-        "note": "2 拒绝"
-      }
-    },
     "semi:BOMStatus": {
       "Active": {
-        "description": "BOM 生效",
+        "description": "BOM生效",
         "physical_condition": "product_bom.status = 1",
         "applies_to_table": "product_bom",
         "applies_to_column": "status",
         "note": "1 生效"
       },
       "Inactive": {
-        "description": "BOM 失效",
+        "description": "BOM失效",
         "physical_condition": "product_bom.status = 0",
         "applies_to_table": "product_bom",
         "applies_to_column": "status",
         "note": "0 失效"
       }
     },
-    "semi:AccessoryStatus": {
+    "semi:AuxiliaryStatus": {
       "Pending": {
         "description": "辅料待上机",
         "physical_condition": "accy_accessory.status = 0",
         "applies_to_table": "accy_accessory",
-        "applies_to_column": "status",
-        "note": "0"
+        "applies_to_column": "status"
       },
       "InUse": {
         "description": "辅料上机中",
         "physical_condition": "accy_accessory.status = 1",
         "applies_to_table": "accy_accessory",
-        "applies_to_column": "status",
-        "note": "1"
+        "applies_to_column": "status"
       },
       "PendingReturn": {
         "description": "辅料退库待确认",
         "physical_condition": "accy_accessory.status = 2",
         "applies_to_table": "accy_accessory",
-        "applies_to_column": "status",
-        "note": "2"
+        "applies_to_column": "status"
       },
       "Returned": {
         "description": "辅料已退库",
         "physical_condition": "accy_accessory.status = 3",
         "applies_to_table": "accy_accessory",
-        "applies_to_column": "status",
-        "note": "3"
+        "applies_to_column": "status"
       }
     },
-    "semi:AccessoryApplyStatus": {
-      "Pending": {
-        "description": "辅料申请待出库",
-        "physical_condition": "accy_apply_record.status = 0",
-        "applies_to_table": "accy_apply_record",
-        "applies_to_column": "status",
-        "note": "0"
+    "semi:CarrierStatus": {
+      "Available": {
+        "description": "载具可用/空闲",
+        "physical_condition": "⚠️ TODO: 确认真实枚举值 — carrier.status = ?",
+        "applies_to_table": "carrier",
+        "applies_to_column": "status"
       },
-      "Issued": {
-        "description": "辅料已出库",
-        "physical_condition": "accy_apply_record.status = 1",
-        "applies_to_table": "accy_apply_record",
-        "applies_to_column": "status",
-        "note": "1"
-      },
-      "Rejected": {
-        "description": "辅料申请被拒绝",
-        "physical_condition": "accy_apply_record.status = 2",
-        "applies_to_table": "accy_apply_record",
-        "applies_to_column": "status",
-        "note": "2"
-      }
-    },
-    "semi:WarnStatus": {
-      "Normal": {
-        "description": "无预警",
-        "physical_condition": "accy_accessory.warn_status = 0",
-        "applies_to_table": "accy_accessory",
-        "applies_to_column": "warn_status",
-        "note": "0"
-      },
-      "Warned": {
-        "description": "已触发预警",
-        "physical_condition": "accy_accessory.warn_status = 1",
-        "applies_to_table": "accy_accessory",
-        "applies_to_column": "warn_status",
-        "note": "1"
-      }
-    },
-    "semi:TransferJobStatus": {
-      "Submitted": {
-        "description": "搞运任务已提交",
-        "physical_condition": "mcs_transfer_job.status = 0",
-        "applies_to_table": "mcs_transfer_job",
-        "applies_to_column": "status",
-        "note": "0"
-      },
-      "Running": {
-        "description": "搞运任务运行中",
-        "physical_condition": "mcs_transfer_job.status = 1",
-        "applies_to_table": "mcs_transfer_job",
-        "applies_to_column": "status",
-        "note": "1"
-      },
-      "Completed": {
-        "description": "搞运任务已结束",
-        "physical_condition": "mcs_transfer_job.status = 2",
-        "applies_to_table": "mcs_transfer_job",
-        "applies_to_column": "status",
-        "note": "2"
-      }
-    },
-    "semi:TransferJobSubStatus": {
-      "Pending": {
-        "description": "搞运待处理",
-        "physical_condition": "mcs_transfer_job.sub_status = 1",
-        "applies_to_table": "mcs_transfer_job",
-        "applies_to_column": "sub_status",
-        "note": "1"
-      },
-      "InTransfer": {
-        "description": "搞运中",
-        "physical_condition": "mcs_transfer_job.sub_status = 2",
-        "applies_to_table": "mcs_transfer_job",
-        "applies_to_column": "sub_status",
-        "note": "2"
-      },
-      "Completed": {
-        "description": "搞运已完成",
-        "physical_condition": "mcs_transfer_job.sub_status = 3",
-        "applies_to_table": "mcs_transfer_job",
-        "applies_to_column": "sub_status",
-        "note": "3"
-      },
-      "Cancelled": {
-        "description": "搞运已取消",
-        "physical_condition": "mcs_transfer_job.sub_status = 4",
-        "applies_to_table": "mcs_transfer_job",
-        "applies_to_column": "sub_status",
-        "note": "4"
-      },
-      "Error": {
-        "description": "搞运异常",
-        "physical_condition": "mcs_transfer_job.sub_status = 5",
-        "applies_to_table": "mcs_transfer_job",
-        "applies_to_column": "sub_status",
-        "note": "5"
-      }
-    },
-    "semi:MarkStatus": {
-      "Pending": {
-        "description": "待打标",
-        "physical_condition": "mark_gen_code_record.status = 0",
-        "applies_to_table": "mark_gen_code_record",
-        "applies_to_column": "status",
-        "note": "0"
-      },
-      "CodeGenerated": {
-        "description": "已生成打标码",
-        "physical_condition": "mark_gen_code_record.status = 1",
-        "applies_to_table": "mark_gen_code_record",
-        "applies_to_column": "status",
-        "note": "1"
-      },
-      "Completed": {
-        "description": "打标已完成",
-        "physical_condition": "mark_gen_code_record.status = 2",
-        "applies_to_table": "mark_gen_code_record",
-        "applies_to_column": "status",
-        "note": "2"
-      }
-    },
-    "semi:WarehouseStatus": {
-      "Normal": {
-        "description": "库位正常",
-        "physical_condition": "equipment_warehouse.status = 0",
-        "applies_to_table": "equipment_warehouse",
-        "applies_to_column": "status",
-        "note": "0"
-      },
-      "Disabled": {
-        "description": "库位禁用",
-        "physical_condition": "equipment_warehouse.status = 1",
-        "applies_to_table": "equipment_warehouse",
-        "applies_to_column": "status",
-        "note": "1"
-      }
-    },
-    "semi:ReportStatus": {
-      "Pending": {
-        "description": "待报工",
-        "physical_condition": "report_record_info.status = 0",
-        "applies_to_table": "report_record_info",
-        "applies_to_column": "status",
-        "note": "0"
-      },
-      "Reported": {
-        "description": "已报工",
-        "physical_condition": "report_record_info.status = 1",
-        "applies_to_table": "report_record_info",
-        "applies_to_column": "status",
-        "note": "1"
-      }
-    },
-    "semi:ProductionOrderStatus": {
-      "Open": {
-        "description": "工单开启中",
-        "physical_condition": "production_order.production_status = 0",
-        "applies_to_table": "production_order",
-        "applies_to_column": "production_status",
-        "note": "0 开启"
-      },
-      "Closed": {
-        "description": "工单已关闭",
-        "physical_condition": "production_order.production_status = 1",
-        "applies_to_table": "production_order",
-        "applies_to_column": "production_status",
-        "note": "1 关闭"
+      "InUse": {
+        "description": "载具使用中",
+        "physical_condition": "⚠️ TODO: 确认真实枚举值 — carrier.status = ?",
+        "applies_to_table": "carrier",
+        "applies_to_column": "status"
       }
     }
   },
-  "business_rules": []
+  "business_rules": [
+    {
+      "rule_id": "BR-001",
+      "name": "WIP统计口径",
+      "description": "MySQL生产执行以批次(lot)为最小跟踪单元。WIP=COUNT(routerx_lot WHERE lot_status IN (在制状态值))。local_production_batch.status=1 统计执行中的调度批。",
+      "applies_to_classes": [
+        "semi:ProductionLot",
+        "semi:Sublot"
+      ]
+    },
+    {
+      "rule_id": "BR-002",
+      "name": "Route嵌套工序解析",
+      "description": "routerx_router_config.processes 是jsonb数组，内含有序process_id列表，需 JSON_TABLE 或应用层解析生成有序工序列。查询'某路线包含哪些工序'时需 JSON_EXTRACT 展开。",
+      "applies_to_classes": [
+        "semi:Route",
+        "semi:ProcessStation"
+      ]
+    },
+    {
+      "rule_id": "BR-003",
+      "name": "产品→产品模型的两跳关联",
+      "description": "routerx_lot 记录的 product_id 指向 product 表（产品实例），而非 product_model。查询产品模型时需两跳：routerx_lot.product_id→product.id→product.product_model_id→product_model.id。",
+      "applies_to_classes": [
+        "semi:ProductionLot",
+        "semi:Product",
+        "semi:ProductModel"
+      ]
+    },
+    {
+      "rule_id": "BR-004",
+      "name": "Carrier与批次的关联粒度",
+      "description": "MySQL中carrier与批次关联为批次(lot)粒度，非晶圆槽位粒度。carrier.lot_code和carrier.sub_lot_code冗余存储关联批次。无wafer_carrier_contents 等槽位明细表。",
+      "applies_to_classes": [
+        "semi:Carrier",
+        "semi:ProductionLot"
+      ]
+    }
+  ]
 }
