@@ -216,6 +216,7 @@ async def compat_health():
         "service": "ai-agent",
         "version": "2.0.0",
         "llm_provider": os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+        "db_backend": os.getenv("DB_BACKEND", "supabase"),  # 'mysql' | 'supabase'
     })
 
 

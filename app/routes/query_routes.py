@@ -404,9 +404,11 @@ def health_check():
             'db_name': os.getenv('DB_NAME', 'NOT SET'),
         })
     
+    db_backend_val = os.getenv("DB_BACKEND", "supabase")
     return jsonify({
         'status': 'healthy',
         'service': 'NL2SQL Report Backend',
+        'db_backend': db_backend_val,   # 'mysql' | 'postgres' | 'supabase'
         'supabase': db_status,
         'error': db_error,
         'diagnosis': diagnosis
