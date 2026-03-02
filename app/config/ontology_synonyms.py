@@ -49,9 +49,8 @@ CLASS_SYNONYMS: dict = {
     "semi:ProductionLot": {
         "label_cn": "批次",
         "synonyms": [
-            "批次", "工单", "lot", "生产批次", "生产批",
-            "batch", "生产工单", "wo", "lot_id", "批号",
-            "流水号", "本地批次",
+            "批次", "lot", "生产批次", "生产批",
+            "batch", "lot_id", "批号", "流水号", "本地批次",
         ],
     },
 
@@ -66,9 +65,7 @@ CLASS_SYNONYMS: dict = {
     "semi:Material": {
         "label_cn": "物料",
         "synonyms": [
-            "物料", "辅料", "耗材", "material", "备件",
-            "辅助材料", "配件", "零件", "物资",
-            "原料", "原材料",
+            "物料", "耗材", "material", "配件", "零件", "物资",
         ],
     },
 
@@ -101,9 +98,57 @@ CLASS_SYNONYMS: dict = {
     "semi:Product": {
         "label_cn": "产品",
         "synonyms": [
-            "产品", "产品模型", "product", "产品规格",
-            "product_model", "型号", "产品型号",
+            "产品", "product", "产品规格", "型号", "产品型号",
             "品种", "品名",
+        ],
+    },
+
+    "semi:ProductModel": {
+        "label_cn": "产品模型",
+        "synonyms": [
+            "产品模型", "product_model", "product model",
+            "产品规格模板", "产品设计",
+        ],
+    },
+
+    "semi:RawMaterial": {
+        "label_cn": "原料",
+        "synonyms": [
+            "原料", "原材料", "raw_material", "rawmaterial",
+            "生产原料", "基材",
+        ],
+    },
+
+    "semi:Auxiliary": {
+        "label_cn": "辅料",
+        "synonyms": [
+            "辅料", "辅助材料", "auxiliary", "aux_material",
+            "耗材", "工艺耗材",
+        ],
+    },
+
+    "semi:SparePart": {
+        "label_cn": "备件",
+        "synonyms": [
+            "备件", "spare_part", "sparepart", "备用零件",
+            "维修备件", "替换件",
+        ],
+    },
+
+    "semi:ProductionOrder": {
+        "label_cn": "生产工单",
+        "synonyms": [
+            "工单", "生产工单", "production_order", "wo",
+            "制造工单", "生产指令", "mo",
+        ],
+    },
+
+    "semi:Action": {
+        "label_cn": "生产动作/操作",
+        "synonyms": [
+            "动作", "操作", "生产事件", "action", "event",
+            "工艺操作", "生产记录", "过站记录", "加工记录",
+            "alarm", "告警", "生产日志",
         ],
     },
 
