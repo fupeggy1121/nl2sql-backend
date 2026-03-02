@@ -1,227 +1,89 @@
 """
-Table Name Synonyms Mapping Configuration
-用于识别各种同义词并将其映射到实际的表名
+Table / Ontology Class Synonym Mapping — Compatibility Shim
+============================================================
+旧版本直接维护物理表名 → 同义词的静态字典。
+现已迁移至本体类 URI 架构（semi:Equipment 等），
+真正的同义词数据由 ontology_synonyms.py 统一维护，
+并持久化到 Supabase class_synonyms 表。
 
-支持两种模式:
-  1. 静态模式 (默认): 使用本文件中的 TABLE_SYNONYMS 字典
-  2. 数据库模式: 使用 synonym_manager 服务从数据库加载
+本文件保留原有公开 API（TABLE_SYNONYMS / map_table_name /
+is_valid_table_name 等），将各函数代理到 ontology_synonyms，
+以保证 ingest.py 等历史调用方无需修改。
 
-Example:
-  当用户输入"查询片篮"、"查询载具"等时，都能正确映射到 carriers 表
+架构变化:
+  旧: physical_table  → synonyms   (如 'carriers' → ['载具', ...])
+  新: semi:URI        → synonyms   (如 'semi:Carrier' → ['载具', ...])
 """
+from __future__ import annotations
 
-# 表名同义词映射关系
-# 格式: {实际表名: [同义词列表]}
-TABLE_SYNONYMS = {
-    # Carriers (载体/晶圆载体)
-    'carriers': [
-        'carriers',  # 表名本身
-        'carrier',
-        '载体',
-        '载具',
-        '片篮',
-        '晶圆载体',
-        '装载容器',
-        '装载器',
-        'wafer_carrier',
-        '晶圆篮',
-        '脆弱篮',
-        'quartz_boat',
-        '石英舟',
-    ],
-    
-    # Wafers (晶圆)
-    'wafers': [
-        'wafers',  # 表名本身
-        'wafer',
-        '晶圆',
-        '晶片',
-        '圆片',
-        'chip',
-        '芯片',
-    ],
-    
-    # Wafer Inspection Results (检测结果)
-    'wafer_inspection_results': [
-        'wafer_inspection_results',  # 表名本身
-        'inspection_result',
-        'inspection',
-        '检测结果',
-        '检测数据',
-        '检验结果',
-        '测试结果',
-        'inspection_data',
-    ],
-    
-    # Batches (批次)
-    'batches': [
-        'batches',  # 表名本身
-        'batch',
-        '批次',
-        '批',
-        'batch_info',
-        '生产批次',
-        'lot',
-    ],
-    
-    # Equipment (设备)
-    'equipment': [
-        'equipment',  # 表名本身
-        'device',
-        '设备',
-        '机器',
-        '装置',
-        'equipment_info',
-        'machine',
-        'tool',
-    ],
-    
-    # Production (生产)
-    'production_records': [
-        'production_records',  # 表名本身
-        'production',
-        '生产',
-        '产出',
-        '产量',
-        'production_data',
-        '生产记录',
-    ],
-    
-    # Quality (质量)
-    'quality_metrics': [
-        'quality_metrics',  # 表名本身
-        'quality',
-        '质量',
-        '良品率',
-        '合格率',
-        '质量指标',
-        'quality_data',
-        'yield',
-    ],
-    
-    # Defects (缺陷)
-    'defects': [
-        'defects',  # 表名本身
-        'defect',
-        '缺陷',
-        '不良',
-        '瑕疵',
-        '缺陷信息',
-        '不良品',
-        'failure',
-    ],
-    
-    # Users (用户)
-    'users': [
-        'users',  # 表名本身
-        'user',
-        '用户',
-        '人员',
-        '操作员',
-        'operator',
-    ],
-    
-    # Logs (日志)
-    'logs': [
-        'logs',  # 表名本身
-        'log',
-        '日志',
-        '记录',
-        'system_log',
-    ],
+from app.config.ontology_synonyms import (
+    CLASS_SYNONYMS,
+    RELATION_SYNONYMS,
+    get_synonym_to_uri_map,
+    get_label_cn,
+)
+
+# ─── TABLE_SYNONYMS ───────────────────────────────────────────────────────────
+# 格式与旧版保持兼容: {key: [synonyms]}
+# key 已变为本体类 URI（semi:Equipment 等），而非物理表名。
+# ingest.py 等使用方只需 for tn, syns in TABLE_SYNONYMS.items()，无感知变更。
+TABLE_SYNONYMS: dict[str, list[str]] = {
+    uri: list(info["synonyms"])
+    for uri, info in {**CLASS_SYNONYMS, **RELATION_SYNONYMS}.items()
 }
 
-# 反向索引：从同义词映射回实际表名
-# 便于快速查找
-_SYNONYM_TO_TABLE_CACHE = None
+_SYNONYM_TO_TABLE_CACHE: dict[str, str] | None = None
 
 
-def get_synonym_to_table_map():
-    """
-    获取同义词到实际表名的映射缓存
-    
-    Returns:
-        dict: {同义词: 实际表名}
-    """
+def get_synonym_to_table_map() -> dict[str, str]:
+    """同义词 → 本体类 URI 映射缓存（旧版返回物理表名，现返回 semi:URI）。"""
     global _SYNONYM_TO_TABLE_CACHE
-    
     if _SYNONYM_TO_TABLE_CACHE is None:
-        _SYNONYM_TO_TABLE_CACHE = {}
-        for table_name, synonyms in TABLE_SYNONYMS.items():
-            for synonym in synonyms:
-                _SYNONYM_TO_TABLE_CACHE[synonym.lower()] = table_name
-    
+        _SYNONYM_TO_TABLE_CACHE = {
+            syn.lower(): uri
+            for uri, info in {**CLASS_SYNONYMS, **RELATION_SYNONYMS}.items()
+            for syn in info["synonyms"]
+        }
     return _SYNONYM_TO_TABLE_CACHE
 
 
 def map_table_name(keyword: str) -> str:
-    """
-    将关键词映射到实际的表名
-    
-    Args:
-        keyword: 用户输入的表名关键词（如"片篮"、"载具"等）
-    
-    Returns:
-        str: 实际的表名，如未找到则返回原始输入
-    
+    """将关键词映射到本体类 URI（旧版返回物理表名）。
+
     Example:
         >>> map_table_name('片篮')
-        'carriers'
-        >>> map_table_name('晶圆')
-        'wafers'
+        'semi:Carrier'
         >>> map_table_name('unknown_table')
         'unknown_table'
     """
-    synonym_map = get_synonym_to_table_map()
-    normalized_keyword = keyword.lower().strip()
-    
-    return synonym_map.get(normalized_keyword, keyword)
+    return get_synonym_to_table_map().get(keyword.lower().strip(), keyword)
 
 
 def is_valid_table_name(keyword: str) -> bool:
-    """
-    检查关键词是否是有效的表名或其同义词
-    
-    Args:
-        keyword: 表名或同义词
-    
-    Returns:
-        bool: 是否是有效的表名或同义词
-    
+    """检查关键词是否可映射到某个本体 URI。
+
     Example:
         >>> is_valid_table_name('片篮')
         True
-        >>> is_valid_table_name('carriers')
+        >>> is_valid_table_name('semi:Carrier')
         True
         >>> is_valid_table_name('invalid_table')
         False
     """
-    synonym_map = get_synonym_to_table_map()
-    return keyword.lower().strip() in synonym_map or keyword in TABLE_SYNONYMS
+    m = get_synonym_to_table_map()
+    return keyword.lower().strip() in m or keyword in TABLE_SYNONYMS
 
 
-def get_all_table_names() -> list:
-    """
-    获取所有支持的表名（不含同义词）
-    
-    Returns:
-        list: 实际表名列表
-    """
+def get_all_table_names() -> list[str]:
+    """返回所有已定义的本体类 URI 列表（旧版返回物理表名）。"""
     return list(TABLE_SYNONYMS.keys())
 
 
-def get_synonyms_for_table(table_name: str) -> list:
-    """
-    获取某个表的所有同义词
-    
-    Args:
-        table_name: 实际表名
-    
-    Returns:
-        list: 同义词列表（不含表名本身）
-    
+def get_synonyms_for_table(table_name: str) -> list[str]:
+    """获取某个 URI/表名的同义词列表。
+
     Example:
-        >>> get_synonyms_for_table('carriers')
-        ['carrier', '载体', '载具', '片篮', ...]
+        >>> get_synonyms_for_table('semi:Carrier')
+        ['载具', '载体', '片篮', ...]
     """
     return TABLE_SYNONYMS.get(table_name, [])
