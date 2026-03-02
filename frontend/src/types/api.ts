@@ -73,5 +73,6 @@ export interface DbMode {
     mode: string
     source: string
     runtime_db_mode: string | null
+    db_backend: string   // "mysql" | "supabase"
   }
 }

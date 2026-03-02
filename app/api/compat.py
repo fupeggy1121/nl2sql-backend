@@ -251,12 +251,14 @@ async def compat_recognize_intent(request: Request):
 # ═══════════════════════════════════════════════════════════════
 
 @router.get("/api/synonyms")
-async def compat_get_synonyms(table_name: Optional[str] = None, status: Optional[str] = None):
-    """获取同义词列表"""
+async def compat_get_synonyms(target_uri: Optional[str] = None, table_name: Optional[str] = None, status: Optional[str] = None):
+    """获取同义词列表（target_uri 或向后兼容的 table_name 参数）"""
     try:
         from app.services.synonym_manager import synonym_manager
+        is_active_filter = None if status is None else (status == 'active')
+        uri_filter = target_uri or table_name  # backward compat
         result = synonym_manager.get_all_synonyms(
-            table_name=table_name, status=status
+            target_uri=uri_filter, is_active=is_active_filter
         )
         return JSONResponse({"success": True, "data": result})
     except Exception as e:
@@ -283,24 +285,23 @@ async def compat_add_synonym(request: Request):
 
         # 支持批量和单个
         if isinstance(body, list) or "synonyms" in body:
-            synonyms = body if isinstance(body, list) else body.get("synonyms", [])
+            synonyms_list = body if isinstance(body, list) else body.get("synonyms", [])
+            # 批量：{target_uri, synonym} 列表
+            target_uri = body.get("target_uri") or body.get("table_name") if not isinstance(body, list) else None
             results = []
-            for s in synonyms:
-                r = synonym_manager.add_synonym(
-                    keyword=s.get("keyword"),
-                    table_name=s.get("table_name"),
-                    column_name=s.get("column_name"),
-                    description=s.get("description", ""),
-                )
-                results.append(r)
+            for s in synonyms_list:
+                uri = s.get("target_uri") or s.get("table_name") or target_uri
+                syn = s.get("synonym") or s.get("keyword") or (s if isinstance(s, str) else None)
+                if uri and syn:
+                    r = synonym_manager.add_synonym(target_uri=uri, synonym=syn)
+                    results.append(r)
             return JSONResponse({"success": True, "data": results})
         else:
-            r = synonym_manager.add_synonym(
-                keyword=body.get("keyword"),
-                table_name=body.get("table_name"),
-                column_name=body.get("column_name"),
-                description=body.get("description", ""),
-            )
+            uri = body.get("target_uri") or body.get("table_name")
+            syn = body.get("synonym") or body.get("keyword")
+            if not uri or not syn:
+                return JSONResponse({"success": False, "error": "target_uri 和 synonym 为必填项"}, status_code=400)
+            r = synonym_manager.add_synonym(target_uri=uri, synonym=syn)
             return JSONResponse({"success": True, "data": r})
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)

@@ -1,28 +1,18 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
-  BotMessageSquare, RotateCcw, Book, Tag, Network, Sparkles, BarChart,
+  BotMessageSquare, Book, Tag, Network, Sparkles, BarChart,
   Plus, MessageSquare
 } from 'lucide-react'
-import { processQuery, executeQuery } from './api/nl2sql'
-import type { ProcessResponse, ExecuteResponse } from './types/api'
-import { QueryInput } from './components/QueryInput'
-import { SqlPreview } from './components/SqlPreview'
-import { ResultTable } from './components/ResultTable'
-import { PipelineTrace } from './components/PipelineTrace'
 import { DbModeBadge } from './components/DbModeBadge'
-
-// Ontology Management
 import MappingManager from './components/MappingManager'
 import OntologyViewer from './components/OntologyViewer'
 import SynonymManager from './components/SynonymManager'
-
-// AI Reports
 import { MESPage } from './modules/mes'
 import { ReportsModule } from './components/Reports/ReportsModule'
 import { useData } from './hooks/useData'
 
 // ── Types ─────────────────────────────────────────────────────────
-type TopModule = 'ai-query' | 'ontology-management' | 'ai-reports'
+type TopModule = 'ai-chat' | 'ontology-management'
 
 interface ChatSession {
   id: string
@@ -37,67 +27,12 @@ const ontologySubItems = [
   { id: 'synonym-management',          label: '同义词管理',   icon: Tag },
 ]
 
-// ── AI Query Page (original functionality) ────────────────────────
-function QueryPage() {
-  const [loading, setLoading] = useState(false)
-  const [executing, setExecuting] = useState(false)
-  const [plan, setPlan] = useState<ProcessResponse | null>(null)
-  const [result, setResult] = useState<ExecuteResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [currentQuery, setCurrentQuery] = useState('')
-
-  const handleQuery = async (query: string) => {
-    setLoading(true); setError(null); setPlan(null); setResult(null); setCurrentQuery(query)
-    try {
-      const res = await processQuery(query)
-      setPlan(res)
-      if (!res.success) setError(res.error ?? '查询规划失败')
-    } catch (e) { setError(String(e)) }
-    finally { setLoading(false) }
-  }
-  const handleExecute = async (sql: string) => {
-    if (!plan) return
-    setExecuting(true); setError(null); setResult(null)
-    try {
-      const res = await executeQuery(sql, plan.session_id)
-      setResult(res)
-      if (!res.success) setError(res.error ?? '执行失败')
-    } catch (e) { setError(String(e)) }
-    finally { setExecuting(false) }
-  }
-  const reset = () => { setPlan(null); setResult(null); setError(null); setCurrentQuery('') }
-
-  return (
-    <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div style={{ background: '#fff', borderRadius: 12, padding: 24, border: '1px solid #e5e7eb', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-        {currentQuery && (
-          <div style={{ marginBottom: 12, fontSize: 13, color: '#6b7280', background: '#f5f3ff', borderRadius: 8, padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ color: '#4f46e5' }}>查询：</span>{currentQuery}
-          </div>
-        )}
-        <QueryInput onQuery={handleQuery} loading={loading} />
-        {(plan || result) && (
-          <button onClick={reset} style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', color: '#6b7280', fontSize: 13, cursor: 'pointer' }}>
-            <RotateCcw size={13} /> 新查询
-          </button>
-        )}
-      </div>
-      {error && <div style={{ padding: '14px 18px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, color: '#991b1b', fontSize: 14 }}>❌ {error}</div>}
-      {loading && <div style={{ padding: 32, textAlign: 'center', color: '#6b7280', fontSize: 14, background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb' }}><div style={{ fontSize: 28, marginBottom: 8 }}>🤔</div>正在分析您的查询，生成 SQL…</div>}
-      {plan?.query_plan && !loading && <SqlPreview plan={plan.query_plan} onExecute={handleExecute} executing={executing} />}
-      {executing && <div style={{ padding: 24, textAlign: 'center', color: '#6b7280', fontSize: 14, background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb' }}><div style={{ fontSize: 28, marginBottom: 8 }}>⚡</div>正在执行查询…</div>}
-      {result && !executing && <ResultTable result={result} />}
-      {plan?.pipeline_trace && plan.pipeline_trace.length > 0 && !loading && <PipelineTrace steps={plan.pipeline_trace} />}
-    </div>
-  )
-}
-
 // ── Main App ──────────────────────────────────────────────────────
 export default function App() {
   const { fetchChatSessions, createChatSession, fetchLatestChatSession } = useData()
 
-  const [activeTopModule, setActiveTopModule] = useState<TopModule>('ai-query')
-  const [activeSubModule, setActiveSubModule] = useState<string>('semantic-mapping-management')
+  const [activeTopModule, setActiveTopModule] = useState<TopModule>('ai-chat')
+  const [activeSubModule, setActiveSubModule] = useState<string>('')
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
   const [currentTime, setCurrentTime] = useState(new Date())
 
@@ -113,8 +48,10 @@ export default function App() {
         const id = crypto.randomUUID()
         const s = await createChatSession(id, '新对话 1')
         setChatSessions([s])
+        setActiveSubModule(id)
       } else {
         setChatSessions(sessions)
+        setActiveSubModule(sessions[0].id)
       }
     }
     init()
@@ -124,7 +61,7 @@ export default function App() {
     setActiveTopModule(mod)
     if (mod === 'ontology-management') {
       setActiveSubModule('semantic-mapping-management')
-    } else if (mod === 'ai-reports') {
+    } else {
       const sessions = await fetchChatSessions()
       const latest = await fetchLatestChatSession()
       if (latest.found && latest.session) {
@@ -140,14 +77,11 @@ export default function App() {
     const name = `新对话 ${chatSessions.length + 1}`
     const s = await createChatSession(id, name)
     setChatSessions(prev => [s, ...prev])
-    setActiveTopModule('ai-reports')
+    setActiveTopModule('ai-chat')
     setActiveSubModule(id)
   }, [chatSessions.length, createChatSession])
 
-  const isChatSession = activeTopModule === 'ai-reports' && chatSessions.some(s => s.id === activeSubModule)
-
   const renderSidebar = () => {
-    if (activeTopModule === 'ai-query') return null
     if (activeTopModule === 'ontology-management') {
       return (
         <nav style={{ width: 200, flexShrink: 0, background: '#fff', borderRight: '1px solid #e5e7eb', padding: '16px 0' }}>
@@ -165,9 +99,8 @@ export default function App() {
         </nav>
       )
     }
-    if (activeTopModule === 'ai-reports') {
-      return (
-        <nav style={{ width: 220, flexShrink: 0, background: '#fff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column' }}>
+    return (
+      <nav style={{ width: 220, flexShrink: 0, background: '#fff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '12px 16px 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>模块</div>
           <button onClick={() => setActiveSubModule('saved-reports')}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', background: activeSubModule === 'saved-reports' ? '#eff6ff' : 'transparent', color: activeSubModule === 'saved-reports' ? '#1d4ed8' : '#374151', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', borderLeft: activeSubModule === 'saved-reports' ? '2px solid #2563eb' : '2px solid transparent' }}>
@@ -182,7 +115,7 @@ export default function App() {
             {chatSessions.map(session => {
               const active = activeSubModule === session.id
               return (
-                <button key={session.id} onClick={() => { setActiveTopModule('ai-reports'); setActiveSubModule(session.id) }}
+                <button key={session.id} onClick={() => { setActiveTopModule('ai-chat'); setActiveSubModule(session.id) }}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', background: active ? '#eff6ff' : 'transparent', color: active ? '#1d4ed8' : '#374151', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', borderLeft: active ? '2px solid #2563eb' : '2px solid transparent', overflow: 'hidden' }}>
                   <MessageSquare size={13} style={{ flexShrink: 0 }} />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.name}</span>
@@ -191,13 +124,10 @@ export default function App() {
             })}
           </div>
         </nav>
-      )
-    }
-    return null
+    )
   }
 
   const renderContent = () => {
-    if (activeTopModule === 'ai-query') return <QueryPage />
     if (activeTopModule === 'ontology-management') {
       switch (activeSubModule) {
         case 'semantic-mapping-management': return <MappingManager />
@@ -206,22 +136,18 @@ export default function App() {
         default:                            return <MappingManager />
       }
     }
-    if (activeTopModule === 'ai-reports') {
-      if (activeSubModule === 'saved-reports') return <ReportsModule reportId={activeSubModule} />
-      if (isChatSession) return <MESPage sessionId={activeSubModule} skipDataGeneration={true} />
-      return <MESPage sessionId={chatSessions[0]?.id ?? 'default'} skipDataGeneration={true} />
-    }
-    return null
+    if (activeSubModule === 'saved-reports') return <ReportsModule reportId={activeSubModule} />
+    const sessionId = activeSubModule || chatSessions[0]?.id || 'default'
+    return <MESPage sessionId={sessionId} skipDataGeneration={true} />
   }
 
   const topNavItems = [
-    { id: 'ai-query' as TopModule,              label: 'AI 查询', icon: BotMessageSquare },
-    { id: 'ontology-management' as TopModule,   label: '本体管理', icon: Book },
-    { id: 'ai-reports' as TopModule,            label: 'AI 报表',  icon: Sparkles },
+    { id: 'ai-chat' as TopModule,             label: '智能报表', icon: Sparkles },
+    { id: 'ontology-management' as TopModule, label: '本体管理', icon: Book },
   ]
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f0f2f5', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: '100vh', background: '#f0f2f5', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <header style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '0 24px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <BotMessageSquare size={20} color="#4f46e5" />
@@ -245,9 +171,9 @@ export default function App() {
         </div>
       </header>
 
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         {renderSidebar()}
-        <main style={{ flex: 1, overflow: 'auto', padding: activeTopModule === 'ai-query' ? '32px 24px' : 0 }}>
+        <main style={{ flex: 1, minHeight: 0, overflow: activeTopModule === 'ontology-management' ? 'auto' : 'hidden', display: 'flex', flexDirection: 'column' }}>
           {renderContent()}
         </main>
       </div>

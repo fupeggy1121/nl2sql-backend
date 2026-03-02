@@ -54,23 +54,31 @@ def set_db_mode(mode: str) -> dict:
     切换运行时数据库模式，并立即清除所有缓存的连接对象。
 
     Args:
-        mode: "prod" | "demo" | "auto"
+        mode: "prod" | "demo" | "auto" | "mysql" | "supabase"
+              - mysql/supabase: 切换 DB_BACKEND 环境变量（本地直连 vs Supabase REST）
+              - prod/demo/auto: 切换 Supabase 环境
 
     Returns:
         当前模式信息 dict
     """
     global _RUNTIME_DB_MODE
 
-    if mode == "auto":
+    if mode == "mysql":
+        os.environ["DB_BACKEND"] = "mysql"
+        logger.info("[db_mode] DB_BACKEND switched to: mysql")
+    elif mode == "supabase":
+        os.environ["DB_BACKEND"] = "supabase"
+        logger.info("[db_mode] DB_BACKEND switched to: supabase")
+    elif mode == "auto":
         _RUNTIME_DB_MODE = None
     elif mode in ("prod", "demo"):
         _RUNTIME_DB_MODE = mode
     else:
-        raise ValueError(f"Invalid db mode: {mode!r}. Must be 'prod', 'demo', or 'auto'")
+        raise ValueError(f"Invalid db mode: {mode!r}. Must be 'mysql', 'supabase', 'prod', 'demo', or 'auto'")
 
     _reset_cached_connections()
 
-    logger.info(f"[db_mode] Database mode switched to: {_RUNTIME_DB_MODE!r}")
+    logger.info(f"[db_mode] Database mode switched to: runtime={_RUNTIME_DB_MODE!r}, backend={os.getenv('DB_BACKEND', 'supabase')}")
     return get_current_db_mode()
 
 
@@ -79,12 +87,14 @@ def get_current_db_mode() -> dict:
     creds = get_db_credentials()
     url    = creds.get("supabase_url") or ""
     db_url = creds.get("database_url") or ""
+    db_backend = os.getenv("DB_BACKEND", "supabase")
     return {
         "mode":               _RUNTIME_DB_MODE or "auto",
         "source":             creds["source"],
         "supabase_url_hint":  (url[:40]    + "...") if len(url)    > 40 else url,
         "database_url_hint":  (db_url[:40] + "...") if len(db_url) > 40 else db_url,
         "runtime_db_mode":    _RUNTIME_DB_MODE,
+        "db_backend":         db_backend,
     }
 
 

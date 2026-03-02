@@ -221,12 +221,13 @@ class MappingDictionary:
         self._raw: Dict[str, Any] = {}
 
         # 索引结构
-        self._table_by_class: Dict[str, PhysicalTable] = {}      # "semi:Wafer" → PhysicalTable
-        self._table_by_label: Dict[str, PhysicalTable] = {}      # "晶圆" → PhysicalTable
-        self._table_by_physical: Dict[str, PhysicalTable] = {}   # "wafers" → PhysicalTable
-        self._relation_map: Dict[str, RelationMapping] = {}      # "semi:belongsToLot" → RelationMapping
-        self._recursive_map: Dict[str, RecursiveMapping] = {}    # "semi:hasParentLot" → RecursiveMapping
-        self._value_map: Dict[str, Dict[str, ValueMapping]] = {} # "semi:WaferState" -> {"WIP": ValueMapping}
+        self._table_by_class: Dict[str, PhysicalTable] = {}          # "semi:Wafer" → PhysicalTable (最后一条，向后兼容)
+        self._tables_by_class_all: Dict[str, List[PhysicalTable]] = {}  # "semi:Equipment" → [PhysicalTable, ...] (全部)
+        self._table_by_label: Dict[str, PhysicalTable] = {}          # "晶圆" → PhysicalTable
+        self._table_by_physical: Dict[str, PhysicalTable] = {}       # "wafers" → PhysicalTable
+        self._relation_map: Dict[str, RelationMapping] = {}          # "semi:belongsToLot" → RelationMapping
+        self._recursive_map: Dict[str, RecursiveMapping] = {}        # "semi:hasParentLot" → RecursiveMapping
+        self._value_map: Dict[str, Dict[str, ValueMapping]] = {}     # "semi:WaferState" -> {"WIP": ValueMapping}
         self._business_rules: List[BusinessRule] = []
 
         self._load()
@@ -259,6 +260,8 @@ class MappingDictionary:
                 note=item.get("note"),
             )
             self._table_by_class[pt.logic_class] = pt
+            # 全量多表索引（每个本体类可能对应多张物理表）
+            self._tables_by_class_all.setdefault(pt.logic_class, []).append(pt)
             if pt.label_cn:
                 self._table_by_label[pt.label_cn] = pt
             if pt.table_name:
@@ -397,6 +400,39 @@ class MappingDictionary:
     def list_physical_tables(self) -> List[PhysicalTable]:
         """返回所有有物理表的映射条目（排除虚拟类）"""
         return [t for t in self._table_by_class.values() if not t.virtual]
+
+    def list_tables_for_class(self, logic_class: str) -> List[PhysicalTable]:
+        """
+        返回本体类对应的 **所有** 物理表条目（一个类可多表）。
+
+        例: list_tables_for_class("semi:Equipment") 返回 22 个 PhysicalTable 条目,
+            包含 equipment, equipment_log, equipment_oee 等。
+
+        Args:
+            logic_class: 如 "semi:Equipment" 或无前缀的 "Equipment"
+
+        Returns:
+            PhysicalTable 列表，按 mapping 文件顺序；未命中返回空列表。
+        """
+        result = self._tables_by_class_all.get(logic_class)
+        if result:
+            return result
+        prefixed = f"semi:{logic_class}" if not logic_class.startswith("semi:") else logic_class
+        return self._tables_by_class_all.get(prefixed, [])
+
+    def list_table_names_for_class(self, logic_class: str) -> List[str]:
+        """
+        返回本体类对应的所有物理表名列表（仅名称，排除虚拟表）。
+
+        Example:
+            >>> md.list_table_names_for_class("semi:Equipment")
+            ['accy_equipment_accessory', 'equipment', 'equipment_log', ...]
+        """
+        return [
+            pt.table_name
+            for pt in self.list_tables_for_class(logic_class)
+            if pt.table_name and not pt.virtual
+        ]
 
     # ----------------------------------------------------------------- #
     # 2. 关系 → JOIN 条件

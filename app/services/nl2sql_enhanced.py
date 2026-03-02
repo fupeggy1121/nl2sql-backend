@@ -70,7 +70,43 @@ class EnhancedNL2SQLConverter:
             
         except Exception as e:
             logger.warning(f"Error loading annotation metadata from Supabase: {e}")
-            logger.info("Using fallback metadata loading...")
+            logger.info("Falling back to MySQL schema_tools for annotation metadata...")
+            self._load_annotation_metadata_from_mysql()
+
+    def _load_annotation_metadata_from_mysql(self) -> None:
+        """从 MySQL information_schema 加载表/列元数据（DB_BACKEND=mysql 时的备用路径）"""
+        try:
+            from app.agent.tools.schema_tools import _get_schema_metadata
+            mysql_schema = _get_schema_metadata()
+            raw_tables = mysql_schema.get('tables', {})
+            tables_data = {}
+            columns_data = {}
+            for table_name, table_info in raw_tables.items():
+                desc = (table_info.get('description') or
+                        table_info.get('comment', '') or
+                        table_info.get('table_comment', ''))
+                tables_data[table_name] = {
+                    'name_cn': desc,
+                    'description_cn': desc,
+                }
+                for col_name, col_info in table_info.get('columns', {}).items():
+                    col_desc = (col_info.get('description') or
+                                col_info.get('comment', '') or
+                                col_info.get('column_comment', ''))
+                    col_key = f"{table_name}.{col_name}"
+                    columns_data[col_key] = {
+                        'table_name': table_name,
+                        'column_name': col_name,
+                        'data_type': col_info.get('type', col_info.get('column_type', '')),
+                        'description_cn': col_desc,
+                    }
+            self.annotation_metadata = {'tables': tables_data, 'columns': columns_data}
+            logger.info(
+                f"✅ Loaded MySQL schema metadata: {len(tables_data)} tables, "
+                f"{len(columns_data)} columns"
+            )
+        except Exception as ex:
+            logger.warning(f"MySQL schema fallback also failed: {ex}")
     
     def refresh_metadata(self) -> None:
         """刷新元数据（手动调用）"""
@@ -82,37 +118,49 @@ class EnhancedNL2SQLConverter:
         logger.info(f"Schema set with tables: {list(schema.keys())}")
     
     def _build_enhanced_schema_prompt(self) -> str:
-        """构建增强的 schema 提示词，包含中文名称和业务含义"""
-        schema_lines = ["【数据库 Schema 信息】\n"]
-        
+        """构建增强的 schema 提示词。
+        当表数量较少（Supabase 注解）时输出完整列信息；
+        当表数量很多（MySQL 全量）时只输出表名目录，避免超出 LLM 上下文限制。
+        """
         tables = self.annotation_metadata.get('tables', {})
         columns = self.annotation_metadata.get('columns', {})
-        
-        # 添加表信息
+
+        if not tables:
+            # 没有元数据也没有 schema_info，返回空
+            if self.schema_info:
+                lines = ["【数据库 Schema 信息】\n"]
+                for table_name, columns_info in self.schema_info.items():
+                    lines.append(f"表: {table_name}")
+                    for col_name, col_type in columns_info.items():
+                        lines.append(f"  - {col_name} ({col_type})")
+                    lines.append("")
+                return "\n".join(lines)
+            return ""
+
+        # 表数量 > 100 时只列出表名目录（详细 schema 由 RAG 在 nl_query 中提供）
+        if len(tables) > 100:
+            lines = ["【可用数据库表目录（仅用于表名合法性校验）】"]
+            for table_name, table_info in tables.items():
+                desc = table_info.get('description_cn') or table_info.get('name_cn', '')
+                if desc:
+                    lines.append(f"  {table_name}  ({desc})")
+                else:
+                    lines.append(f"  {table_name}")
+            lines.append("")
+            return "\n".join(lines)
+
+        # 表数量较少时输出完整列信息（与原逻辑一致）
+        schema_lines = ["【数据库 Schema 信息】\n"]
         for table_name, table_info in tables.items():
             schema_lines.append(f"表名: {table_name}")
-            
-            # 添加中文名称
-            if 'name_cn' in table_info:
+            if table_info.get('name_cn'):
                 schema_lines.append(f"  中文名: {table_info['name_cn']}")
-            
-            # 添加描述
-            if 'description_cn' in table_info:
+            if table_info.get('description_cn'):
                 schema_lines.append(f"  描述: {table_info['description_cn']}")
-            if 'description_en' in table_info:
-                schema_lines.append(f"  Description: {table_info['description_en']}")
-            
-            # 添加业务含义
-            if 'business_meaning' in table_info:
+            if table_info.get('business_meaning'):
                 schema_lines.append(f"  业务含义: {table_info['business_meaning']}")
-            
-            # 添加使用场景
-            if 'use_case' in table_info:
-                schema_lines.append(f"  使用场景: {table_info['use_case']}")
-            
-            # 添加该表的列信息
-            table_columns = [col for col in columns.values() 
-                           if col.get('table_name') == table_name]
+            table_columns = [col for col in columns.values()
+                             if col.get('table_name') == table_name]
             if table_columns:
                 schema_lines.append("  列:")
                 for col in table_columns:
@@ -120,29 +168,13 @@ class EnhancedNL2SQLConverter:
                     col_name_cn = col.get('column_name_cn', '')
                     data_type = col.get('data_type', '')
                     desc = col.get('description_cn', '')
-                    example = col.get('example_value', '')
-                    
                     if col_name_cn:
                         schema_lines.append(f"    - {col_name} ({col_name_cn}): {data_type}")
                     else:
                         schema_lines.append(f"    - {col_name}: {data_type}")
-                    
                     if desc:
                         schema_lines.append(f"      描述: {desc}")
-                    if example:
-                        schema_lines.append(f"      示例: {example}")
-            
             schema_lines.append("")
-        
-        # 如果没有元数据，使用基础 schema
-        if not tables and self.schema_info:
-            schema_lines.append("【基础 Schema 信息】\n")
-            for table_name, columns_info in self.schema_info.items():
-                schema_lines.append(f"表: {table_name}")
-                for col_name, col_type in columns_info.items():
-                    schema_lines.append(f"  - {col_name} ({col_type})")
-                schema_lines.append("")
-        
         return "\n".join(schema_lines)
     
     def _build_enhanced_prompt(self, natural_language: str) -> str:
@@ -163,45 +195,31 @@ class EnhancedNL2SQLConverter:
         
         prompt = f"""{schema_prompt}{mapping_section}
 
-【业务领域知识（必须参考）】
-- 在制品(WIP)数量：统计的是 wafers 表中的晶圆(Wafer)实例数量，不是 sub_batches 数量！
-  WIP状态通过 sub_batches.status != 'completed' 过滤，但 COUNT 对象必须是 DISTINCT wafers.id（因为 batch→sub_batch 一对多会导致 wafer 行重复）
-  JOIN路径(v2): wafers.sublot_id → sub_batches.id → stations(sub_batches.current_station_id = stations.id)
-  也可使用: wafers → batches(wafers.batch_id = batches.id) → sub_batches(sub_batches.batch_id = batches.id) → stations(sub_batches.current_station_id = stations.id)
-  示例: SELECT s.name, COUNT(DISTINCT w.id) AS wip_count FROM wafers w JOIN sub_batches sb ON w.sublot_id = sb.id JOIN stations s ON sb.current_station_id = s.id WHERE sb.status != 'completed' GROUP BY s.name ORDER BY wip_count DESC
-  如果需要按特定站点筛选，加 WHERE s.name = '站点名' AND sb.status != 'completed'
-- wafers 表已包含: sublot_id(子批次), carrier_id(载具), slot_number(槽位), wafer_type(类型), lot_id(批次), wafer_id(晶圆编号)
-  直接通过外键关联，无需桥接表
-- batches 表(v2)新增 current_station_id 外键引用 stations.id，优先用它关联站点
-- sub_batches 表(v2)新增 lot_id, equipment_id, next_station_id
-- batch_events 表(v2)记录操作事件: event_type, target_type, target_id, payload(jsonb), triggered_by
-- 批次(batch/sub_batch)当前所在站点用 sub_batches.current_station_id
-- process_route_stations 是工艺路线定义表（定义流程步骤），不是在制品数据
-
-【用户查询】
+【用户查询与上下文（包含相关 Schema 片段）】
 {natural_language}
 
-【转换规则】
-1. 使用正确的表名和列名
-2. 如果用户提及中文名称，请根据【中文表名映射】自动映射到对应的英文表名
-3. 例外：如果用户说"载具"，应该映射到"carriers"表；"生产订单"映射到"production_orders"表
-4. 考虑业务含义和使用场景来构建正确的逻辑
-5. 优先使用表中存在的列名
-6. 生成的 SQL 应该是可执行的，使用数据库中实际存在的表名
-7. **重要 SQL 格式限制（必须遵守）**：
+【转换规则（严格遵守）】
+1. **只能使用上方【数据库 Schema 信息】或【用户查询与上下文】中明确列出的表名和列名。**
+   禁止使用任何未在 Schema 中出现的表名（如 stations、wafers、sub_batches、users 等）。
+2. 如果用户提及中文名称，根据【中文表名映射】映射到对应的英文表名。
+3. 考虑表的业务含义构建正确逻辑，优先使用表中实际存在的列。
+4. **SQL 格式限制**：
    - 禁止使用 WITH (CTE) 语法
-   - 禁止使用 SELECT 子句中的关联子查询（如 SELECT (SELECT ...) AS col）
-   - 多表查询必须使用 JOIN + GROUP BY 的标准写法
-   - 示例：SELECT t1.name, COUNT(t2.id) FROM t1 LEFT JOIN t2 ON t1.id = t2.fk_id WHERE ... GROUP BY t1.name
-8. SQL 末尾不要添加分号 (;)
-9. 筛选条件（WHERE）中只使用 name 列进行中文名匹配，不要猜测 code 列的英文值
+   - 禁止 SELECT 子句中的关联子查询
+   - 多表查询使用 JOIN + GROUP BY 的标准写法
+5. **MySQL 语法规范**（目标数据库是 MySQL 8.0，禁止 PostgreSQL 语法）：
+   - 时间间隔写法：`INTERVAL 1 DAY`（不加引号），不是 `INTERVAL '1 day'`
+   - 最近N天：`gmt_create >= NOW() - INTERVAL 7 DAY`
+   - 最近N月：`gmt_create >= NOW() - INTERVAL 1 MONTH`（不是 INTERVAL '1 month'）
+   - 字符串拼接：使用 `CONCAT()`，不用 `||`
+   - 禁止 `FILTER (WHERE ...)` 语法
+   - 禁止 `::` 类型转换，用 `CAST(x AS TYPE)` 代替
+6. SQL 末尾不要添加分号 (;)
+7. WHERE 条件用 name/description 列做中文匹配，不猜测 code 列的英文值
 
 【输出要求】
-- 仅输出 SQL 语句，不要包含其他文本或解释
-- 如果无法理解查询，返回一个安全的 SELECT 语句
-- 确保 SQL 语法正确
-- 确保表名是从【中文表名映射】中选择的
-- 必须使用 JOIN + GROUP BY 格式，不用 CTE 也不用关联子查询
+- 仅输出 SQL 语句，不含任何解释或 markdown 代码块（禁止 ```sql 标记）
+- 只使用 Schema 中实际存在的表名
 - 不在 SQL 末尾添加分号"""
         
         return prompt

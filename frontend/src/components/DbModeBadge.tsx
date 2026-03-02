@@ -2,22 +2,18 @@ import { useEffect, useState } from 'react'
 import { Database, RefreshCw } from 'lucide-react'
 import { getDbMode, switchDbMode } from '../api/nl2sql'
 
-const MODES = [
-  { value: 'mysql', label: 'MySQL 生产库' },
-  { value: 'auto', label: '自动检测' },
-]
-
 export function DbModeBadge() {
-  const [mode, setMode] = useState<string>('…')
+  const [backend, setBackend] = useState<string>('…')
   const [switching, setSwitching] = useState(false)
 
   const load = async () => {
     try {
       const res = await getDbMode()
       const db = res.data.database
-      setMode(db.runtime_db_mode ?? db.mode)
+      // db_backend is the real query target: "mysql" | "supabase"
+      setBackend(db.db_backend ?? (db.runtime_db_mode === 'mysql' ? 'mysql' : 'supabase'))
     } catch {
-      setMode('unknown')
+      setBackend('unknown')
     }
   }
 
@@ -26,7 +22,7 @@ export function DbModeBadge() {
   const toggle = async () => {
     setSwitching(true)
     try {
-      const next = mode === 'mysql' ? 'auto' : 'mysql'
+      const next = backend === 'mysql' ? 'supabase' : 'mysql'
       await switchDbMode(next)
       await load()
     } finally {
@@ -34,13 +30,13 @@ export function DbModeBadge() {
     }
   }
 
-  const isMysql = mode === 'mysql'
+  const isMysql = backend === 'mysql'
 
   return (
     <button
       onClick={toggle}
       disabled={switching}
-      title="点击切换数据库模式"
+      title={isMysql ? '当前: MySQL 生产库，点击切换到 Supabase' : '当前: Supabase，点击切换到 MySQL 生产库'}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -61,7 +57,7 @@ export function DbModeBadge() {
       ) : (
         <Database size={14} />
       )}
-      {isMysql ? 'MySQL 生产库' : mode === 'auto' ? '自动 (Supabase)' : mode}
+      {isMysql ? 'MySQL 生产库' : 'Supabase'}
     </button>
   )
 }

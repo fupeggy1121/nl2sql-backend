@@ -7,7 +7,14 @@ from typing import Dict, List, Optional, Any
 import re
 import logging
 import json
-from app.config.table_synonyms import map_table_name
+# Forward to ontology-based synonym_manager (lazy import to avoid circular deps)
+def map_table_name(keyword: str) -> str:
+    from app.services.synonym_manager import synonym_manager
+    return synonym_manager.map_table_name(keyword)
+
+def is_valid_table_name(keyword: str) -> bool:
+    from app.services.synonym_manager import synonym_manager
+    return bool(synonym_manager.map_keyword_to_class(keyword))
 
 logger = logging.getLogger(__name__)
 
@@ -156,8 +163,6 @@ class IntentRecognizer:
         Returns:
             dict: Intent matching result with keys: intent, confidence, entities
         """
-        from app.config.table_synonyms import is_valid_table_name
-
         normalized_input = text.lower()
         scores = {}
 
@@ -343,8 +348,6 @@ Return analysis result in JSON format (must be valid JSON):
         # Pattern 2: Direct table name/synonym after query keyword (without "表")
         # This handles cases like "查询片篮", "显示载具", "查询晶圆的信息", "显示所有晶圆载体"
         if 'table' not in entities:
-            from app.config.table_synonyms import is_valid_table_name
-            
             # Look for query keywords followed by table names
             # Extract content after query keywords
             keyword_pattern = r'(?:查询|返回|显示|获取)\s*(.+?)$'

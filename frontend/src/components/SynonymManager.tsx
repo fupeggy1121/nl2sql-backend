@@ -20,7 +20,9 @@ import { synonymApi } from '../services/synonymApi';
 
 interface Synonym {
   id: number | null;
-  table_name: string;
+  target_uri: string;
+  target_label_cn: string;
+  target_type?: string;
   synonym: string;
   source: string;
   is_active: boolean;
@@ -69,15 +71,21 @@ export default function SynonymManager() {
 
   // ─── Derived ──────────────────────────────
   const tableNames = useMemo(() => {
-    const set = new Set(synonyms.map(s => s.table_name));
+    const set = new Set(synonyms.map(s => s.target_uri));
     return Array.from(set).sort();
   }, [synonyms]);
 
+  const classLabel = (uri: string) => {
+    const found = synonyms.find(s => s.target_uri === uri);
+    return found?.target_label_cn ? `${found.target_label_cn} (${uri})` : uri;
+  };
+
   const filteredSynonyms = useMemo(() => {
     return synonyms.filter(s => {
-      if (filterTable && s.table_name !== filterTable) return false;
+      if (filterTable && s.target_uri !== filterTable) return false;
       if (searchTerm && !s.synonym.toLowerCase().includes(searchTerm.toLowerCase())
-        && !s.table_name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+        && !s.target_uri.toLowerCase().includes(searchTerm.toLowerCase())
+        && !(s.target_label_cn || '').toLowerCase().includes(searchTerm.toLowerCase())) return false;
       return true;
     });
   }, [synonyms, filterTable, searchTerm]);
@@ -214,7 +222,7 @@ export default function SynonymManager() {
         <div style={styles.statBar}>
           {stats && <>
             <span>同义词 <b>{stats.synonyms.active}</b></span>
-            <span>表 <b>{stats.synonyms.tables}</b></span>
+            <span>本体类 <b>{stats.synonyms.tables}</b></span>
             <span style={{ color: '#d97706' }}>待审批 <b>{stats.unmatched.pending}</b></span>
           </>}
         </div>
@@ -240,8 +248,8 @@ export default function SynonymManager() {
               <b>同义词列表 ({filteredSynonyms.length})</b>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <select value={filterTable} onChange={e => setFilterTable(e.target.value)} style={styles.input as any}>
-                  <option value="">全部表</option>
-                  {tableNames.map(t => <option key={t} value={t}>{t}</option>)}
+                  <option value="">全部本体类</option>
+                  {tableNames.map(t => <option key={t} value={t}>{classLabel(t)}</option>)}
                 </select>
                 <input placeholder="搜索..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
                   style={{ ...styles.input, width: 160 }} />
@@ -253,12 +261,16 @@ export default function SynonymManager() {
             <div style={{ overflowX: 'auto' }}>
               <table style={styles.table}>
                 <thead>
-                  <tr>{['表名', '同义词', '来源', '状态', '操作'].map(h => <th key={h} style={styles.th}>{h}</th>)}</tr>
+                  <tr>{['本体类', '同义词', '来源', '状态', '操作'].map(h => <th key={h} style={styles.th}>{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {filteredSynonyms.map((s, i) => (
-                    <tr key={`${s.table_name}-${s.synonym}-${i}`}>
-                      <td style={styles.td}><code style={{ fontSize: 12, background: '#f3f4f6', padding: '2px 6px', borderRadius: 4 }}>{s.table_name}</code></td>
+                    <tr key={`${s.target_uri}-${s.synonym}-${i}`}>
+                      <td style={styles.td}>
+                        <span style={{ fontWeight: 600, color: '#374151', fontSize: 13 }}>{s.target_label_cn || s.target_uri}</span>
+                        <br/>
+                        <code style={{ fontSize: 11, background: '#f3f4f6', padding: '1px 5px', borderRadius: 4, color: '#6b7280' }}>{s.target_uri}</code>
+                      </td>
                       <td style={{ ...styles.td, fontWeight: 600 }}>{s.synonym}</td>
                       <td style={styles.td}>{sourceTag(s.source)}</td>
                       <td style={styles.td}>
@@ -344,7 +356,7 @@ export default function SynonymManager() {
                   <tr key={l.id}>
                     <td style={styles.td}>{l.created_at ? new Date(l.created_at).toLocaleString('zh-CN') : '-'}</td>
                     <td style={styles.td}><span style={styles.tag('#dbeafe', '#1d4ed8')}>{l.action}</span></td>
-                    <td style={styles.td}><code>{l.table_name}</code></td>
+                    <td style={styles.td}><code>{l.target_uri || (l as any).table_name}</code></td>
                     <td style={{ ...styles.td, fontWeight: 600 }}>{l.synonym}</td>
                     <td style={styles.td}>{l.performed_by}</td>
                   </tr>
@@ -368,9 +380,9 @@ export default function SynonymManager() {
             </div>
             <div style={{ padding: '16px 24px' }}>
               <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 4 }}>目标表名</label>
+                <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 4 }}>本体类 (URI)</label>
                 <select value={addTable} onChange={e => setAddTable(e.target.value)} style={styles.input as any}>
-                  {tableNames.map(t => <option key={t} value={t}>{t}</option>)}
+                  {tableNames.map(t => <option key={t} value={t}>{classLabel(t)}</option>)}
                 </select>
               </div>
               <div style={{ marginBottom: 14 }}>
@@ -397,9 +409,9 @@ export default function SynonymManager() {
             </div>
             <div style={{ padding: '16px 24px' }}>
               <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 4 }}>映射到表名</label>
+                <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 4 }}>映射到本体类</label>
                 <select value={approveTable} onChange={e => setApproveTable(e.target.value)} style={styles.input as any}>
-                  {tableNames.map(t => <option key={t} value={t}>{t}</option>)}
+                  {tableNames.map(t => <option key={t} value={t}>{classLabel(t)}</option>)}
                 </select>
               </div>
               <p style={{ fontSize: 13, color: '#6b7280' }}>原始查询: {approveItem.original_query || '无'}</p>

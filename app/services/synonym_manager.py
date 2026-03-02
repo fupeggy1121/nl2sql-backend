@@ -62,22 +62,24 @@ class SynonymManagerService:
     # ------------------------------------------------------------------
     # 查询 / 读取
     # ------------------------------------------------------------------
-    def get_all_synonyms(self, table_name: Optional[str] = None,
+    def get_all_synonyms(self, target_uri: Optional[str] = None,
+                         table_name: Optional[str] = None,
                          source: Optional[str] = None,
                          is_active: Optional[bool] = True) -> List[Dict]:
         """
-        获取同义词列表，支持按表名、来源、状态筛选。
-        优先 PostgreSQL → Supabase REST → 静态配置。
+        获取同义词列表。target_uri 和 table_name 参数均可用于过滤（target_uri 优先）。
+        优先 class_synonyms PG → class_synonyms Supabase REST → table_synonyms (legacy) → 静态配置。
         """
-        # ── 1. 尝试 PostgreSQL 直连 ──
+        uri_filter = target_uri or table_name
+        # ── 1. 尝试 PostgreSQL 直连 (class_synonyms) ──
         try:
             executor = self._get_executor()
             conditions = []
             params = []
 
-            if table_name:
-                conditions.append("table_name = %s")
-                params.append(table_name)
+            if uri_filter:
+                conditions.append("target_uri = %s")
+                params.append(uri_filter)
             if source:
                 conditions.append("source = %s")
                 params.append(source)
@@ -87,15 +89,72 @@ class SynonymManagerService:
 
             where = " WHERE " + " AND ".join(conditions) if conditions else ""
             rows = executor.execute_query(
+                f"SELECT id, target_uri, target_label_cn, target_type, synonym, "
+                f"source, is_active, created_at, updated_at, created_by "
+                f"FROM class_synonyms{where} ORDER BY target_uri, synonym",
+                tuple(params) if params else None
+            )
+            executor.close()
+            if rows is not None:  # table exists
+                return [
+                    {
+                        "id": r[0], "target_uri": r[1], "target_label_cn": r[2],
+                        "target_type": r[3], "synonym": r[4], "source": r[5],
+                        "is_active": r[6],
+                        "created_at": r[7].isoformat() if r[7] else None,
+                        "updated_at": r[8].isoformat() if r[8] else None,
+                        "created_by": r[9],
+                    }
+                    for r in rows
+                ]
+        except Exception as e:
+            logger.debug(f"PG class_synonyms 查询失败: {e}")
+
+        # ── 2. 尝试 Supabase REST (class_synonyms) ──
+        try:
+            client = self._get_supabase()
+            query = client.table('class_synonyms').select(
+                'id,target_uri,target_label_cn,target_type,synonym,source,is_active,created_at,updated_at,created_by'
+            )
+            if uri_filter:
+                query = query.eq('target_uri', uri_filter)
+            if source:
+                query = query.eq('source', source)
+            if is_active is not None:
+                query = query.eq('is_active', is_active)
+            query = query.order('target_uri').order('synonym')
+            response = query.execute()
+            if response.data is not None:
+                logger.info(f"✅ Supabase REST class_synonyms: {len(response.data)} 条")
+                return response.data or []
+        except Exception as e:
+            logger.warning(f"Supabase REST class_synonyms 查询失败: {e}")
+
+        # ── 3. 尝试 PG table_synonyms (旧表) ──
+        try:
+            executor = self._get_executor()
+            conditions = []
+            params = []
+            if uri_filter:
+                conditions.append("table_name = %s")
+                params.append(uri_filter)
+            if source:
+                conditions.append("source = %s")
+                params.append(source)
+            if is_active is not None:
+                conditions.append("is_active = %s")
+                params.append(is_active)
+            where = " WHERE " + " AND ".join(conditions) if conditions else ""
+            rows = executor.execute_query(
                 f"SELECT id, table_name, synonym, source, is_active, created_at, updated_at, created_by "
                 f"FROM table_synonyms{where} ORDER BY table_name, synonym",
                 tuple(params) if params else None
             )
             executor.close()
-
             return [
                 {
-                    "id": r[0], "table_name": r[1], "synonym": r[2],
+                    "id": r[0], "target_uri": r[1], "target_label_cn": r[1],
+                    "target_type": "class", "synonym": r[2],
                     "source": r[3], "is_active": r[4],
                     "created_at": r[5].isoformat() if r[5] else None,
                     "updated_at": r[6].isoformat() if r[6] else None,
@@ -104,43 +163,43 @@ class SynonymManagerService:
                 for r in (rows or [])
             ]
         except Exception as e:
-            logger.debug(f"PG 查询失败: {e}")
+            logger.debug(f"PG table_synonyms 查询失败: {e}")
 
-        # ── 2. 尝试 Supabase REST ──
+        # ── 4. 尝试 Supabase REST (table_synonyms) ──
         try:
             client = self._get_supabase()
             query = client.table('table_synonyms').select(
                 'id,table_name,synonym,source,is_active,created_at,updated_at,created_by'
             )
-            if table_name:
-                query = query.eq('table_name', table_name)
+            if uri_filter:
+                query = query.eq('table_name', uri_filter)
             if source:
                 query = query.eq('source', source)
             if is_active is not None:
                 query = query.eq('is_active', is_active)
             query = query.order('table_name').order('synonym')
-
             response = query.execute()
-            logger.info(f"✅ Supabase REST 查询同义词: {len(response.data)} 条")
-            return response.data or []
+            logger.info(f"✅ Supabase REST table_synonyms: {len(response.data)} 条")
+            # Remap field names for compatibility
+            return [
+                {"id": r.get('id'), "target_uri": r.get('table_name'), "target_label_cn": r.get('table_name'),
+                 "target_type": "class", "synonym": r.get('synonym'), "source": r.get('source'),
+                 "is_active": r.get('is_active'), "created_at": r.get('created_at'),
+                 "updated_at": r.get('updated_at'), "created_by": r.get('created_by')}
+                for r in (response.data or [])
+            ]
         except Exception as e:
-            logger.warning(f"Supabase REST 查询失败，回退到静态配置: {e}")
+            logger.warning(f"Supabase REST table_synonyms 查询失败: {e}")
 
-        # ── 3. 静态配置回退 ──
-        return self._fallback_get_all(table_name)
+        # ── 5. 静态配置回退 ──
+        return self._fallback_get_all(uri_filter)
 
-    def _fallback_get_all(self, table_name: Optional[str] = None) -> List[Dict]:
-        from app.config.table_synonyms import TABLE_SYNONYMS
-        results = []
-        for tbl, syns in TABLE_SYNONYMS.items():
-            if table_name and tbl != table_name:
-                continue
-            for syn in syns:
-                results.append({
-                    "id": None, "table_name": tbl, "synonym": syn,
-                    "source": "builtin", "is_active": True,
-                    "created_at": None, "updated_at": None, "created_by": "system",
-                })
+    def _fallback_get_all(self, target_uri: Optional[str] = None) -> List[Dict]:
+        """Use ontology_synonyms.py as static fallback, return target_uri fields."""
+        from app.config.ontology_synonyms import get_all_synonyms_flat
+        results = get_all_synonyms_flat()
+        if target_uri:
+            results = [r for r in results if r.get('target_uri') == target_uri]
         return results
 
     def get_synonym_map(self) -> Dict[str, str]:
@@ -148,14 +207,20 @@ class SynonymManagerService:
         if self._cache is not None:
             return self._cache
 
-        # 尝试 PG
+        # 尝试 PG — class_synonyms 优先
         try:
             executor = self._get_executor()
-            rows = executor.execute_query(
-                "SELECT synonym, table_name FROM table_synonyms WHERE is_active = TRUE"
-            )
+            try:
+                rows = executor.execute_query(
+                    "SELECT synonym, target_uri FROM class_synonyms WHERE is_active = TRUE"
+                )
+                self._cache = {r[0].lower(): r[1] for r in (rows or [])}
+            except Exception:
+                rows = executor.execute_query(
+                    "SELECT synonym, table_name FROM table_synonyms WHERE is_active = TRUE"
+                )
+                self._cache = {r[0].lower(): r[1] for r in (rows or [])}
             executor.close()
-            self._cache = {r[0].lower(): r[1] for r in (rows or [])}
             return self._cache
         except Exception:
             pass
@@ -163,66 +228,138 @@ class SynonymManagerService:
         # 尝试 Supabase REST
         try:
             client = self._get_supabase()
-            response = client.table('table_synonyms').select(
-                'synonym,table_name'
-            ).eq('is_active', True).execute()
-            self._cache = {r['synonym'].lower(): r['table_name'] for r in (response.data or [])}
+            try:
+                response = client.table('class_synonyms').select('synonym,target_uri').eq('is_active', True).execute()
+                self._cache = {r['synonym'].lower(): r['target_uri'] for r in (response.data or [])}
+            except Exception:
+                response = client.table('table_synonyms').select('synonym,table_name').eq('is_active', True).execute()
+                self._cache = {r['synonym'].lower(): r['table_name'] for r in (response.data or [])}
             logger.info(f"✅ Supabase REST 加载同义词映射: {len(self._cache)} 条")
             return self._cache
         except Exception:
             pass
 
-        # 静态配置
-        from app.config.table_synonyms import get_synonym_to_table_map
-        self._cache = get_synonym_to_table_map()
+        # 静态配置 — 使用 ontology_synonyms.py
+        from app.config.ontology_synonyms import get_synonym_to_uri_map
+        self._cache = get_synonym_to_uri_map()
         return self._cache
 
     def map_table_name(self, keyword: str) -> str:
-        """将关键词映射到实际表名"""
+        """将关键词映射到实际表名（先解析到本体URI，再查映射字典得到物理表名）"""
+        uri = self.map_keyword_to_class(keyword)
+        if uri:
+            tables = self.resolve_to_tables(uri)
+            if tables:
+                return tables[0]
+        # 最终回退：用synonym_map直接返回（可能是旧式物理表名）
         m = self.get_synonym_map()
         return m.get(keyword.lower().strip(), keyword)
 
-    def get_tables_summary(self) -> List[Dict]:
-        """获取每张表的同义词统计摘要"""
-        # 尝试 PG
+    def map_keyword_to_class(self, keyword: str) -> Optional[str]:
+        """关键词 → 本体类 URI（未命中返回 None）"""
+        return self.get_synonym_map().get(keyword.lower().strip())
+
+    def resolve_to_tables(self, target_uri: str) -> List[str]:
+        """本体类 URI → 当前环境物理表名列表"""
+        try:
+            from app.ontology.mapping import load_mapping
+            mapping = load_mapping()
+            return mapping.list_table_names_for_class(target_uri)
+        except Exception as e:
+            logger.warning(f"resolve_to_tables({target_uri}) 失败: {e}")
+            return []
+
+    def lookup(self, keyword: str) -> Dict:
+        """关键词详细解析结果"""
+        uri = self.map_keyword_to_class(keyword)
+        if not uri:
+            return {"keyword": keyword, "matched": False, "target_uri": None, "tables": []}
+        from app.config.ontology_synonyms import get_label_cn
+        return {
+            "keyword": keyword, "matched": True,
+            "target_uri": uri, "target_label_cn": get_label_cn(uri),
+            "tables": self.resolve_to_tables(uri),
+        }
+
+    def get_synonyms_by_class(self) -> List[Dict]:
+        """按本体类分组的同义词摘要"""
+        return self.get_synonyms_by_table()
+
+    def get_synonyms_by_table(self) -> List[Dict]:
+        """获取每个本体类/表的同义词统计摘要（返回 target_uri 字段）"""
+        # 尝试 PG — class_synonyms 优先
         try:
             executor = self._get_executor()
-            rows = executor.execute_query(
-                """SELECT table_name, 
-                          COUNT(*) as total,
-                          COUNT(*) FILTER (WHERE is_active) as active,
-                          COUNT(*) FILTER (WHERE source = 'manual') as manual,
-                          COUNT(*) FILTER (WHERE source = 'auto') as auto,
-                          COUNT(*) FILTER (WHERE source = 'builtin') as builtin
-                   FROM table_synonyms
-                   GROUP BY table_name ORDER BY table_name"""
-            )
-            executor.close()
-            return [
-                {"table_name": r[0], "total": r[1], "active": r[2],
-                 "manual": r[3], "auto": r[4], "builtin": r[5]}
-                for r in (rows or [])
-            ]
+            try:
+                rows = executor.execute_query(
+                    """SELECT target_uri, target_label_cn, target_type,
+                              COUNT(*) as total,
+                              COUNT(*) FILTER (WHERE is_active) as active,
+                              COUNT(*) FILTER (WHERE source = 'manual') as manual,
+                              COUNT(*) FILTER (WHERE source = 'auto') as auto,
+                              COUNT(*) FILTER (WHERE source = 'builtin') as builtin
+                       FROM class_synonyms
+                       GROUP BY target_uri, target_label_cn, target_type ORDER BY target_uri"""
+                )
+                executor.close()
+                return [
+                    {"target_uri": r[0], "target_label_cn": r[1], "target_type": r[2],
+                     "total": r[3], "active": r[4], "manual": r[5], "auto": r[6], "builtin": r[7]}
+                    for r in (rows or [])
+                ]
+            except Exception:
+                rows = executor.execute_query(
+                    """SELECT table_name, COUNT(*) as total,
+                              COUNT(*) FILTER (WHERE is_active) as active,
+                              COUNT(*) FILTER (WHERE source = 'manual') as manual,
+                              COUNT(*) FILTER (WHERE source = 'auto') as auto,
+                              COUNT(*) FILTER (WHERE source = 'builtin') as builtin
+                       FROM table_synonyms
+                       GROUP BY table_name ORDER BY table_name"""
+                )
+                executor.close()
+                return [
+                    {"target_uri": r[0], "target_label_cn": r[0], "target_type": "class",
+                     "total": r[1], "active": r[2], "manual": r[3], "auto": r[4], "builtin": r[5]}
+                    for r in (rows or [])
+                ]
         except Exception:
             pass
 
-        # 尝试 Supabase REST — 拉取数据后在 Python 端聚合
+        # 尝试 Supabase REST
         try:
             client = self._get_supabase()
-            response = client.table('table_synonyms').select(
-                'table_name,source,is_active'
-            ).execute()
             from collections import defaultdict
-            stats = defaultdict(lambda: {"total": 0, "active": 0, "manual": 0, "auto": 0, "builtin": 0})
+            # Try class_synonyms
+            try:
+                response = client.table('class_synonyms').select(
+                    'target_uri,target_label_cn,target_type,source,is_active'
+                ).execute()
+                stats: dict = defaultdict(lambda: {"target_label_cn": "", "target_type": "class",
+                                                    "total": 0, "active": 0, "manual": 0, "auto": 0, "builtin": 0})
+                for r in (response.data or []):
+                    k = r['target_uri']
+                    stats[k]["target_label_cn"] = r.get('target_label_cn', '')
+                    stats[k]["target_type"] = r.get('target_type', 'class')
+                    stats[k]["total"] += 1
+                    if r.get('is_active'): stats[k]["active"] += 1
+                    src = r.get('source', '')
+                    if src in ('manual', 'auto', 'builtin'): stats[k][src] += 1
+                if stats:
+                    return [{"target_uri": k, **v} for k, v in sorted(stats.items())]
+            except Exception:
+                pass
+            # Fall back to table_synonyms
+            response = client.table('table_synonyms').select('table_name,source,is_active').execute()
+            stats2: dict = defaultdict(lambda: {"total": 0, "active": 0, "manual": 0, "auto": 0, "builtin": 0})
             for r in (response.data or []):
                 t = r['table_name']
-                stats[t]["total"] += 1
-                if r.get('is_active'):
-                    stats[t]["active"] += 1
+                stats2[t]["total"] += 1
+                if r.get('is_active'): stats2[t]["active"] += 1
                 src = r.get('source', '')
-                if src in ('manual', 'auto', 'builtin'):
-                    stats[t][src] += 1
-            return [{"table_name": k, **v} for k, v in sorted(stats.items())]
+                if src in ('manual', 'auto', 'builtin'): stats2[t][src] += 1
+            return [{"target_uri": k, "target_label_cn": k, "target_type": "class", **v}
+                    for k, v in sorted(stats2.items())]
         except Exception as e:
             logger.error(f"获取摘要失败: {e}")
             return []
@@ -230,26 +367,45 @@ class SynonymManagerService:
     # ------------------------------------------------------------------
     # 创建 / 更新 / 删除
     # ------------------------------------------------------------------
-    def add_synonym(self, table_name: str, synonym: str,
+    def add_synonym(self, target_uri: str = None, synonym: str = None,
+                    table_name: str = None,  # backward compat
                     source: str = 'manual', created_by: str = 'admin') -> Dict:
-        """添加一条同义词映射"""
-        syn_lower = synonym.lower().strip()
+        """添加同义词 (target_uri/synonym 为新接口；table_name 向后兼容)"""
+        uri = target_uri or table_name
+        syn = synonym
+        if not uri or not syn:
+            return {"success": False, "error": "target_uri and synonym are required"}
+        syn_lower = syn.lower().strip()
+        from app.config.ontology_synonyms import get_label_cn, get_target_type
+        label_cn = get_label_cn(uri)
+        ttype = get_target_type(uri)
 
         # 尝试 PG
         try:
             executor = self._get_executor()
             try:
-                executor.execute_query(
-                    """INSERT INTO table_synonyms (table_name, synonym, source, created_by)
-                       VALUES (%s, %s, %s, %s)
-                       ON CONFLICT (table_name, synonym) DO UPDATE
-                       SET is_active = TRUE, updated_at = NOW(), source = EXCLUDED.source""",
-                    (table_name, syn_lower, source, created_by)
-                )
-                self._log_audit(executor, 'add', table_name, synonym, created_by)
+                # 先尝试写入 class_synonymsⱬ回退 table_synonyms
+                try:
+                    executor.execute_query(
+                        """INSERT INTO class_synonyms
+                               (target_uri, target_label_cn, target_type, synonym, source, created_by)
+                           VALUES (%s, %s, %s, %s, %s, %s)
+                           ON CONFLICT (target_uri, synonym) DO UPDATE
+                           SET is_active = TRUE, updated_at = NOW(), source = EXCLUDED.source""",
+                        (uri, label_cn, ttype, syn_lower, source, created_by)
+                    )
+                except Exception:
+                    executor.execute_query(
+                        """INSERT INTO table_synonyms (table_name, synonym, source, created_by)
+                           VALUES (%s, %s, %s, %s)
+                           ON CONFLICT (table_name, synonym) DO UPDATE
+                           SET is_active = TRUE, updated_at = NOW(), source = EXCLUDED.source""",
+                        (uri, syn_lower, source, created_by)
+                    )
+                self._log_audit(executor, 'add', uri, syn, created_by)
                 self._invalidate_cache()
                 executor.close()
-                return {"success": True, "table_name": table_name, "synonym": synonym}
+                return {"success": True, "target_uri": uri, "synonym": syn}
             except Exception as e:
                 executor.close()
                 raise e
@@ -258,47 +414,67 @@ class SynonymManagerService:
 
         # Supabase REST fallback
         client = self._get_supabase()
-        client.table('table_synonyms').upsert({
-            'table_name': table_name,
-            'synonym': syn_lower,
-            'source': source,
-            'created_by': created_by,
-            'is_active': True,
-        }, on_conflict='table_name,synonym').execute()
-        self._log_audit_via_supabase(client, 'add', table_name, synonym, created_by)
+        try:
+            client.table('class_synonyms').upsert({
+                'target_uri': uri, 'target_label_cn': label_cn,
+                'target_type': ttype, 'synonym': syn_lower,
+                'source': source, 'created_by': created_by, 'is_active': True,
+            }, on_conflict='target_uri,synonym').execute()
+        except Exception:
+            client.table('table_synonyms').upsert({
+                'table_name': uri, 'synonym': syn_lower,
+                'source': source, 'created_by': created_by, 'is_active': True,
+            }, on_conflict='table_name,synonym').execute()
+        self._log_audit_via_supabase(client, 'add', uri, syn, created_by)
         self._invalidate_cache()
-        return {"success": True, "table_name": table_name, "synonym": synonym}
+        return {"success": True, "target_uri": uri, "synonym": syn}
 
-    def add_synonyms_batch(self, table_name: str, synonyms: List[str],
+    def add_synonyms_batch(self, target_uri: str = None, synonyms: List[str] = None,
+                           table_name: str = None,  # backward compat
                            source: str = 'manual', created_by: str = 'admin') -> Dict:
         """批量添加同义词"""
+        uri = target_uri or table_name
         added = []
         errors = []
-        for syn in synonyms:
+        for syn in (synonyms or []):
             try:
-                self.add_synonym(table_name, syn, source, created_by)
+                self.add_synonym(target_uri=uri, synonym=syn, source=source, created_by=created_by)
                 added.append(syn)
             except Exception as e:
                 errors.append({"synonym": syn, "error": str(e)})
         return {"added": added, "errors": errors}
 
-    def update_synonym(self, synonym_id: int, **kwargs) -> Dict:
-        """更新同义词属性 (table_name / synonym / is_active)"""
-        allowed = {'table_name', 'synonym', 'is_active'}
+    def update_synonym(self, synonym_id, *args, **kwargs) -> Dict:
+        """更新同义词属性 (target_uri / synonym / is_active)"""
+        # Support both update_synonym(id, dict) and update_synonym(id, field=val)
+        if args and isinstance(args[0], dict):
+            kwargs.update(args[0])
+        allowed = {'target_uri', 'table_name', 'synonym', 'is_active'}
         updates = {k: v for k, v in kwargs.items() if k in allowed}
+        # normalize: use 'target_uri' key if only 'table_name' passed
+        if 'table_name' in updates and 'target_uri' not in updates:
+            updates['target_uri'] = updates.pop('table_name')
         if not updates:
             return {"success": False, "error": "无有效字段"}
 
         # 尝试 PG
         try:
-            sets = ", ".join(f"{k} = %s" for k in updates)
+            sets_cs = ", ".join(f"{k} = %s" for k in updates)
             vals = list(updates.values()) + [synonym_id]
             executor = self._get_executor()
-            executor.execute_query(
-                f"UPDATE table_synonyms SET {sets}, updated_at = NOW() WHERE id = %s",
-                tuple(vals)
-            )
-            self._log_audit(executor, 'update', kwargs.get('table_name', ''),
+            try:
+                executor.execute_query(
+                    f"UPDATE class_synonyms SET {sets_cs}, updated_at = NOW() WHERE id = %s",
+                    tuple(vals)
+                )
+            except Exception:
+                # Fall back to table_synonyms with old field name
+                sets_ts = ", ".join(f"{'table_name' if k == 'target_uri' else k} = %s" for k in updates)
+                executor.execute_query(
+                    f"UPDATE table_synonyms SET {sets_ts}, updated_at = NOW() WHERE id = %s",
+                    tuple(vals)
+                )
+            self._log_audit(executor, 'update', kwargs.get('target_uri', ''),
                             kwargs.get('synonym', ''), 'admin',
                             details={"id": synonym_id, "changes": updates})
             self._invalidate_cache()
@@ -309,8 +485,14 @@ class SynonymManagerService:
 
         # Supabase REST fallback
         client = self._get_supabase()
-        client.table('table_synonyms').update(updates).eq('id', synonym_id).execute()
-        self._log_audit_via_supabase(client, 'update', kwargs.get('table_name', ''),
+        try:
+            client.table('class_synonyms').update(updates).eq('id', synonym_id).execute()
+        except Exception:
+            ts_updates = dict(updates)
+            if 'target_uri' in ts_updates:
+                ts_updates['table_name'] = ts_updates.pop('target_uri')
+            client.table('table_synonyms').update(ts_updates).eq('id', synonym_id).execute()
+        self._log_audit_via_supabase(client, 'update', kwargs.get('target_uri', ''),
                                      kwargs.get('synonym', ''), 'admin',
                                      details={"id": synonym_id, "changes": updates})
         self._invalidate_cache()

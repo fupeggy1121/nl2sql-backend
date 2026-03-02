@@ -39,16 +39,19 @@ export const synonymApi = {
     return request(qs ? `?${qs}` : '');
   },
 
-  /** 获取表摘要 */
+  /** 获取本体类摘要（新接口） */
+  getClassesSummary: () => request('/tables'),
+
+  /** 获取表摘要（向后兼容别名） */
   getTablesSummary: () => request('/tables'),
 
   /** 添加同义词 (单条) */
-  addSynonym: (table_name, synonym) =>
-    request('', { method: 'POST', body: JSON.stringify({ table_name, synonym }) }),
+  addSynonym: (target_uri, synonym) =>
+    request('', { method: 'POST', body: JSON.stringify({ target_uri, synonym }) }),
 
   /** 批量添加同义词 */
-  addSynonymsBatch: (table_name, synonyms) =>
-    request('', { method: 'POST', body: JSON.stringify({ table_name, synonyms }) }),
+  addSynonymsBatch: (target_uri, synonyms) =>
+    request('', { method: 'POST', body: JSON.stringify({ target_uri, synonyms }) }),
 
   /** 更新同义词 */
   updateSynonym: (id, data) =>
@@ -78,8 +81,8 @@ export const synonymApi = {
   },
 
   /** 审批未匹配词 */
-  approveUnmatched: (id, table_name) =>
-    request(`/unmatched/${id}/approve`, { method: 'POST', body: JSON.stringify({ table_name }) }),
+  approveUnmatched: (id, target_uri) =>
+    request(`/unmatched/${id}/approve`, { method: 'POST', body: JSON.stringify({ target_uri }) }),
 
   /** 拒绝 */
   rejectUnmatched: (id) => request(`/unmatched/${id}/reject`, { method: 'POST' }),

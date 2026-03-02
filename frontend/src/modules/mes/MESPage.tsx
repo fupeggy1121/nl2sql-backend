@@ -70,11 +70,13 @@ export const MESPage: React.FC<MESPageProps> = ({
   }
 
   return (
-    <UnifiedChat
-      sessionId={sessionId}
-      setMessages={setMessages}
-      setIsProcessing={setIsProcessing}
-      skipDataGeneration={skipDataGeneration}
-    />
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      <UnifiedChat
+        sessionId={sessionId}
+        setMessages={setMessages}
+        setIsProcessing={setIsProcessing}
+        skipDataGeneration={skipDataGeneration}
+      />
+    </div>
   );
 };

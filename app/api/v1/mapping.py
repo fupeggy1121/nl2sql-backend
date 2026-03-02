@@ -189,7 +189,7 @@ class BusinessRuleUpdate(BaseModel):
 
 
 class SwitchModeIn(BaseModel):
-    mode: str  # "prod" | "demo" | "auto"
+    mode: str  # "prod" | "demo" | "auto" | "mysql" | "supabase"
 
 
 # ══════════════════════════════════════════════════════════════════
