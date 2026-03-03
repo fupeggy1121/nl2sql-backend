@@ -264,6 +264,23 @@ async def reload_ontology_and_mapping() -> Dict[str, Any]:
         raise HTTPException(500, f"重载失败: {e}")
 
 
+@router.post("/synonyms/reload")
+async def reload_synonyms_from_supabase() -> Dict[str, Any]:
+    """
+    热重载同义词：从 Supabase class_synonyms 表更新内存字典，无需重启服务。
+
+    前端同义词管理页面保存新条目后，调用此接口即可立即让 NL2SQL
+    管道识别新增的同义词（_supabase_synonym_overlay 覆盖静态字典）。
+    """
+    from app.ontology.context_builder import reload_synonyms_from_db
+    count = reload_synonyms_from_db()
+    return {
+        "success": True,
+        "loaded": count,
+        "message": f"已从 Supabase 加载 {count} 条活跃同义词到管道字典",
+    }
+
+
 @router.get("/graph")
 async def get_graph_data() -> Dict[str, Any]:
     """

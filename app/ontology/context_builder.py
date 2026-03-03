@@ -233,41 +233,87 @@ class SemanticContext:
 
 # --------------------------------------------------------------------- #
 # Synonym dictionary: 常见简称/缩写 → 本体类 URI
+#
+# 单一数据源：从 app/config/ontology_synonyms.py 动态构建扁平字典，
+# 不再在此处维护硬编码列表。
+# Supabase class_synonyms 表中用户新增同义词在服务启动时（或调用
+# POST /api/v1/ontology/synonyms/reload 热重载接口后）自动合并进来。
 # --------------------------------------------------------------------- #
 
-_CLASS_SYNONYMS: Dict[str, str] = {
-    # 中文简称
-    "工站": "semi:ProcessStation",
-    "工序": "semi:ProcessStation",
-    "站点": "semi:ProcessStation",
-    "批次": "semi:ProductionLot",
-    "lot": "semi:ProductionLot",
-    "batch": "semi:ProductionLot",
-    "子批": "semi:Sublot",
-    "sublot": "semi:Sublot",
-    "晶圆": "semi:Wafer",
-    "wafer": "semi:Wafer",
-    "设备": "semi:Equipment",
-    "机台": "semi:Equipment",
-    "载具": "semi:Carrier",
-    "花篮": "semi:Carrier",
-    "片篮": "semi:Carrier",
-    "晶圆篮": "semi:Carrier",
-    "foup": "semi:Carrier",
-    "smif": "semi:Carrier",
-    "carrier": "semi:Carrier",
-    "产品": "semi:ProductModel",
-    "product": "semi:ProductModel",
-    "工单": "semi:ProductionOrder",
-    "order": "semi:ProductionOrder",
-    "路线": "semi:Route",
-    "route": "semi:Route",
-    "配方": "semi:Recipe",
-    "recipe": "semi:Recipe",
-    "物料": "semi:Material",
-    "bom": "semi:BOM",
-    "物料清单": "semi:BOM",
-}
+def _build_class_synonyms_static() -> Dict[str, str]:
+    """从 ontology_synonyms.CLASS_SYNONYMS 展开成 word→URI 扁平字典。"""
+    try:
+        from app.config.ontology_synonyms import CLASS_SYNONYMS as _CS, RELATION_SYNONYMS as _RS
+        flat: Dict[str, str] = {}
+        for uri, info in _CS.items():
+            for word in info.get("synonyms", []):
+                flat[word] = uri
+                flat[word.lower()] = uri  # 小写版本，英文词大小写不敏感
+        # 关系同义词也纳入（用于关系关键词检测）
+        for uri, info in _RS.items():
+            for word in info.get("synonyms", []):
+                flat[word] = uri
+        return flat
+    except Exception as e:
+        logger.warning(f"[context_builder] 从 ontology_synonyms.py 构建字典失败，使用内置兜底: {e}")
+        # 兜底：保留最小集确保基本功能
+        return {
+            "设备": "semi:Equipment", "机台": "semi:Equipment",
+            "载具": "semi:Carrier", "片篮": "semi:Carrier", "花篮": "semi:Carrier",
+            "晶圆": "semi:Wafer", "wafer": "semi:Wafer",
+            "批次": "semi:ProductionLot", "lot": "semi:ProductionLot",
+            "工单": "semi:ProductionOrder", "工序": "semi:ProcessStation",
+        }
+
+
+# 静态基础字典（来自 ontology_synonyms.py，服务启动时一次性构建）
+_CLASS_SYNONYMS: Dict[str, str] = _build_class_synonyms_static()
+
+# Supabase 动态叠加层：服务启动 + 热重载时更新（DB 词优先于静态词）
+_supabase_synonym_overlay: Dict[str, str] = {}
+
+
+def _get_active_synonyms() -> Dict[str, str]:
+    """返回静态词典与 Supabase 动态叠加的合并结果（DB 词优先）。"""
+    if not _supabase_synonym_overlay:
+        return _CLASS_SYNONYMS
+    return {**_CLASS_SYNONYMS, **_supabase_synonym_overlay}
+
+
+def reload_synonyms_from_db() -> int:
+    """
+    从 Supabase class_synonyms 表拉取全部激活同义词，更新内存叠加层。
+    在服务启动时调用一次；也可通过 POST /api/v1/ontology/synonyms/reload
+    在不重启服务的情况下热重载新增同义词。
+    返回加载的同义词条数（0 = Supabase 不可用或表为空）。
+    """
+    global _supabase_synonym_overlay
+    try:
+        from app.services.supabase_client import get_supabase_client
+        sc = get_supabase_client()
+        if not sc or not sc.client:
+            logger.warning("[synonym_reload] Supabase 客户端不可用，跳过 DB 同义词加载")
+            return 0
+        response = (
+            sc.client.table("class_synonyms")
+            .select("synonym,target_uri")
+            .eq("is_active", True)
+            .execute()
+        )
+        rows = response.data or []
+        overlay: Dict[str, str] = {}
+        for row in rows:
+            synonym = (row.get("synonym") or "").strip()
+            uri = (row.get("target_uri") or "").strip()
+            if synonym and uri:
+                overlay[synonym] = uri
+                overlay[synonym.lower()] = uri  # 英文小写兜底
+        _supabase_synonym_overlay = overlay
+        logger.info(f"[synonym_reload] 从 Supabase 加载 {len(overlay)} 条同义词")
+        return len(overlay)
+    except Exception as e:
+        logger.warning(f"[synonym_reload] DB 同义词加载失败（不影响静态字典）: {e}")
+        return 0
 
 
 # --------------------------------------------------------------------- #
@@ -514,8 +560,8 @@ class SemanticContextBuilder:
                     seen_classes.add(pt.logic_class)
                     results.append(self._to_matched_class(pt.label_cn, pt))
 
-        # 策略B: 同义词/缩写匹配
-        for keyword, logic_class in _CLASS_SYNONYMS.items():
+        # 策略B: 同义词/缩写匹配（含 Supabase 动态叠加层）
+        for keyword, logic_class in _get_active_synonyms().items():
             if keyword in query_lower and logic_class not in seen_classes:
                 seen_classes.add(logic_class)
                 pt = self._mapping.get_physical_table(logic_class)
@@ -643,8 +689,8 @@ class SemanticContextBuilder:
 
         # 收集候选标签（去重）
         candidates: Dict[str, str] = {}  # label → uri
-        # 来源1: 静态同义词典
-        for label, uri in _CLASS_SYNONYMS.items():
+        # 来源1: 静态同义词典（含 Supabase 叠加层）
+        for label, uri in _get_active_synonyms().items():
             candidates[label] = uri
         # 来源2: 本体图 label_index
         for label, uri in self._ontology._label_index.items():

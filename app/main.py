@@ -32,6 +32,14 @@ async def lifespan(app: FastAPI):
     get_agent_app()
     logger.info("Agent graph compiled and ready")
 
+    # 预加载 Supabase 同义词（overlays _CLASS_SYNONYMS，失败时使用静态字典）
+    try:
+        from app.ontology.context_builder import reload_synonyms_from_db
+        count = reload_synonyms_from_db()
+        logger.info(f"Supabase synonyms loaded: {count} entries")
+    except Exception as _e:
+        logger.warning(f"Synonym DB preload skipped: {_e}")
+
     yield
 
     logger.info("AI Agent service shutting down")

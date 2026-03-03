@@ -16,6 +16,18 @@ import {
 } from 'lucide-react';
 import { synonymApi } from '../services/synonymApi';
 
+// 保存/删除同义词后，通知后端刷新管道内存字典（无需重启服务）
+const triggerPipelineReload = async () => {
+  try {
+    const apiRoot = (import.meta as any)?.env?.VITE_API_BASE_URL
+      ? (import.meta as any).env.VITE_API_BASE_URL.replace(/\/api\/query.*$/, '')
+      : 'http://localhost:8000';
+    await fetch(`${apiRoot}/api/v1/ontology/synonyms/reload`, { method: 'POST' });
+  } catch {
+    // 静默失败，不影响 UI 操作
+  }
+};
+
 // ─── Types ────────────────────────────────────
 
 interface Synonym {
@@ -136,12 +148,14 @@ export default function SynonymManager() {
     setAddSynonyms('');
     loadSynonyms();
     loadStats();
+    triggerPipelineReload(); // 刷新管道内存字典
   };
 
   const handleToggle = async (id: number, active: boolean) => {
     await synonymApi.updateSynonym(id, { is_active: active });
     loadSynonyms();
     loadStats();
+    triggerPipelineReload(); // 刷新管道内存字典
   };
 
   const handleDelete = async (id: number) => {
@@ -149,6 +163,7 @@ export default function SynonymManager() {
     await synonymApi.deleteSynonym(id);
     loadSynonyms();
     loadStats();
+    triggerPipelineReload(); // 刷新管道内存字典
   };
 
   const handleApprove = async () => {
@@ -158,6 +173,7 @@ export default function SynonymManager() {
     loadUnmatched();
     loadSynonyms();
     loadStats();
+    triggerPipelineReload(); // 刷新管道内存字典
   };
 
   const handleReject = async (id: number) => {
@@ -174,7 +190,7 @@ export default function SynonymManager() {
 
   // ─── Styles ───────────────────────────────
   const styles = {
-    container: { maxWidth: 1100, margin: '0 auto', padding: 24, fontFamily: '-apple-system, sans-serif' },
+    container: { maxWidth: '100%', width: '100%', margin: '0 auto', padding: 24, fontFamily: '-apple-system, sans-serif', boxSizing: 'border-box' as const },
     header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
     title: { fontSize: 22, fontWeight: 700 as const, color: '#111' },
     statBar: { display: 'flex', gap: 16, fontSize: 13, color: '#6b7280' },
