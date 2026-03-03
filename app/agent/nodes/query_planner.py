@@ -58,6 +58,16 @@ def query_planner_node(state: AgentState) -> dict:
         "conversation_context": memory_context.get("context_summary", ""),
     }
 
+    # Phase 3: 优先用 semantic_resolver 已解析的物理表名覆盖 intent 中的原始文本实体
+    # semantic_context.physical_tables = ["carrier"] 比 entities.table = "可用的片篮列" 更准确
+    semantic_context = state.get("semantic_context", {})
+    physical_tables = semantic_context.get("physical_tables", [])
+    if physical_tables:
+        # 取第一个（主表）作为 query_plan.table
+        query_plan["table"] = physical_tables[0]
+        if len(physical_tables) > 1:
+            query_plan["all_tables"] = physical_tables
+
     # Phase C: 追问时尝试从上轮继承缺失的表名
     if is_followup and not query_plan["table"]:
         last_ctx = memory_context.get("last_query_context", {})
@@ -80,16 +90,26 @@ def query_planner_node(state: AgentState) -> dict:
         return {"query_plan": query_plan, "rag_context": "", "pipeline_trace": trace}
 
     # ── Phase D: RAG 检索 schema 上下文 ──
-    rag_context = _retrieve_rag_context(effective_input)
+    # 优先用物理表名 + 原始 NL 双路检索，提升命中率
+    rag_query = effective_input
+    if physical_tables:
+        rag_query = " ".join(physical_tables) + " " + effective_input
+    rag_context = _retrieve_rag_context(rag_query)
 
     # ── Pipeline Trace ──
     trace = list(state.get("pipeline_trace", []))
+    resolved_table = query_plan.get("table") or "自动推断"
+    raw_table = entities.get("table") or ""
+    table_display = resolved_table if not raw_table or resolved_table == raw_table \
+        else f"{resolved_table} (原始: {raw_table})"
     trace_step(trace, "query_planner", _t0, summary=(
-        f"目标表: {query_plan['table'] or '自动推断'}, "
+        f"目标表: {table_display}, "
         f"指标: {query_plan['metrics'] or '无'}, "
         f"RAG上下文: {'有' if rag_context else '无'}"
     ), detail={
         "table": query_plan.get("table"),
+        "raw_table_from_intent": raw_table or None,
+        "physical_tables_from_ontology": physical_tables or None,
         "metrics": query_plan.get("metrics", []),
         "time_range": query_plan.get("time_range"),
         "filters": query_plan.get("filters", {}),
