@@ -51,6 +51,7 @@ CLASS_SYNONYMS: dict = {
         "synonyms": [
             "批次", "lot", "生产批次", "生产批",
             "batch", "lot_id", "批号", "流水号", "本地批次",
+            "在制品", "在制", "wip",
         ],
     },
 
