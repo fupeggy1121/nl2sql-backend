@@ -28,6 +28,10 @@ def _make_json_safe(value: Any) -> Any:
     if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
         return value.isoformat()
     if isinstance(value, decimal.Decimal):
+        # 整数型列（id, status 等）MySQL 有时以 Decimal 回传
+        # 若无小数部分则转为 int，避免前端显示为 59.00
+        if value == value.to_integral_value():
+            return int(value)
         return float(value)
     if isinstance(value, bytes):
         try:
