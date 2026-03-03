@@ -820,26 +820,7 @@ setCurrentIntent(queryPlan.query_intent || null);
             )}
           </button>
         </div>
-        <p className="input-hint">
-          💡 新工作流：输入查询 → 澄清意图 → 预览SQL → 执行 → 查看结果 | Shift+Enter 换行 | Enter 发送
-        </p>
       </footer>
-
-      {/* 快速问题建议 - 已移动到输入框下方 */}
-      <div className="quick-questions">
-        <div className="quick-questions-container">
-          {SAMPLE_QUESTIONS.map((question, idx) => (
-            <button
-              key={idx}
-              onClick={() => handleQuickQuestion(question)}
-              className="quick-btn"
-              disabled={isProcessing}
-            >
-              {question}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* 反馈表单 */}
       {feedbackMessageId && (

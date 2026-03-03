@@ -60,7 +60,7 @@ const QueryTrace: React.FC<QueryTraceProps> = ({ trace }) => {
   return (
     <div style={{
       marginTop: 12,
-      border: '1px solid #e8e8e8',
+      border: '1px solid #252747',
       borderRadius: 8,
       overflow: 'hidden',
       fontSize: 13,
@@ -74,23 +74,23 @@ const QueryTrace: React.FC<QueryTraceProps> = ({ trace }) => {
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '8px 14px',
-          backgroundColor: '#fafafa',
+          backgroundColor: '#1a1b35',
           cursor: 'pointer',
           userSelect: 'none',
-          borderBottom: expanded ? '1px solid #e8e8e8' : 'none',
+          borderBottom: expanded ? '1px solid #252747' : 'none',
         }}
       >
-        <span style={{ fontWeight: 500, color: '#333' }}>
+        <span style={{ fontWeight: 500, color: '#c4c9e8' }}>
           {expanded ? '▼' : '▶'} 查询管道追踪
-          <span style={{ color: '#999', fontWeight: 400, marginLeft: 8 }}>
+          <span style={{ color: '#6b7298', fontWeight: 400, marginLeft: 8 }}>
             {trace.length} 步 · {totalMs.toFixed(0)}ms
           </span>
         </span>
         <span style={{
           fontSize: 11,
-          color: '#999',
+          color: '#6b7298',
           padding: '2px 8px',
-          background: '#f0f0f0',
+          background: '#252747',
           borderRadius: 10,
         }}>
           {expanded ? '收起' : '展开'}
@@ -99,11 +99,11 @@ const QueryTrace: React.FC<QueryTraceProps> = ({ trace }) => {
 
       {/* 展开后的步骤列表 */}
       {expanded && (
-        <div style={{ padding: '8px 0' }}>
+        <div style={{ padding: '8px 0', background: '#12142a' }}>
           {trace.map((step, idx) => {
             const isStepExpanded = expandedSteps.has(idx);
             const label = STEP_LABELS[step.step] || step.step;
-            const color = STATUS_COLORS[step.status] || '#333';
+            const color = STATUS_COLORS[step.status] || '#c4c9e8';
 
             return (
               <div key={idx} style={{ padding: '0 14px' }}>
@@ -115,7 +115,7 @@ const QueryTrace: React.FC<QueryTraceProps> = ({ trace }) => {
                     alignItems: 'center',
                     padding: '6px 0',
                     cursor: step.detail ? 'pointer' : 'default',
-                    borderBottom: idx < trace.length - 1 ? '1px solid #f5f5f5' : 'none',
+                    borderBottom: idx < trace.length - 1 ? '1px solid #1e2047' : 'none',
                   }}
                 >
                   {/* 状态指示器 */}
@@ -127,22 +127,22 @@ const QueryTrace: React.FC<QueryTraceProps> = ({ trace }) => {
                     flexShrink: 0,
                   }} />
                   {/* 步骤名称 */}
-                  <span style={{ width: 110, flexShrink: 0, color: '#555' }}>
+                  <span style={{ width: 110, flexShrink: 0, color: '#818cf8' }}>
                     {label}
                   </span>
                   {/* 摘要 */}
-                  <span style={{ flex: 1, color: '#333', marginRight: 8 }}>
+                  <span style={{ flex: 1, color: '#c4c9e8', marginRight: 8 }}>
                     {step.summary}
                   </span>
                   {/* 耗时 */}
                   <span style={{
-                    color: '#999', fontSize: 12, flexShrink: 0, minWidth: 55, textAlign: 'right',
+                    color: '#6b7298', fontSize: 12, flexShrink: 0, minWidth: 55, textAlign: 'right',
                   }}>
                     {step.elapsed_ms.toFixed(1)}ms
                   </span>
                   {/* 展开箭头 */}
                   {step.detail && (
-                    <span style={{ marginLeft: 8, color: '#ccc', fontSize: 10 }}>
+                    <span style={{ marginLeft: 8, color: '#474970', fontSize: 10 }}>
                       {isStepExpanded ? '▼' : '▶'}
                     </span>
                   )}
@@ -153,13 +153,14 @@ const QueryTrace: React.FC<QueryTraceProps> = ({ trace }) => {
                   <div style={{
                     margin: '4px 0 8px 18px',
                     padding: '8px 12px',
-                    background: '#f9f9f9',
+                    background: '#070810',
+                    border: '1px solid #252747',
                     borderRadius: 6,
                     fontSize: 12,
                     lineHeight: 1.6,
                     whiteSpace: 'pre-wrap',
                     wordBreak: 'break-all',
-                    color: '#555',
+                    color: '#a5f3fc',
                     maxHeight: 300,
                     overflow: 'auto',
                   }}>

@@ -99,7 +99,7 @@ function DataTable({ data }: { data: any[] }) {
     }
 
     if (typeof value === 'number') {
-      return value.toFixed(2);
+      return Number.isInteger(value) ? String(value) : value.toFixed(2);
     }
 
     return String(value);
