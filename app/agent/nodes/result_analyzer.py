@@ -51,9 +51,11 @@ def _rule_recommend_chart(
     data: List[Dict[str, Any]],
     sql: str,
     natural_language: str,
+    query_type: str = "",
 ) -> Optional[Dict[str, Any]]:
     """
     规则引擎：根据结果集结构推断图表类型。
+    优先使用 query_type（来自 intent_data），再按结构规则推断。
     返回 viz dict（confidence >= 0.75）或 None（需要 LLM fallback）。
     """
     if not data:
@@ -64,10 +66,46 @@ def _rule_recommend_chart(
     time_cols     = [c for c, t in col_types.items() if t == "time"]
     numeric_cols  = [c for c, t in col_types.items() if t == "numeric"]
     category_cols = [c for c, t in col_types.items() if t == "category"]
+    total_cols    = len(col_types)
 
-    # ── 规则 1: 单行多列 → 表格（KPI 卡片）
+    qt = (query_type or "").upper()
+
+    # ══ 优先级 0: 基于 query_type 的语义规则（最高优先级）══
+
+    # LIST 查询 → 明细表格（无论列类型如何，明细列表应展示表格）
+    if qt == "LIST":
+        return _make_viz("table", None, None, None, 0.95, f"LIST 查询，展示明细表格 ({rows} 行)")
+
+    # COUNT / AGGREGATE 且结果为单行单列数值 → 单值卡片
+    if qt in ("COUNT", "AGGREGATE") and rows == 1 and total_cols == 1 and numeric_cols:
+        col = numeric_cols[0]
+        return _make_viz("card", None, col, None, 0.95, f"COUNT/单值聚合，使用单值卡片 ({col})")
+
+    # COUNT 且结果为多行（分组统计）→ 柱状图
+    if qt == "COUNT" and rows > 1 and category_cols and numeric_cols:
+        cat_col = category_cols[0]
+        num_col = numeric_cols[0]
+        if _RATIO_KEYWORDS.search(natural_language):
+            return _make_viz("pie", cat_col, num_col, None, 0.90, f"分组统计占比，使用饼图 ({cat_col})")
+        return _make_viz("bar", cat_col, num_col, None, 0.90, f"分组统计，使用柱状图 ({cat_col} vs {num_col})")
+
+    # TREND 查询 → 优先折线图（需有时间列）
+    if qt == "TREND" and time_cols and numeric_cols:
+        x = time_cols[0]
+        y = numeric_cols[0]
+        series = category_cols[0] if category_cols else None
+        return _make_viz("line", x, y, series, 0.95, f"TREND 查询，使用折线图 ({x} vs {y})")
+
+    # ══ 结构规则（无 query_type 或未命中语义规则时兜底）══
+
+    # ── 规则 1: 单行单列数值 → 单值卡片
+    if rows == 1 and total_cols == 1 and numeric_cols:
+        col = numeric_cols[0]
+        return _make_viz("card", None, col, None, 0.90, f"单行单列数值，使用单值卡片 ({col})")
+
+    # ── 规则 1b: 单行多列 → 表格（KPI 横排）
     if rows == 1:
-        return _make_viz("table", None, None, None, 0.85, "单行结果，使用表格/KPI展示")
+        return _make_viz("table", None, None, None, 0.85, "单行多列结果，使用表格/KPI展示")
 
     # ── 规则 2: 有时间列 + 数值列 → 折线图
     if time_cols and numeric_cols:
@@ -96,13 +134,18 @@ def _rule_recommend_chart(
             if distinct > 15:
                 return _make_viz("table", None, None, None, 0.80, f"数据量大且分类多 ({rows}行/{distinct}类)，使用表格")
         else:
+            # 无分类列（全数值列）的大数据集 → 也用表格（明细列表）
             return _make_viz("table", None, None, None, 0.80, f"数据量大 ({rows}行)，无分类列，使用表格")
 
-    # ── 规则 5: 多个数值列 → 柱状图
+    # ── 规则 5: 多个数值列 + 分类列 → 柱状图
     if len(numeric_cols) >= 2 and category_cols:
         x = category_cols[0]
         y = numeric_cols[0]
         return _make_viz("bar", x, y, None, 0.78, f"多指标对比，使用柱状图")
+
+    # ── 规则 6: 多行全数值列（如明细列表，status/id 均为 int）→ 表格
+    if rows > 1 and numeric_cols and not category_cols and not time_cols:
+        return _make_viz("table", None, None, None, 0.80, f"全数值列明细 ({rows}行/{total_cols}列)，使用表格")
 
     # ── 规则未覆盖 → 交给 LLM
     return None
@@ -162,7 +205,8 @@ def result_analyzer_node(state: AgentState) -> dict:
     data = query_result.get("data", [])
 
     # ── 优先走规则引擎 ──
-    viz = _rule_recommend_chart(data, sql, user_input)
+    query_type = intent_data.get("query_type", "")
+    viz = _rule_recommend_chart(data, sql, user_input, query_type)
     source = "rule"
 
     if viz is None:
