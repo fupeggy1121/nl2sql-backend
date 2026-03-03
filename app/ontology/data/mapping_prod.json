@@ -5,38 +5,83 @@
   "object_mappings": [
     {
       "logic_class": "semi:Wafer",
-      "physical_table": null,
+      "physical_table": "matrix_routerx_operation_lot_wafer",
       "primary_key": null,
       "label_cn": "晶圆",
-      "display_column": null,
-      "virtual": true,
+      "display_column": "wafer_code",
       "properties": {},
-      "key_columns": [],
-      "note": "MySQL生产执行层无独立晶圆级跟踪表，生产流转以批次(lot)为最小管理单元。晶圆实体信息在仓库域：warehouse_approval_wafer（入库）、warehouse_approval_wafer_record（入库记录），不属于生产执行语义。"
+      "key_columns": [
+        "id",
+        "wafer_code",
+        "carrier_code",
+        "slot_no",
+        "lot_id",
+        "sub_lot_id",
+        "flags",
+        "status",
+        "level",
+        "ng_code",
+        "mark",
+        "create_user_id",
+        "update_user_id",
+        "create_time",
+        "update_time",
+        "extra",
+        "create_user",
+        "gmt_create",
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "trace_id",
+        "sequence",
+        "block_id"
+      ],
+      "note": "MySQL生产执行层晶圆级跟踪表，生产流转以批次(lot)为最小管理单元，wafer在生产流转节点中规属于某个特定生产批次。晶圆实体信息在仓库域：warehouse_approval_wafer（入库）、warehouse_approval_wafer_record（入库记录）"
     },
     {
       "logic_class": "semi:ProductionLot",
-      "physical_table": "routerx_lot",
+      "physical_table": "matrix_routerx_operation_lot",
       "primary_key": "id",
       "label_cn": "生产批次",
-      "display_column": "lot_code",
+      "display_column": "current_lot_code",
       "properties": {
-        "semi:hasState": "lot_status"
+        "semi:hasState": "status"
       },
       "key_columns": [
         "id",
-        "lot_code",
-        "lot_no",
+        "current_lot_code",
+        "parent_id",
+        "parent_lot_code",
+        "product_snapshot_id",
         "product_id",
-        "lot_status",
-        "current_station_id",
-        "route_id",
-        "work_order_id",
-        "good_qty",
-        "defect_qty",
-        "total_qty",
+        "product_code",
+        "recipe_id",
+        "recipe_code",
+        "main_router_id",
+        "sub_routers",
+        "process_id",
+        "process_status",
+        "process_route_id",
+        "status",
+        "carrier_code",
+        "wafer_statistics",
+        "equipment_id",
+        "equipment_code",
+        "chamber",
+        "type",
+        "create_user_id",
+        "update_user_id",
+        "create_time",
+        "update_time",
+        "extra",
+        "create_user",
         "gmt_create",
-        "gmt_update"
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "trace_id",
+        "bind_production_scheduling",
+        "order_id"
       ]
     },
     {
@@ -113,13 +158,13 @@
       "physical_table": "carrier",
       "primary_key": "id",
       "label_cn": "载具",
-      "display_column": "carrier_code",
+      "display_column": "code",
       "properties": {
         "semi:hasState": "status"
       },
       "key_columns": [
         "id",
-        "carrier_code",
+        "code",
         "status",
         "smif_pod_code",
         "sub_lot_code",
@@ -404,11 +449,11 @@
       "description": "Lot/Batch 当前所处工序",
       "strategy": "ForeignKey",
       "join_logic": {
-        "source_table": "routerx_lot",
-        "source_key": "current_station_id",
+        "source_table": "matrix_routerx_operation_lot",
+        "source_key": "process_id",
         "target_table": "matrix_routerx_config_process",
         "target_key": "id",
-        "note": "routerx_lot.current_station_id → matrix_routerx_config_process.id"
+        "note": "matrix_routerx_operation_lot.process_id → matrix_routerx_config_process.id"
       }
     },
     {
@@ -418,7 +463,7 @@
       "join_logic": {
         "path": [
           {
-            "from_table": "routerx_lot",
+            "from_table": "matrix_routerx_operation_lot",
             "from_key": "product_id",
             "to_table": "product",
             "to_key": "id"
@@ -430,7 +475,7 @@
             "to_key": "id"
           }
         ],
-        "note": "routerx_lot.product_id → product.id → product.product_model_id → product_model.id"
+        "note": "matrix_routerx_operation_lot.product_id → product.id → product.product_model_id → product_model.id"
       }
     },
     {
@@ -438,11 +483,11 @@
       "description": "Lot 当前所走工艺路径",
       "strategy": "ForeignKey",
       "join_logic": {
-        "source_table": "routerx_lot",
-        "source_key": "route_id",
+        "source_table": "matrix_routerx_operation_lot",
+        "source_key": "process_route_id",
         "target_table": "routerx_router_config",
         "target_key": "id",
-        "note": "若 routerx_lot 无直接 route_id，则需通过 product_model.id 间接获取"
+        "note": "matrix_routerx_operation_lot.process_route_id → routerx_router_config.id"
       }
     },
     {
@@ -450,11 +495,11 @@
       "description": "Lot(批次) 基于哪个 ProductionOrder(排程工单) 创建",
       "strategy": "ForeignKey",
       "join_logic": {
-        "source_table": "routerx_lot",
-        "source_key": "work_order_id",
+        "source_table": "matrix_routerx_operation_lot",
+        "source_key": "order_id",
         "target_table": "production_scheduling",
         "target_key": "id",
-        "note": "routerx_lot.work_order_id → production_scheduling.id（通过工单号或ID关联）"
+        "note": "matrix_routerx_operation_lot.order_id → production_scheduling.id"
       }
     },
     {
@@ -483,7 +528,7 @@
       "description": "Lot(批次) 包含哪些 Sublot(local_production_batch)",
       "strategy": "ForeignKey",
       "join_logic": {
-        "source_table": "routerx_lot",
+        "source_table": "matrix_routerx_operation_lot",
         "source_key": "id",
         "target_table": "local_production_batch",
         "target_key": "lot_id"
@@ -496,9 +541,9 @@
       "join_logic": {
         "source_table": "carrier",
         "source_key": "lot_code",
-        "target_table": "routerx_lot",
-        "target_key": "lot_code",
-        "note": "carrier.lot_code 冗余存储关联的批次号，反向查找即可。批次粒度关联，非晶圆粒度。"
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "current_lot_code",
+        "note": "carrier.lot_code 冗余存储关联的批次号。matrix_routerx_operation_lot.current_lot_code 为批次号。批次粒度关联，非晶圆粒度。"
       }
     },
     {
@@ -662,7 +707,7 @@
       "join_logic": {
         "source_table": "routerx_lot_log",
         "source_key": "lot_id",
-        "target_table": "routerx_lot",
+        "target_table": "matrix_routerx_operation_lot",
         "target_key": "id"
       }
     },
@@ -683,9 +728,9 @@
       "join_logic": {
         "source_table": "routerx_lot_log",
         "source_key": "lot_id",
-        "target_table": "routerx_lot",
+        "target_table": "matrix_routerx_operation_lot",
         "target_key": "id",
-        "note": "routerx_lot_log记录的每条操作行为都对应 routerx_lot 的状态跳转（lot_status变化）"
+        "note": "routerx_lot_log记录的每条操作行为都对应 matrix_routerx_operation_lot 的状态跳转（status变化）"
       }
     },
     {
@@ -693,9 +738,9 @@
       "description": "Lot 的父批次(溯源递归)",
       "strategy": "Recursive",
       "join_logic": {
-        "table": "routerx_lot",
+        "table": "matrix_routerx_operation_lot",
         "self_key": "id",
-        "parent_key": "parent_lot_id",
+        "parent_key": "parent_id",
         "max_depth": 20,
         "note": "需要 WITH RECURSIVE CTE（MySQL 8.0+支持）; parent_lot_id 为自引用外键（如不存在则此关系虚拟，需确认字段）。"
       }
@@ -705,33 +750,33 @@
     "semi:BatchStatus": {
       "Pending": {
         "description": "待执行批次",
-        "physical_condition": "local_production_batch.status = 0",
-        "applies_to_table": "local_production_batch",
+        "physical_condition": "matrix_routerx_operation_lot.status = 0",
+        "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
         "note": "status=0 待执行"
       },
       "Running": {
         "description": "执行中批次（WIP）",
-        "physical_condition": "local_production_batch.status = 1",
-        "applies_to_table": "local_production_batch",
+        "physical_condition": "matrix_routerx_operation_lot.status = 1",
+        "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
-        "count_target_table": "local_production_batch",
+        "count_target_table": "matrix_routerx_operation_lot",
         "count_target_column": "id",
-        "note": "status=1 执行中—WIP查询时COUNT此表"
+        "note": "status=1 执行中—WIP查询时COUNT此表；请确认实际枚举值"
       },
       "Completed": {
         "description": "已完成批次",
-        "physical_condition": "local_production_batch.status = 3",
-        "applies_to_table": "local_production_batch",
+        "physical_condition": "matrix_routerx_operation_lot.status = 3",
+        "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
-        "note": "status=3 已完成"
+        "note": "status=3 已完成；请确认实际枚举值"
       },
       "Cancelled": {
         "description": "已取消批次",
-        "physical_condition": "local_production_batch.status = 4",
-        "applies_to_table": "local_production_batch",
+        "physical_condition": "matrix_routerx_operation_lot.status = 4",
+        "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
-        "note": "status=4 取消"
+        "note": "status=4 取消；请确认实际枚举值"
       }
     },
     "semi:EquipmentStatus": {
@@ -818,13 +863,19 @@
     "semi:CarrierStatus": {
       "Available": {
         "description": "载具可用/空闲",
-        "physical_condition": "⚠️ TODO: 确认真实枚举值 — carrier.status = ?",
+        "physical_condition": "carrier.status = 0",
         "applies_to_table": "carrier",
         "applies_to_column": "status"
       },
       "InUse": {
         "description": "载具使用中",
-        "physical_condition": "⚠️ TODO: 确认真实枚举值 — carrier.status = ?",
+        "physical_condition": "carrier.status = 1",
+        "applies_to_table": "carrier",
+        "applies_to_column": "status"
+      },
+      "Matainence": {
+        "description": "载具保养中",
+        "physical_condition": "carrier.status = 2",
         "applies_to_table": "carrier",
         "applies_to_column": "status"
       }
@@ -834,7 +885,7 @@
     {
       "rule_id": "BR-001",
       "name": "WIP统计口径",
-      "description": "MySQL生产执行以批次(lot)为最小跟踪单元。WIP=COUNT(routerx_lot WHERE lot_status IN (在制状态值))。local_production_batch.status=1 统计执行中的调度批。",
+      "description": "MySQL生产执行以批次(lot)为最小跟踪单元。WIP=COUNT(matrix_routerx_operation_lot WHERE status IN (在制状态值))。matrix_routerx_operation_lot.status=1 统计执行中的生产批；station关联字段：process_id。",
       "applies_to_classes": [
         "semi:ProductionLot",
         "semi:Sublot"
