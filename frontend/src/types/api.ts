@@ -30,12 +30,19 @@ export interface QueryResult {
   error?: string
 }
 
+export interface LlmTokenUsage {
+  input: number
+  output: number
+  total: number
+}
+
 export interface PipelineStep {
   step: string
   elapsed_ms: number
   summary: string
   status: 'ok' | 'error' | 'skip'
   detail?: Record<string, unknown>
+  llm_tokens?: LlmTokenUsage
 }
 
 export interface ProcessResponse {
