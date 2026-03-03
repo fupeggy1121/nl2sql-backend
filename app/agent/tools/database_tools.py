@@ -3,7 +3,9 @@ Database Tools — 封装现有 QueryExecutor + SupabaseClient
 """
 
 import logging
-from typing import Optional
+import datetime
+import decimal
+from typing import Optional, Any
 from langchain_core.tools import tool
 from app.services.query_executor import QueryExecutor
 from app.services.supabase_client import get_supabase_client
@@ -21,6 +23,29 @@ def _get_executor() -> QueryExecutor:
     return _executor
 
 
+def _make_json_safe(value: Any) -> Any:
+    """将 MySQL 返回的非 JSON 原生类型转换为可序列化类型。"""
+    if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+        return value.isoformat()
+    if isinstance(value, decimal.Decimal):
+        return float(value)
+    if isinstance(value, bytes):
+        try:
+            return value.decode("utf-8")
+        except Exception:
+            return value.hex()
+    return value
+
+
+def _sanitize_rows(rows: list) -> list:
+    """对查询结果列表中每行每列执行 JSON 安全转换。"""
+    return [
+        {k: _make_json_safe(v) for k, v in row.items()}
+        for row in rows
+        if isinstance(row, dict)
+    ]
+
+
 @tool
 def execute_query(sql: str) -> dict:
     """Execute a SQL query against the database.
@@ -30,7 +55,7 @@ def execute_query(sql: str) -> dict:
         result = executor.execute_query(sql)
 
         if result and result.get("success"):
-            data = result.get("data", [])
+            data = _sanitize_rows(result.get("data", []))
             return {
                 "success": True,
                 "data": data,
