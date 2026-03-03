@@ -354,7 +354,7 @@ class MappingDictionary:
     def _parse_business_rules(self, items: List[Dict]) -> None:
         for item in items:
             br = BusinessRule(
-                id=item["id"],
+                id=item.get("id") or item.get("rule_id", ""),
                 name=item.get("name", ""),
                 description=item.get("description", ""),
                 semantic_pattern=item.get("semantic_pattern"),
