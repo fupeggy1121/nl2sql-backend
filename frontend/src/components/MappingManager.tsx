@@ -17,7 +17,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Plus, Search, RefreshCw, Trash2, Edit2, ChevronDown, ChevronRight,
   History, Database, GitBranch, Tag, FileText, AlertCircle, X, Check,
-  RotateCcw, Book
+  Book
 } from 'lucide-react';
 import { mappingApi } from '../services/mappingApi';
 
@@ -776,7 +776,13 @@ function ValueMappingsTab() {
     if (domainValues[domain]) return;
     try {
       const res = await mappingApi.getValueDomain(domain);
-      setDomainValues(prev => ({ ...prev, [domain]: res.data || [] }));
+      // API returns {data: {"SV": {...fields}}} — transform to array
+      const raw = res.data || {};
+      const entries: ValueEntry[] = Object.entries(raw).map(([sv, info]: [string, any]) => ({
+        semantic_value: sv,
+        ...info,
+      }));
+      setDomainValues(prev => ({ ...prev, [domain]: entries }));
     } catch (e: any) {
       setError(e.message);
     }
@@ -806,7 +812,9 @@ function ValueMappingsTab() {
       await mappingApi.upsertValue(editingEntry.domain, editingEntry.sv, rest);
       // refresh domain
       const res = await mappingApi.getValueDomain(editingEntry.domain);
-      setDomainValues(prev => ({ ...prev, [editingEntry.domain]: res.data || [] }));
+      const raw = res.data || {};
+      const entries: ValueEntry[] = Object.entries(raw).map(([sv, info]: [string, any]) => ({ semantic_value: sv, ...info }));
+      setDomainValues(prev => ({ ...prev, [editingEntry.domain]: entries }));
       setEditingEntry(null);
     } catch (e: any) {
       setError(e.message);
@@ -819,7 +827,9 @@ function ValueMappingsTab() {
     try {
       await mappingApi.deleteValue(domain, sv);
       const res = await mappingApi.getValueDomain(domain);
-      setDomainValues(prev => ({ ...prev, [domain]: res.data || [] }));
+      const raw = res.data || {};
+      const entries: ValueEntry[] = Object.entries(raw).map(([sv2, info]: [string, any]) => ({ semantic_value: sv2, ...info }));
+      setDomainValues(prev => ({ ...prev, [domain]: entries }));
     } catch (e: any) {
       alert(e.message);
     }
@@ -1210,47 +1220,12 @@ function ChangelogTab() {
 export default function MappingManager() {
   const [tab, setTab] = useState<Tab>('objects');
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [reloading, setReloading] = useState(false);
-  const [dbMode, setDbMode] = useState<'prod' | 'demo' | null>(null);
-  const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
     mappingApi.getSummary()
       .then(res => setSummary(res.data))
       .catch(() => { });
-    mappingApi.getMode()
-      .then(res => setDbMode(res.data?.mode ?? null))
-      .catch(() => { });
   }, []);
-
-  const handleReload = async () => {
-    setReloading(true);
-    try {
-      await mappingApi.reloadCache();
-      // 重新获取完整的摘要信息，确保 mapping_file 字段存在
-      const summaryRes = await mappingApi.getSummary();
-      setSummary(summaryRes.data);
-    } catch (error) {
-      console.error('重载缓存失败', error);
-      alert('重载缓存失败，请稍后重试');
-    }
-    setReloading(false);
-  };
-
-  const handleSwitchMode = async () => {
-    setSwitching(true);
-    try {
-      const nextMode = dbMode === 'prod' ? 'demo' : 'prod';
-      const res = await mappingApi.switchMode(nextMode);
-      setDbMode(res.data?.mode ?? nextMode);
-      const s = await mappingApi.getSummary();
-      setSummary(s.data);
-    } catch (error) {
-      console.error('切换数据库失败', error);
-      alert('切换数据库失败，请稍后重试');
-    }
-    setSwitching(false);
-  };
 
   const TABS: { key: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
     { key: 'objects',   label: '对象映射',  icon: <Database size={15} />,    count: summary?.object_mappings },
@@ -1262,7 +1237,7 @@ export default function MappingManager() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <div className="w-full p-6 space-y-6">
 
         {/* Header */}
         <div className="flex items-start justify-between">
@@ -1275,47 +1250,10 @@ export default function MappingManager() {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-          <button
-            onClick={handleReload}
-            disabled={reloading}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50 transition-colors"
-          >
-            <RotateCcw size={15} className={reloading ? 'animate-spin' : ''} />
-            重载缓存
-          </button>
-          <button
-            onClick={handleSwitchMode}
-            disabled={switching || dbMode === null}
-            className={`flex items-center gap-2 px-4 py-2 text-sm border rounded-lg transition-colors disabled:opacity-50 ${
-              dbMode === 'prod'
-                ? 'text-green-700 bg-green-50 border-green-300 hover:bg-green-100'
-                : 'text-yellow-700 bg-yellow-50 border-yellow-300 hover:bg-yellow-100'
-            }`}
-          >
-            <Database size={15} />
-            {dbMode === 'prod' ? '生产库' : dbMode === 'demo' ? '测试库' : '…'}
-            <span className="text-xs opacity-60">点击切换</span>
-          </button>
-          </div>
+
         </div>
 
-        {/* Summary cards */}
-        {summary && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {[
-              { label: '对象映射', value: summary.object_mappings, color: 'text-blue-600' },
-              { label: '关系映射', value: summary.relation_mappings, color: 'text-purple-600' },
-              { label: '语义域',   value: summary.value_domains,    color: 'text-green-600' },
-              { label: '业务规则', value: summary.business_rules,   color: 'text-orange-600' },
-            ].map(card => (
-              <div key={card.label} className="bg-white border border-gray-200 rounded-xl p-4 text-center">
-                <p className={`text-2xl font-bold ${card.color}`}>{card.value}</p>
-                <p className="text-xs text-gray-500 mt-1">{card.label}</p>
-              </div>
-            ))}
-          </div>
-        )}
+
 
         {/* Tabs */}
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
