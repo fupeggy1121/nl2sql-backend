@@ -224,7 +224,7 @@ setCurrentIntent(queryPlan.query_intent || null);
             originalQuery: content,
           },
           intent: queryPlan.query_intent || null,
-          pipeline_trace: queryPlan.pipeline_trace,
+          pipeline_trace: response.pipeline_trace,
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
@@ -237,7 +237,7 @@ setCurrentIntent(queryPlan.query_intent || null);
           content: response.content,
           timestamp: new Date(),
           intent: queryPlan.query_intent || null,
-          pipeline_trace: queryPlan.pipeline_trace,
+          pipeline_trace: response.pipeline_trace,
         };
         setMessages((prev) => [...prev, assistantMessage]);
         await addChatMessage(sessionId, assistantMessage);
@@ -249,7 +249,7 @@ setCurrentIntent(queryPlan.query_intent || null);
           content: '我已经理解了您的查询意图，正在处理中...',
           timestamp: new Date(),
           intent: queryPlan.query_intent || null,
-          pipeline_trace: queryPlan.pipeline_trace,
+          pipeline_trace: response.pipeline_trace,
         };
         setMessages((prev) => [...prev, assistantMessage]);
         await addChatMessage(sessionId, assistantMessage);

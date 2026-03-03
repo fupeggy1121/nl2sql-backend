@@ -151,7 +151,7 @@ export default function App() {
       <header style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '0 24px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <BotMessageSquare size={20} color="#4f46e5" />
-          <span style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', marginRight: 24 }}>外延 MES · NL2SQL</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', marginRight: 24 }}>SemiOS</span>
           <nav style={{ display: 'flex', gap: 2 }}>
             {topNavItems.map(item => {
               const Icon = item.icon
