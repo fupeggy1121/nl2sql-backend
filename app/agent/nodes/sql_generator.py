@@ -320,6 +320,21 @@ def _generate_multi_step_sql(
                 desc = f.get("description", "")
                 if cond:
                     rule_lines.append(f"- {desc}: {cond}")
+                elif f.get("physical_values"):
+                    vals = ", ".join(f"'{v}'" for v in f["physical_values"])
+                    tbl = f.get("applies_to_table", "?")
+                    col = f.get("applies_to_column", "?")
+                    rule_lines.append(f"- {desc}: {tbl}.{col} IN ({vals})")
+                else:
+                    # 语义提示 — 物理枚举值尚未在 mapping 中配置
+                    tbl = f.get("applies_to_table")
+                    col = f.get("applies_to_column")
+                    sv  = f.get("semantic_value")
+                    if tbl and col and sv:
+                        rule_lines.append(
+                            f"- {desc or sv}: 必须对 {tbl}.{col} 加 WHERE 过滤，"
+                            f"语义值为 '{sv}'（请根据实际枚举值填写正确的 WHERE 条件）"
+                        )
         if rules:
             for r in rules:
                 rule_lines.append(f"- {r.get('name', '')}: {r.get('description', '')}")
@@ -500,6 +515,16 @@ def _format_semantic_context(semantic_ctx: dict) -> str:
                 tbl = f.get("applies_to_table", "?")
                 col = f.get("applies_to_column", "?")
                 lines.append(f"  {f.get('description', '')}: {tbl}.{col} IN ({vals})")
+            else:
+                # 语义提示 — 物理枚举值尚未配置（TODO），给出语义线索供 LLM 参考
+                tbl = f.get("applies_to_table")
+                col = f.get("applies_to_column")
+                sv  = f.get("semantic_value")
+                if tbl and col and sv:
+                    lines.append(
+                        f"  ⚠ {f.get('description', sv)}: "
+                        f"{tbl}.{col} 语义值 = '{sv}'（物理枚举待确认，必须加 WHERE 条件）"
+                    )
             # COUNT 目标提醒 — 关键区分 WIP 统计对象
             ct_table = f.get("count_target_table")
             ct_col = f.get("count_target_column")

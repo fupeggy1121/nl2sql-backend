@@ -114,7 +114,7 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
 
     # ── B2: 语义缓存查找（追问不使用缓存，避免上下文依赖）──
     # v4: 本体类版本前缀——当规则/模板发生重大变更时更新版本号可立即淘汰旧缓存
-    _SEMANTIC_CACHE_VERSION = "v4"
+    _SEMANTIC_CACHE_VERSION = "v5"
     _cache_key = f"{_SEMANTIC_CACHE_VERSION}:{effective_input}"
     _cache_hit = False
     if not is_followup:
@@ -164,12 +164,87 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
                 logger.warning(f"[semantic_resolver] P2 hint增强失败(非关键): {hint_err}")
         ctx_dict = ctx.to_dict()
 
+        # P3-bridge: 将 intent_router 语义过滤器注入 semantic_context.filters
+        # semantic_resolver 的关键词引擎无法识别值语义（如"可用"→status=Available）
+        # intent_router 的 LLM 已识别出 semantic_filters，此处做两件事：
+        #   1. 通过 value_mappings 字典尝试解析为精确的 physical_condition
+        #   2. 即使 mapping 尚未完善（TODO），也注入语义提示让 sql_generator 感知
+        # 仅在 semantic_resolver 自身未产生过滤条件时注入（避免重复）
+        intent_sfilters = intent_data.get("semantic_filters", [])
+        if intent_sfilters and not ctx_dict.get("filters"):
+            injected_filters = []
+            try:
+                from app.ontology.mapping import get_mapping
+                mapping = get_mapping()
+                physical_tables_set = set(ctx_dict.get("physical_tables", []))
+
+                for sf in intent_sfilters:
+                    attr = sf.get("attribute")   # e.g. "status"
+                    sv   = sf.get("semantic_value")  # e.g. "Available"
+                    if not attr or not sv:
+                        continue
+
+                    # 在所有值域中查找与 (applies_to_table ∈ physical_tables, applies_to_column = attr) 匹配的映射
+                    resolved_vm = None
+                    resolved_domain = None
+                    for domain in mapping.list_value_domains():
+                        vm = mapping.map_value(domain, sv)
+                        if (vm and vm.applies_to_column == attr
+                                and vm.applies_to_table in physical_tables_set):
+                            resolved_vm = vm
+                            resolved_domain = domain
+                            break
+
+                    if resolved_vm:
+                        pc = resolved_vm.physical_condition
+                        # 过滤掉 TODO 占位符，让 sql_generator 依赖 semantic_value 语义提示
+                        if pc and "TODO" in pc:
+                            pc = None
+                        injected_filters.append({
+                            "semantic_domain": resolved_domain,
+                            "semantic_value": sv,
+                            "description": resolved_vm.description or f"{attr}={sv}",
+                            "physical_condition": pc,
+                            "physical_values": resolved_vm.physical_values,
+                            "applies_to_table": resolved_vm.applies_to_table,
+                            "applies_to_column": resolved_vm.applies_to_column,
+                            "count_target_table": resolved_vm.count_target_table,
+                            "count_target_column": resolved_vm.count_target_column,
+                            "_source": "intent_semantic_filter",
+                        })
+                    else:
+                        # 未找到 value_mapping — 注入最小语义提示（表+列+语义值）
+                        # sql_generator 可据此构造合理的 WHERE 条件
+                        table_hint = next(iter(physical_tables_set), None)
+                        injected_filters.append({
+                            "semantic_domain": "intent",
+                            "semantic_value": sv,
+                            "description": f"{table_hint}.{attr} 应满足语义值 {sv}（需确认物理枚举）",
+                            "physical_condition": None,
+                            "physical_values": None,
+                            "applies_to_table": table_hint,
+                            "applies_to_column": attr,
+                            "count_target_table": None,
+                            "count_target_column": None,
+                            "_source": "intent_semantic_filter",
+                        })
+
+            except Exception as filter_err:
+                logger.warning(f"[semantic_resolver] 语义过滤器注入失败(非关键): {filter_err}")
+
+            if injected_filters:
+                ctx_dict["filters"] = injected_filters
+                logger.info(
+                    f"[semantic_resolver] 注入 {len(injected_filters)} 个语义过滤器"
+                    f"（来自 intent_data.semantic_filters）"
+                )
+
         elapsed_ms = (time.perf_counter() - t0) * 1000
         n_classes = len(ctx.matched_classes)
         n_joins = len(ctx.joins)
-        n_filters = len(ctx.filters)
+        n_filters = len(ctx_dict.get("filters", []))   # 包含注入的 intent semantic_filters
         n_rules = len(ctx.business_rules)
-        tables = ctx.physical_tables
+        tables = ctx_dict.get("physical_tables", [])
 
         logger.info(
             f"[semantic_resolver] Resolved in {elapsed_ms:.1f}ms — "
