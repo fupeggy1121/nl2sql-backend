@@ -92,6 +92,9 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
     user_input = state.get("user_input", "")
     resolved_input = state.get("resolved_input", "") or user_input
     is_followup = state.get("is_followup", False)
+    # P2: 读取 intent_router 产出的 target_class_hints
+    intent_data = state.get("intent_data", {})
+    target_class_hints: list = intent_data.get("target_class_hints", [])
 
     # 追问时使用消解后的输入
     effective_input = resolved_input if is_followup else user_input
@@ -138,6 +141,27 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
         from app.ontology.context_builder import build_semantic_context
 
         ctx = build_semantic_context(effective_input)
+
+        # P2: hint 增强路径 — 如果 build_semantic_context 没有匹配到物理表，
+        # 且 intent_router 提供了 target_class_hints，直接从映射字典补充 physical_tables。
+        # 这是纯 additive 操作：只在原有结果为空时补充，不覆盖已有匹配。
+        if not ctx.physical_tables and target_class_hints:
+            try:
+                from app.ontology.mapping import get_mapping
+                mapping = get_mapping()
+                hint_tables = []
+                for hint_class in target_class_hints:
+                    pt = mapping.get_physical_table(hint_class)
+                    if pt and pt.table_name and pt.table_name not in hint_tables:
+                        hint_tables.append(pt.table_name)
+                if hint_tables:
+                    ctx.physical_tables = hint_tables
+                    logger.info(
+                        f"[semantic_resolver] P2 hint补充 physical_tables: "
+                        f"{hint_tables} (来自 target_class_hints {target_class_hints})"
+                    )
+            except Exception as hint_err:
+                logger.warning(f"[semantic_resolver] P2 hint增强失败(非关键): {hint_err}")
         ctx_dict = ctx.to_dict()
 
         elapsed_ms = (time.perf_counter() - t0) * 1000

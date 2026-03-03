@@ -107,16 +107,27 @@ def intent_router_node(state: AgentState) -> dict:
         f"cache={'HIT' if _cache_hit else 'MISS'}"
     )
 
+    # P1: 读取新结构化字段
+    query_type = intent_data.get("query_type", "LIST")
+    target_class_hints = intent_data.get("target_class_hints", [])
+    semantic_filters = intent_data.get("semantic_filters", [])
+
     # ── Pipeline Trace ──
     trace = list(state.get("pipeline_trace", []))
     trace_step(trace, "intent_router", _t0, summary=(
-        f"意图: {raw_intent} → {route}, 置信度: {intent_data.get('confidence', 0):.2f}"
+        f"意图: {raw_intent} → {route} [{query_type}]"
+        f", 置信度: {intent_data.get('confidence', 0):.2f}"
+        + (f", 类: {target_class_hints}" if target_class_hints else "")
         + (" [缓存]" if _cache_hit else "")
     ), detail={
         "raw_intent": raw_intent,
         "route": route,
         "confidence": intent_data.get("confidence", 0),
         "entities": intent_data.get("entities", {}),
+        # P1: 新字段
+        "query_type": query_type,
+        "target_class_hints": target_class_hints,
+        "semantic_filters": semantic_filters,
         "cache_hit": _cache_hit,
     })
 

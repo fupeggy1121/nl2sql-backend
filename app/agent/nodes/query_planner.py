@@ -53,6 +53,10 @@ def query_planner_node(state: AgentState) -> dict:
         "product_line": entities.get("productLine"),
         "limit": entities.get("limit"),
         "filters": entities.get("filters", {}),
+        # P1: 结构化查询类型（LIST/COUNT/AGGREGATE/TREND）
+        "query_type": intent_data.get("query_type", "LIST"),
+        # P1: 语义过滤器（来自 intent_router 的 LLM 分析）
+        "semantic_filters": intent_data.get("semantic_filters", []),
         # Phase C: 对话上下文
         "is_followup": is_followup,
         "conversation_context": memory_context.get("context_summary", ""),

@@ -107,12 +107,18 @@ class IntentRecognizer:
                        f"confidence={rule_result['confidence']:.2f}")
             
             # Step 2: Return if rule confidence is high
-            if rule_result['confidence'] > 0.8:
+            # Note: even for high-confidence rule matches, query_type defaults to LIST;
+            # for COUNT/AGGREGATE/TREND we still need LLM judgment.
+            if rule_result['confidence'] > 0.8 and rule_result.get('intent') == 'chat':
+                # chat 意图：规则已足够，不需要 LLM 判断 query_type
                 return {
                     'success': True,
                     'intent': rule_result['intent'],
                     'confidence': rule_result['confidence'],
                     'entities': rule_result['entities'],
+                    'query_type': 'LIST',
+                    'target_class_hints': [],
+                    'semantic_filters': [],
                     'clarifications': self._generate_clarifications(
                         rule_result['intent'],
                         rule_result['entities'],
@@ -135,6 +141,10 @@ class IntentRecognizer:
                 'intent': merged['intent'],
                 'confidence': merged['confidence'],
                 'entities': merged['entities'],
+                # P1: 新增结构化输出字段
+                'query_type': merged.get('query_type', 'LIST'),
+                'target_class_hints': merged.get('target_class_hints', []),
+                'semantic_filters': merged.get('semantic_filters', []),
                 'clarifications': self._generate_clarifications(
                     merged['intent'],
                     merged['entities'],
@@ -218,12 +228,44 @@ class IntentRecognizer:
             'entities': self._extract_entities(text, best_intent)
         }
     
+    # ── P0: 本体类目录缓存（延迟加载，模块生命周期内只加载一次）──
+    _ontology_class_labels: Optional[List[str]] = None
+
+    def _get_ontology_class_labels(self) -> List[str]:
+        """
+        从 MappingRegistry 读取所有非虚拟本体类的 label_cn → logic_class 映射。
+        延迟加载，避免循环依赖和启动耗时。
+        格式: ["semi:Carrier（载具）", "semi:Equipment（设备）", ...]
+        """
+        if IntentRecognizer._ontology_class_labels is not None:
+            return IntentRecognizer._ontology_class_labels
+        try:
+            from app.ontology.mapping import get_mapping
+            reg = get_mapping()
+            labels = [
+                f"{pt.logic_class}（{pt.label_cn}）"
+                for pt in reg._table_by_class.values()
+                if not pt.virtual and pt.table_name
+            ]
+            IntentRecognizer._ontology_class_labels = labels
+            logger.info(f"[intent_recognizer] Loaded {len(labels)} ontology class labels")
+            return labels
+        except Exception as e:
+            logger.warning(f"[intent_recognizer] Failed to load ontology labels: {e}")
+            IntentRecognizer._ontology_class_labels = []
+            return []
+
     def _llm_based_match(self, text: str) -> Dict[str, Any]:
         """
-        Intent recognition using DeepSeek LLM.
+        半导体制造领域专用意图识别 (P0+P1 改造版本)。
+
+        改造内容：
+          P0 - 注入本体类目录 + 半导体术语词典到 prompt，提升领域识别精度
+          P1 - 新增 query_type (LIST/COUNT/AGGREGATE/TREND) 和 target_class_hints 字段
 
         Returns:
-            dict: LLM matching result with keys: intent, confidence, entities, reasoning
+            dict: 包含 intent, confidence, entities, query_type,
+                  target_class_hints, semantic_filters, reasoning
         """
         if not self.llm_provider:
             logger.warning("LLM provider not available, returning empty LLM result")
@@ -231,73 +273,126 @@ class IntentRecognizer:
                 'intent': 'other',
                 'confidence': 0.0,
                 'entities': {},
+                'query_type': 'LIST',
+                'target_class_hints': [],
+                'semantic_filters': [],
                 'reasoning': 'LLM provider not available'
             }
-        
-        intent_list = ', '.join(self.intents.keys())
 
-        prompt = f"""Analyze the user query intent in a MES (Manufacturing Execution System) assistant.
+        # P0: 注入本体类目录
+        class_labels = self._get_ontology_class_labels()
+        class_list_str = "\n".join(f"  - {lbl}" for lbl in class_labels) if class_labels else "  （本体类目录暂不可用）"
 
-Possible intent types and descriptions:
-{chr(10).join(f"- {k}: {v['description']}" for k, v in self.intents.items())}
+        prompt = f"""你是半导体CIM/MES系统的查询意图分析专家。请分析用户输入的查询意图。
 
-IMPORTANT RULES:
-- If the input is a greeting (你好/您好/hello/hi), self-introduction question (你叫什么/你是谁), 
-  or general chat (谢谢/再见/你能做什么), classify as "chat" with high confidence.
-- Only classify as a query intent if the user is asking for MES data or production metrics.
+## 可查询的本体类（业务对象）
+{class_list_str}
 
-User input: "{text}"
+## 半导体行业常用术语对照
+- 片篮 / 载具 / Carrier / FOUP / SMIF Pod → semi:Carrier
+- 批次 / Lot / 投片批 → semi:ProductionLot
+- 子批次 / 本地批 / Batch → semi:Sublot
+- WIP / 在制 / 在制品 → semi:Sublot 或 semi:ProductionLot（status=Running/执行中）
+- 设备 / 机台 / Equipment → semi:Equipment
+- 工序 / 工艺站点 / Station → semi:ProcessStation
+- 工艺路线 / Route → semi:Route
+- 产品模型 / ProductModel → semi:ProductModel
+- 工单 / 排程 / Order → semi:ProductionOrder
+- 配方 / Recipe → semi:Recipe
+- 物料 / Material → semi:Material
+- 辅料 / Auxiliary → semi:Auxiliary
 
-Return analysis result in JSON format (must be valid JSON):
+## query_type 判断规则
+- LIST    : 查询列表 / 显示所有 / 返回记录（"列表"是完整词，不要拆分）
+- COUNT   : 统计数量 / 有多少 / 数一数（量词类问题）
+- AGGREGATE: 求和 / 平均 / 最大最小 / 良率 / 稼动率
+- TREND   : 趋势 / 对比 / 同比 / 环比 / 按时间分组
+
+## Few-shot 示例
+Q: "查询可用的片篮列表"
+A: intent=direct_query, query_type=LIST, target_class_hints=["semi:Carrier"],
+   semantic_filters=[{{"attribute":"status","semantic_value":"Available"}}]
+
+Q: "统计当前在制的批次数量"
+A: intent=query_production, query_type=COUNT, target_class_hints=["semi:ProductionLot"],
+   semantic_filters=[{{"attribute":"lot_status","semantic_value":"Running"}}]
+
+Q: "本月各工序的设备稼动率"
+A: intent=query_equipment, query_type=AGGREGATE, target_class_hints=["semi:Equipment","semi:ProcessStation"],
+   semantic_filters=[]
+
+Q: "过去7天良率趋势"
+A: intent=query_quality, query_type=TREND, target_class_hints=["semi:ProductionLot"],
+   semantic_filters=[{{"attribute":"timeRange","semantic_value":"last_7_days"}}]
+
+Q: "你好"
+A: intent=chat, query_type=LIST, target_class_hints=[], semantic_filters=[]
+
+## 当前用户输入
+"{text}"
+
+## 输出要求
+必须返回合法 JSON，不允许有注释或 markdown 代码块：
 {{
-    "intent": "intent_type",
+    "intent": "direct_query|query_production|query_quality|query_equipment|generate_report|compare_analysis|chat|knowledge_qa|explain",
+    "query_type": "LIST|COUNT|AGGREGATE|TREND",
+    "target_class_hints": ["semi:Carrier"],
+    "semantic_filters": [{{"attribute": "status", "semantic_value": "Available"}}],
     "confidence": 0.95,
-    "entities": {{
-        "timeRange": "time_range",
-        "metric": "metric"
-    }},
-    "reasoning": "reason_for_judgment"
+    "entities": {{"timeRange": "today", "table": "carrier"}},
+    "reasoning": "判断理由"
 }}"""
-        
+
+        response = ""
         try:
             response = self.llm_provider.generate(prompt)
-            
-            # Auto-remove markdown code block wrapper (e.g. ```json ... ```)
-            if response.strip().startswith('```'):
-                lines = response.strip().splitlines()
-                json_str = '\n'.join(line for line in lines[1:] if not line.strip().startswith('```'))
+
+            # 去除 markdown 代码块包裹（若存在）
+            stripped = response.strip()
+            if stripped.startswith('```'):
+                lines = stripped.splitlines()
+                json_str = '\n'.join(
+                    line for line in lines[1:]
+                    if not line.strip().startswith('```')
+                )
             else:
-                json_str = response
-            
-            # Parse JSON result
+                json_str = stripped
+
             result = json.loads(json_str)
-            
+
             return {
                 'intent': result.get('intent', 'other'),
                 'confidence': float(result.get('confidence', 0.0)),
                 'entities': result.get('entities', {}),
+                'query_type': result.get('query_type', 'LIST'),
+                'target_class_hints': result.get('target_class_hints', []),
+                'semantic_filters': result.get('semantic_filters', []),
                 'reasoning': result.get('reasoning', '')
             }
-        
+
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM response: {str(e)}")
-            logger.error(f"LLM raw response: {response}")
+            logger.error(f"Failed to parse LLM response as JSON: {e}")
+            logger.error(f"LLM raw response: {response[:500]}")
             return {
                 'intent': 'other',
                 'confidence': 0.0,
                 'entities': {},
-                'reasoning': 'Failed to parse LLM response',
+                'query_type': 'LIST',
+                'target_class_hints': [],
+                'semantic_filters': [],
+                'reasoning': 'JSON parse failed',
                 'llm_raw_response': response
             }
         except Exception as e:
-            logger.error(f"LLM matching error: {str(e)}")
-            logger.error(f"LLM raw response: {response}")
+            logger.error(f"LLM matching error: {e}")
             return {
                 'intent': 'other',
                 'confidence': 0.0,
                 'entities': {},
-                'reasoning': f'LLM error: {str(e)}',
-                'llm_raw_response': response
+                'query_type': 'LIST',
+                'target_class_hints': [],
+                'semantic_filters': [],
+                'reasoning': f'LLM error: {str(e)}'
             }
     
     def _extract_entities(self, text: str, intent: str) -> Dict[str, Any]:
@@ -439,6 +534,7 @@ Return analysis result in JSON format (must be valid JSON):
           1. Prioritize LLM intent judgment (more accurate)
           2. Merge entity extraction results from both methods
           3. Use higher confidence score
+          4. P1: propagate query_type / target_class_hints / semantic_filters from LLM
         """
         return {
             'intent': llm_result.get('intent', rule_result['intent']),
@@ -450,6 +546,10 @@ Return analysis result in JSON format (must be valid JSON):
                 **rule_result.get('entities', {}),
                 **llm_result.get('entities', {})
             },
+            # P1: 新增结构化字段，来自 LLM 半导体专用 prompt
+            'query_type': llm_result.get('query_type', 'LIST'),
+            'target_class_hints': llm_result.get('target_class_hints', []),
+            'semantic_filters': llm_result.get('semantic_filters', []),
             'methodsUsed': ['rule', 'llm']
         }
     
