@@ -422,10 +422,13 @@
   "relation_mappings": [
     {
       "logic_relation": "semi:belongsToLot",
-      "description": "Wafer 属于哪个 ProductionLot — 虚拟关系(MySQL无独立晶圆表)",
-      "strategy": "Virtual",
+      "description": "Wafer 属于哪个 ProductionLot",
+      "strategy": "ForeignKey",
       "join_logic": {
-        "note": "Wafer在MySQL生产执行层为虚拟类，暂无物理实现。"
+        "source_table": "matrix_routerx_operation_lot_wafer",
+        "source_key": "lot_id",
+        "target_key": "id",
+        "target_table": "matrix_routerx_operation_lot"
       }
     },
     {
@@ -749,34 +752,72 @@
   "value_mappings": {
     "semi:BatchStatus": {
       "Pending": {
-        "description": "待执行批次",
+        "description": "待加工批次（刚投料，未进行任何加工操作）",
         "physical_condition": "matrix_routerx_operation_lot.status = 0",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
-        "note": "status=0 待执行"
+        "note": "status=0 待加工/待执行"
       },
       "Running": {
-        "description": "执行中批次（WIP）",
-        "physical_condition": "matrix_routerx_operation_lot.status = 1",
+        "description": "加工中批次（WIP，处于加工过程中）",
+        "physical_condition": "matrix_routerx_operation_lot.status = 50",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
-        "count_target_table": "matrix_routerx_operation_lot",
+        "count_target_table": "matrix_routerx_operation_lot_wafer",
         "count_target_column": "id",
-        "note": "status=1 执行中—WIP查询时COUNT此表；请确认实际枚举值"
+        "count_join": "matrix_routerx_operation_lot_wafer.lot_id = matrix_routerx_operation_lot.id",
+        "note": "status=50 加工中。WIP统计以wafer为粒度：COUNT wafer JOIN lot WHERE lot.status=50，按lot.process_id分组得各站点在制wafer数"
       },
       "Completed": {
-        "description": "已完成批次",
-        "physical_condition": "matrix_routerx_operation_lot.status = 3",
+        "description": "已完结批次（批次加工完成，转化为成品或报废）",
+        "physical_condition": "matrix_routerx_operation_lot.status = 100",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
-        "note": "status=3 已完成；请确认实际枚举值"
+        "note": "status=100 完结"
       },
       "Cancelled": {
-        "description": "已取消批次",
-        "physical_condition": "matrix_routerx_operation_lot.status = 4",
+        "description": "已作废批次（针对待加工批次取消开批）",
+        "physical_condition": "matrix_routerx_operation_lot.status = -50",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
-        "note": "status=4 取消；请确认实际枚举值"
+        "note": "status=-50 已作废"
+      }
+    },
+    "semi:LotProcessStatus": {
+      "PreInStation": {
+        "description": "待进站（批次尚未进入站点加工）",
+        "physical_condition": "matrix_routerx_operation_lot.process_status = 0",
+        "applies_to_table": "matrix_routerx_operation_lot",
+        "applies_to_column": "process_status",
+        "note": "process_status=0 PRE_IN_STATION 待加工，对应status=50（加工中）下的子状态"
+      },
+      "PreExecuting": {
+        "description": "已进站/待执行（批次已进站，尚未开始执行）",
+        "physical_condition": "matrix_routerx_operation_lot.process_status = 50",
+        "applies_to_table": "matrix_routerx_operation_lot",
+        "applies_to_column": "process_status",
+        "note": "process_status=50 PRE_EXECUTING 已进站"
+      },
+      "Executing": {
+        "description": "执行中（批次正在站点上执行加工）",
+        "physical_condition": "matrix_routerx_operation_lot.process_status = 100",
+        "applies_to_table": "matrix_routerx_operation_lot",
+        "applies_to_column": "process_status",
+        "note": "process_status=100 EXECUTING 执行中"
+      },
+      "PreOutStation": {
+        "description": "待出站/已执行（加工完成，等待出站确认）",
+        "physical_condition": "matrix_routerx_operation_lot.process_status = 150",
+        "applies_to_table": "matrix_routerx_operation_lot",
+        "applies_to_column": "process_status",
+        "note": "process_status=150 PRE_OUT_STATION 待出站"
+      },
+      "OutStation": {
+        "description": "已出站（批次已完成出站，离开当前站点）",
+        "physical_condition": "matrix_routerx_operation_lot.process_status = 200",
+        "applies_to_table": "matrix_routerx_operation_lot",
+        "applies_to_column": "process_status",
+        "note": "process_status=200 OUT_STATION 已出站"
       }
     },
     "semi:EquipmentStatus": {
@@ -885,10 +926,11 @@
     {
       "rule_id": "BR-001",
       "name": "WIP统计口径",
-      "description": "MySQL生产执行以批次(lot)为最小跟踪单元。WIP=COUNT(matrix_routerx_operation_lot WHERE status IN (在制状态值))。matrix_routerx_operation_lot.status=1 统计执行中的生产批；station关联字段：process_id。",
+      "description": "WIP（在制品）以wafer为统计粒度，不以lot为单位。正确SQL：SELECT p.name, COUNT(DISTINCT w.id) AS wip_wafer_count FROM matrix_routerx_operation_lot_wafer w JOIN matrix_routerx_operation_lot lot ON w.lot_id = lot.id JOIN matrix_routerx_config_process p ON lot.process_id = p.id WHERE lot.status = 50 GROUP BY p.id, p.name。lot.status=50 表示加工中批次；lot.process_id 关联当前所在站点。process_status 是 status=50 下的加工子状态（0待进站/50已进站/100执行中/150待出站/200已出站），统计WIP时通常不需要过滤process_status。",
       "applies_to_classes": [
+        "semi:Wafer",
         "semi:ProductionLot",
-        "semi:Sublot"
+        "semi:ProcessStation"
       ]
     },
     {
@@ -903,7 +945,7 @@
     {
       "rule_id": "BR-003",
       "name": "产品→产品模型的两跳关联",
-      "description": "routerx_lot 记录的 product_id 指向 product 表（产品实例），而非 product_model。查询产品模型时需两跳：routerx_lot.product_id→product.id→product.product_model_id→product_model.id。",
+      "description": "matrix_routerx_operation_lot 记录的 product_id 指向 product 表（产品实例），而非 product_model。查询产品模型时需两跳：matrix_routerx_operation_lot.product_id→product.id→product.product_model_id→product_model.id。",
       "applies_to_classes": [
         "semi:ProductionLot",
         "semi:Product",
