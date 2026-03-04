@@ -82,7 +82,8 @@
         "trace_id",
         "bind_production_scheduling",
         "order_id"
-      ]
+      ],
+      "filter_condition": "parent_id = 0"
     },
     {
       "logic_class": "semi:Sublot",
@@ -927,10 +928,17 @@
     {
       "rule_id": "BR-001",
       "name": "WIP统计口径",
-      "description": "WIP（在制品）以wafer为统计粒度，不以lot为单位。正确SQL：SELECT p.name, COUNT(DISTINCT w.id) AS wip_wafer_count FROM matrix_routerx_operation_lot_wafer w JOIN matrix_routerx_operation_lot lot ON w.lot_id = lot.id JOIN matrix_routerx_config_process p ON lot.process_id = p.id WHERE lot.status = 50 GROUP BY p.id, p.name。lot.status=50 表示加工中批次；lot.process_id 关联当前所在站点。process_status 是 status=50 下的加工子状态（0待进站/50已进站/100执行中/150待出站/200已出站），统计WIP时通常不需要过滤process_status。",
+      "description": "WIP（在制品）以wafer为统计粒度，不以lot（批次）为统计单位。加工处理以子批次(Sublot, parent_id!=0)为调度单位，必须通过2跳路径：Wafer → Sublot(parent_id!=0) → ProcessStation。主批次(parent_id=0)不含工序信息，直接JOIN会导致重复计数。正确SQL：SELECT p.name AS 站点名称, p.code AS 站点编码, COUNT(DISTINCT w.id) AS 在制品数量 FROM matrix_routerx_operation_lot_wafer w JOIN matrix_routerx_operation_lot sub ON w.sub_lot_id = sub.id AND sub.parent_id != 0 JOIN matrix_routerx_config_process p ON sub.process_id = p.id WHERE sub.status = 50 GROUP BY p.name, p.code ORDER BY 在制品数量 DESC。sub.status=50 表示加工中的子批次；sub.process_id 关联当前所在站点。",
+      "physical_sql_template": "SELECT p.name AS 站点名称, p.code AS 站点编码, COUNT(DISTINCT w.id) AS 在制品数量 FROM matrix_routerx_operation_lot_wafer w JOIN matrix_routerx_operation_lot sub ON w.sub_lot_id = sub.id AND sub.parent_id != 0 JOIN matrix_routerx_config_process p ON sub.process_id = p.id WHERE sub.status = 50 GROUP BY p.name, p.code ORDER BY 在制品数量 DESC",
+      "trigger_keywords": ["在制品", "WIP", "wip", "在制", "站点在制", "各站点", "各个站点"],
+      "involved_tables": [
+        "matrix_routerx_operation_lot_wafer",
+        "matrix_routerx_operation_lot",
+        "matrix_routerx_config_process"
+      ],
       "applies_to_classes": [
         "semi:Wafer",
-        "semi:ProductionLot",
+        "semi:Sublot",
         "semi:ProcessStation"
       ]
     },
