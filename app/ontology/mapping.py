@@ -34,6 +34,7 @@ class PhysicalTable:
     properties: Dict[str, Optional[str]] = field(default_factory=dict)
     virtual: bool = False
     embedded_in: Optional[str] = None
+    filter_condition: Optional[str] = None  # 同表多类区分条件，e.g. "parent_id != 0"
     note: Optional[str] = None
 
 
@@ -257,6 +258,7 @@ class MappingDictionary:
                 properties=item.get("properties", {}),
                 virtual=item.get("virtual", False),
                 embedded_in=item.get("embedded_in"),
+                filter_condition=item.get("filter_condition"),
                 note=item.get("note"),
             )
             self._table_by_class[pt.logic_class] = pt

@@ -86,27 +86,27 @@
     },
     {
       "logic_class": "semi:Sublot",
-      "physical_table": "local_production_batch",
+      "physical_table": "matrix_routerx_operation_lot",
       "primary_key": "id",
-      "label_cn": "子批次/本地批次",
-      "display_column": "batch_no",
+      "label_cn": "子批次",
+      "display_column": "current_lot_code",
+      "filter_condition": "parent_id != 0",
       "properties": {
         "semi:hasState": "status"
       },
       "key_columns": [
         "id",
-        "batch_no",
-        "lot_id",
+        "current_lot_code",
+        "parent_id",
+        "parent_lot_code",
         "product_id",
+        "process_id",
+        "process_status",
         "status",
-        "current_station_id",
-        "carrier_id",
-        "good_qty",
-        "defect_qty",
-        "total_qty",
+        "carrier_code",
         "gmt_create"
       ],
-      "note": "MySQL中无严格Sublot概念。local_production_batch 对应批次下的分拆调度单元，语义近似Sublot。status: 0=待执行, 1=执行中, 3=已完成, 4=取消。"
+      "note": "Sublot与ProductionLot共用同一张物理表 matrix_routerx_operation_lot，通过 parent_id 区分：parent_id=0 为主批次(ProductionLot)，parent_id!=0 为子批次(Sublot)，值为所属主批次的id。加工以子批次为单位，process_id 指向当前所处工艺站点。"
     },
     {
       "logic_class": "semi:ProcessStation",
@@ -433,10 +433,14 @@
     },
     {
       "logic_relation": "semi:belongsToSublot",
-      "description": "Wafer 属于哪个 Sublot — 虚拟关系",
-      "strategy": "Virtual",
+      "description": "Wafer 属于哪个 Sublot（子批次）",
+      "strategy": "ForeignKey",
       "join_logic": {
-        "note": "Wafer在MySQL生产执行层为虚拟类，暂无物理实现。"
+        "source_table": "matrix_routerx_operation_lot_wafer",
+        "source_key": "sub_lot_id",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "id",
+        "note": "matrix_routerx_operation_lot_wafer.sub_lot_id → matrix_routerx_operation_lot.id（WHERE parent_id != 0）"
       }
     },
     {
@@ -449,14 +453,14 @@
     },
     {
       "logic_relation": "semi:atStation",
-      "description": "Lot/Batch 当前所处工序",
+      "description": "Sublot 当前所处工艺站点（加工以子批次为单位）",
       "strategy": "ForeignKey",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot",
         "source_key": "process_id",
         "target_table": "matrix_routerx_config_process",
         "target_key": "id",
-        "note": "matrix_routerx_operation_lot.process_id → matrix_routerx_config_process.id"
+        "note": "Sublot与ProductionLot同表，process_id 存储当前所处站点。路径：Wafer.sub_lot_id → lot.id（Sublot）→ lot.process_id → process.id（ProcessStation）"
       }
     },
     {
@@ -763,10 +767,7 @@
         "physical_condition": "matrix_routerx_operation_lot.status = 50",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
-        "count_target_table": "matrix_routerx_operation_lot_wafer",
-        "count_target_column": "id",
-        "count_join": "matrix_routerx_operation_lot_wafer.lot_id = matrix_routerx_operation_lot.id",
-        "note": "status=50 加工中。WIP统计以wafer为粒度：COUNT wafer JOIN lot WHERE lot.status=50，按lot.process_id分组得各站点在制wafer数"
+        "note": "status=50 加工中。WIP统计口径由 BR-001 定义：以wafer为粒度COUNT wafer.id，路径 Wafer→Sublot(atStation)→ProcessStation"
       },
       "Completed": {
         "description": "已完结批次（批次加工完成，转化为成品或报废）",

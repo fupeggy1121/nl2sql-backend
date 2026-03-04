@@ -55,6 +55,7 @@ class MatchedClass:
     display_column: Optional[str]
     key_columns: List[str] = field(default_factory=list)
     virtual: bool = False
+    filter_condition: Optional[str] = None  # 同表多类区分条件，e.g. "parent_id != 0"
 
 
 @dataclass
@@ -129,6 +130,8 @@ class SemanticContext:
                 cols = ", ".join(mc.key_columns)
                 lines.append(f"-- {mc.label_cn}({mc.logic_class})")
                 lines.append(f"TABLE {mc.physical_table} ({cols})")
+                if mc.filter_condition:
+                    lines.append(f"  -- ⚠ 同表多类过滤: WHERE {mc.filter_condition}")
         if self.joins:
             lines.append("")
             lines.append("-- JOIN conditions")
@@ -175,6 +178,7 @@ class SemanticContext:
                     "display_column": mc.display_column,
                     "key_columns": mc.key_columns,
                     "virtual": mc.virtual,
+                    **({"filter_condition": mc.filter_condition} if mc.filter_condition else {}),
                 }
                 for mc in self.matched_classes
             ],
@@ -801,6 +805,7 @@ class SemanticContextBuilder:
             display_column=pt.display_column,
             key_columns=pt.key_columns,
             virtual=pt.virtual,
+            filter_condition=pt.filter_condition,
         )
 
     # ----------------------------------------------------------------- #
