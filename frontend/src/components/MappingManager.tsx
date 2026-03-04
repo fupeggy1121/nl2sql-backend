@@ -31,6 +31,7 @@ interface ObjectMapping {
   primary_key: string | null;
   label_cn: string;
   display_column: string | null;
+  filter_condition?: string | null;  // 同表多类区分条件，e.g. "parent_id != 0"
   key_columns: string[];
   properties: Record<string, string | null>;
   virtual?: boolean;
@@ -237,8 +238,8 @@ function ObjectMappingsTab() {
   const openAdd = () => {
     setEditItem({
       logic_class: '', physical_table: '', primary_key: 'id',
-      label_cn: '', display_column: '', key_columns: [], properties: {},
-      virtual: false, note: '',
+      label_cn: '', display_column: '', filter_condition: '',
+      key_columns: [], properties: {}, virtual: false, note: '',
     });
     setIsEditing(false);
     setShowModal(true);
@@ -348,6 +349,11 @@ function ObjectMappingsTab() {
                 <td className="px-4 py-3 font-mono text-xs text-blue-700">{item.logic_class}</td>
                 <td className="px-4 py-3 font-mono text-xs text-gray-600">
                   {item.physical_table || <span className="text-gray-300 italic">virtual</span>}
+                  {item.filter_condition && (
+                    <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 rounded">
+                      WHERE {item.filter_condition}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-gray-800">{item.label_cn}</td>
                 <td className="px-4 py-3 font-mono text-xs text-gray-500">{item.display_column || '—'}</td>
@@ -454,6 +460,18 @@ function ObjectMappingsTab() {
               />
             </Field>
           </div>
+
+          <Field
+            label="Filter Condition（同表多类过滤）"
+            hint="当多个本体类共用同一张物理表时，用于区分的 WHERE 条件。例：parent_id != 0（子批次）或 parent_id = 0（主批次）。留空表示无过滤。"
+          >
+            <input
+              value={editItem.filter_condition || ''}
+              onChange={e => setEditItem({ ...editItem, filter_condition: e.target.value || null })}
+              className={inputCls}
+              placeholder="parent_id != 0"
+            />
+          </Field>
 
           <Field label="Key Columns" hint="给 LLM 的 schema 提示列（逗号分隔）">
             <textarea

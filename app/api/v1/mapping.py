@@ -127,6 +127,7 @@ class ObjectMappingIn(BaseModel):
     primary_key: Optional[str] = "id"
     label_cn: str = ""
     display_column: Optional[str] = None
+    filter_condition: Optional[str] = None  # 同表多类区分条件，e.g. "parent_id != 0"
     key_columns: List[str] = []
     properties: Dict[str, Any] = {}
     virtual: bool = False
@@ -138,6 +139,7 @@ class ObjectMappingUpdate(BaseModel):
     primary_key: Optional[str] = None
     label_cn: Optional[str] = None
     display_column: Optional[str] = None
+    filter_condition: Optional[str] = None  # 同表多类区分条件
     key_columns: Optional[List[str]] = None
     properties: Optional[Dict[str, Any]] = None
     virtual: Optional[bool] = None
