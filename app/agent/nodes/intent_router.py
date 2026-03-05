@@ -40,13 +40,22 @@ def intent_router_node(state: AgentState) -> dict:
     if state.get("approved_sql"):
         _t0 = time.perf_counter()
         trace = list(state.get("pipeline_trace", []))
+        # 保留前端传入的 query_type（来自上一轮 query 的意图识别结果），
+        # 确保 result_analyzer 规则引擎能正确推荐图表类型（e.g. LIST→table）
+        prior_query_type = (state.get("intent_data") or {}).get("query_type", "")
         trace_step(trace, "intent_router", _t0,
                    summary="approved_sql 模式: 跳过意图分类, 直接执行已批准的 SQL",
                    detail={"raw_intent": "direct_query", "route": "query",
-                           "confidence": 1.0, "approved_sql_mode": True})
+                           "confidence": 1.0, "approved_sql_mode": True,
+                           "preserved_query_type": prior_query_type})
         return {
             "intent": "query",
-            "intent_data": {"intent": "direct_query", "confidence": 1.0, "entities": {}},
+            "intent_data": {
+                "intent": "direct_query",
+                "confidence": 1.0,
+                "entities": {},
+                "query_type": prior_query_type,  # 传递给 result_analyzer
+            },
             "start_time": time.time(),
             "pipeline_trace": trace,
         }

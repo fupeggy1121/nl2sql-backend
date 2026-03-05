@@ -292,7 +292,7 @@ class IntentRecognizer:
 - 片篮 / 载具 / Carrier / FOUP / SMIF Pod → semi:Carrier
 - 批次 / Lot / 投片批 → semi:ProductionLot
 - 子批次 / 本地批 / Batch → semi:Sublot
-- WIP / 在制 / 在制品 → semi:Sublot 或 semi:ProductionLot（status=Running/执行中）
+- WIP / 在制 / 在制品 → semi:wafer （status=Running/执行中）
 - 设备 / 机台 / Equipment → semi:Equipment
 - 工序 / 工艺站点 / Station → semi:ProcessStation
 - 工艺路线 / Route → semi:Route

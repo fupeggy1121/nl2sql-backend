@@ -270,7 +270,7 @@ setCurrentIntent(queryPlan.query_intent || null);
     }
   };
 
-  const handleExecuteSQL = async (sql: string, messageId: string) => {
+  const handleExecuteSQL = async (sql: string, messageId: string, queryIntent?: typeof currentIntent) => {
     if (!dbConnected) {
       alert('数据库连接已断开，请稍后重试');
       return;
@@ -280,7 +280,7 @@ setCurrentIntent(queryPlan.query_intent || null);
     setStep('execute');
 
     try {
-      const response = await nl2sqlApi.executeApprovedQuery(sql);
+      const response = await nl2sqlApi.executeApprovedQuery(sql, queryIntent ?? currentIntent ?? undefined);
 
       if (response.success) {
         setStep('results');
@@ -349,7 +349,8 @@ setCurrentIntent(queryPlan.query_intent || null);
       return;
     }
 
-    await handleExecuteSQL(message.sqlSuggestion.sql, message.id);
+    // 传递原始查询的 intent（含 query_type），确保 result_analyzer 能正确推断图表类型
+    await handleExecuteSQL(message.sqlSuggestion.sql, message.id, message.intent ?? undefined);
   };
 
   const handleCopySQL = (sql: string, sqlId: string) => {

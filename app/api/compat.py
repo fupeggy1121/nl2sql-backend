@@ -148,6 +148,10 @@ async def compat_execute_query(request: Request):
             "sql_retry_count": 0,
             "approved_sql": sql_query,
             "sql_edited": bool(body.get("sql_edited", False)),  # 前端手动编辑过 SQL 时为 True
+            # 保留上一轮 query 的 query_type，供 result_analyzer 规则引擎使用
+            "intent_data": {
+                "query_type": query_intent_data.get("query_type", ""),
+            },
         }
         result = await agent.ainvoke(initial_state)
         response_data = result.get("response", {})
