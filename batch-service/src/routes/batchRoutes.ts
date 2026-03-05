@@ -16,6 +16,7 @@ import {
   listProducts,
   listLossWafers,
   getSubBatches,
+  getAggregatedWafers,
 } from '../controllers/batchQueryController';
 
 // 操作控制器
@@ -61,6 +62,9 @@ router.get('/:id/sub-batches', optAuth, asyncHandler(getSubBatches));
 
 /** 批次晶圆数据 — GET /api/batch/:id/wafers?stationCode=xxx */
 router.get('/:id/wafers', optAuth, asyncHandler(getBatchWafers));
+
+/** 聚合晶圆数据（跨站点） — GET /api/batch/:id/aggregated-wafers */
+router.get('/:id/aggregated-wafers', optAuth, asyncHandler(getAggregatedWafers));
 
 /** 操作历史 — GET /api/batch/:id/history?limit=50 */
 router.get('/:id/history', optAuth, asyncHandler(getBatchHistory));

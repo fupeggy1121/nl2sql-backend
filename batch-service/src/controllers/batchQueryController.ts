@@ -183,3 +183,43 @@ export async function getSubBatches(req: Request, res: Response): Promise<void> 
   };
   res.json(response);
 }
+
+/**
+ * GET /api/batch/:id/aggregated-wafers
+ * 聚合晶圆数据（跨站点）— 用于"最终分选总览"
+ * 返回每片晶圆在所有站点的检测结果
+ */
+export async function getAggregatedWafers(req: Request, res: Response): Promise<void> {
+  const id = req.params.id as string;
+
+  // 1. 获取该批次所有晶圆
+  const wafers = await waferService.getWafersByBatchId(id);
+
+  // 2. 获取该批次在所有站点的检测结果（不传 stationCode）
+  const allInspections = await waferService.getInspectionResults(id);
+
+  // 3. 按 wafer_id_code 分组，再按 station_code 建立映射
+  const inspectionsByWafer: Record<string, Record<string, any>> = {};
+  for (const ir of allInspections) {
+    const wCode = ir.wafer_id_code as string;
+    if (!inspectionsByWafer[wCode]) {
+      inspectionsByWafer[wCode] = {};
+    }
+    inspectionsByWafer[wCode][ir.station_code] = ir.inspection_data;
+  }
+
+  // 4. 合并：每片晶圆 + 各站点检测数据
+  const aggregated = wafers.map(w => ({
+    ...w,
+    wafer_id: w.id,
+    sub_batch_id: w.sublot_id,
+    wafer_type: w.wafer_type || 'GOOD',
+    inspections: inspectionsByWafer[w.wafer_id_code] || {},
+  }));
+
+  const resp: ApiResponse = {
+    success: true,
+    data: aggregated,
+  };
+  res.json(resp);
+}
