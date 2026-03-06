@@ -57,6 +57,7 @@ class MySQLExecutor:
                                           cursorclass=pymysql.cursors.DictCursor)
             self.cursor = self.conn.cursor()
             self.cursor.execute("SELECT 1")
+            self.cursor.fetchall()  # 消耗测试查询结果，避免 cursor buffer 残留
             logger.info("✅ MySQL 连接成功 (%s:%s/%s)",
                         self._kwargs["host"], self._kwargs["port"], self._kwargs["db"])
             return True

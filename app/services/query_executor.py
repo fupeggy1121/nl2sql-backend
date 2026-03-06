@@ -135,7 +135,7 @@ class QueryExecutor:
 
             # 如果直连执行器可用，尝试使用它
             if self.pg_executor and self.pg_executor is not False:
-                # 连接到数据库
+                # 连接到数据库（首次运行）
                 if not self.pg_executor.conn:
                     if not self.pg_executor.connect():
                         logger.warning("DB direct connection failed, falling back to Supabase")
@@ -144,43 +144,57 @@ class QueryExecutor:
                 # 执行 SQL 查询
                 logger.info(f"Executing SQL via direct DB: {sql}")
 
-                try:
+                # 连接超时自动重连（最多 1 次重试）
+                _CONN_ERR_PATS = ("(0, '')", "(2006,", "(2013,", "Lost connection", "MySQL server has gone away")
+
+                def _exec_once():
+                    """Execute the SQL once; raises on error."""
                     self.pg_executor.cursor.execute(sql)
-
-                    # 获取所有结果
                     rows = self.pg_executor.cursor.fetchall()
-
-                    # 处理结果——pymysql DictCursor 返回 dict，psycopg2 返回 tuple
                     if rows and isinstance(rows[0], dict):
-                        data = [dict(row) for row in rows]
-                    else:
-                        column_names = [desc[0] for desc in self.pg_executor.cursor.description]
-                        data = [
-                            {col: row[i] for i, col in enumerate(column_names)}
-                            for row in rows
-                        ]
+                        return [dict(row) for row in rows]
+                    column_names = [desc[0] for desc in self.pg_executor.cursor.description]
+                    return [{col: row[i] for i, col in enumerate(column_names)} for row in rows]
 
-                    logger.info(f"✅ Query executed successfully: {len(data)} rows returned")
-
-                    result = {
-                        'success': True,
-                        'data': data,
-                        'count': len(data),
-                        'message': f'成功返回 {len(data)} 条记录'
-                    }
-
-                    # 缓存结果
-                    if self.cache:
-                        self.cache.set(sql, result)
-
-                    return result
+                try:
+                    data = _exec_once()
 
                 except Exception as query_error:
-                    logger.error(f"DB query execution failed: {str(query_error)}")
-                    # MySQL 模式不回退到 Supabase
-                    if os.getenv("DB_BACKEND", "supabase") == "mysql":
-                        return {'success': False, 'error': str(query_error), 'data': []}
-                    return self._execute_via_supabase(sql)
+                    err_str = str(query_error)
+                    is_conn_err = any(p in err_str for p in _CONN_ERR_PATS)
+
+                    if is_conn_err and os.getenv("DB_BACKEND", "supabase") == "mysql":
+                        # 连接断开——重置 cursor 并重连一次，透明重试
+                        logger.warning(
+                            f"[QueryExecutor] MySQL 连接断开 ({err_str})，自动重连并重试..."
+                        )
+                        self.pg_executor.conn = None
+                        self.pg_executor.cursor = None
+                        if self.pg_executor.connect():
+                            try:
+                                data = _exec_once()
+                                logger.info("[QueryExecutor] 重连后执行成功")
+                            except Exception as retry_err:
+                                logger.error(f"[QueryExecutor] 重连后执行仍失败: {retry_err}")
+                                return {'success': False, 'error': str(retry_err), 'data': []}
+                        else:
+                            return {'success': False, 'error': '数据库重连失败，请稍候再试', 'data': []}
+                    else:
+                        logger.error(f"DB query execution failed: {err_str}")
+                        if os.getenv("DB_BACKEND", "supabase") == "mysql":
+                            return {'success': False, 'error': err_str, 'data': []}
+                        return self._execute_via_supabase(sql)
+
+                logger.info(f"✅ Query executed successfully: {len(data)} rows returned")
+                result = {
+                    'success': True,
+                    'data': data,
+                    'count': len(data),
+                    'message': f'成功返回 {len(data)} 条记录'
+                }
+                if self.cache:
+                    self.cache.set(sql, result)
+                return result
             else:
                 # 直连不可用，使用 Supabase
                 logger.info("Direct DB executor not available, using Supabase")
