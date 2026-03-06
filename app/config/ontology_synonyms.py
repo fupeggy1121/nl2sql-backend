@@ -51,7 +51,8 @@ CLASS_SYNONYMS: dict = {
         "synonyms": [
             "批次", "lot", "生产批次", "生产批",
             "batch", "lot_id", "批号", "流水号", "本地批次",
-            "在制品", "在制", "wip",
+            # 注意："在制品"/"在制"/"wip" 已移至 WIP 过滤器推断路径
+            # （_auto_wip_filter + WIP→Wafer class 注入），不在此作 class 匹配
         ],
     },
 
@@ -76,6 +77,7 @@ CLASS_SYNONYMS: dict = {
             "站点", "工艺站", "工序", "station", "制程站",
             "process_station", "工艺节点", "制程", "操作",
             "operation", "op", "流程节点",
+            "工站",  # 用户口语写法
         ],
     },
 

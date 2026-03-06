@@ -554,6 +554,15 @@ class SemanticContextBuilder:
         wip_filter = self._auto_wip_filter(user_query, filters)
         if wip_filter:
             filters.append(wip_filter)
+            # WIP 语义推断：统计口径以 Wafer 为粒度（BR-001: Wafer→Sublot→ProcessStation）
+            # 若 semi:Wafer 未被任何 class synonym 命中，自动注入
+            if not any(m.logic_class == "semi:Wafer" for m in matched):
+                pt_wafer = self._mapping.get_physical_table("semi:Wafer")
+                if pt_wafer:
+                    matched.append(self._to_matched_class("在制品(WIP推断)", pt_wafer))
+                    logger.info(
+                        "WIP semantic inference: auto-injected semi:Wafer into matched_classes"
+                    )
 
         ctx.filters = filters
         if filters:
