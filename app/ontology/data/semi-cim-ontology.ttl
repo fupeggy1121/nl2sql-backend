@@ -108,7 +108,7 @@ semi:atStation a owl:ObjectProperty ;
     rdfs:comment "加工以子批次为单位，Sublot当前所处工艺站点。通过Wafer→belongsToSublot→Sublot→atStation→ProcessStation实现2跳路径访问。" .
 
 semi:currentlyFollowsModel a owl:ObjectProperty ;
-    rdfs:domain semi:Wafer ; rdfs:range semi:ProductModel ;
+    rdfs:domain semi:ProductionLot ; rdfs:range semi:ProductModel ;
     rdfs:label "遵循产品模型(目标向量)" .
 
 semi:currentlyOnRoute a owl:ObjectProperty ;
