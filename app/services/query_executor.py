@@ -176,9 +176,19 @@ class QueryExecutor:
                                 logger.info("[QueryExecutor] 重连后执行成功")
                             except Exception as retry_err:
                                 logger.error(f"[QueryExecutor] 重连后执行仍失败: {retry_err}")
-                                return {'success': False, 'error': str(retry_err), 'data': []}
+                                return {
+                                    'success': False,
+                                    'error': f'数据库连接错误（重连后仍失败）: {retry_err}',
+                                    'db_connection_error': True,  # 标记：连接类错误，不应触发 LLM 重试
+                                    'data': [],
+                                }
                         else:
-                            return {'success': False, 'error': '数据库重连失败，请稍候再试', 'data': []}
+                            return {
+                                'success': False,
+                                'error': '数据库重连失败，请稍后再试',
+                                'db_connection_error': True,  # 标记：连接类错误，不应触发 LLM 重试
+                                'data': [],
+                            }
                     else:
                         logger.error(f"DB query execution failed: {err_str}")
                         if os.getenv("DB_BACKEND", "supabase") == "mysql":

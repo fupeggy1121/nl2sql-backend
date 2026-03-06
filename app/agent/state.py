@@ -35,7 +35,8 @@ class AgentState(TypedDict, total=False):
     # ── 执行与重试 ──
     query_result: Dict[str, Any]                 # 查询结果 {"success": bool, "data": [...], ...}
     sql_retry_count: int                         # SQL 重试次数（自我修正计数器）
-    sql_error: str                               # SQL 执行错误信息（用于自我修正）
+    sql_error: str                               # SQL 逻辑错误（用于自我修正，会触发 LLM 重试）
+    db_error: str                                # 数据库连接/基础设施错误（不触发 LLM 重试，直接返回）
     sql_validation: Dict[str, Any]               # SQL 验证结果 (Phase B)
 
     # ── 结果分析 ──

@@ -60,17 +60,27 @@ def _route_after_execution(state: AgentState) -> str:
     条件边：SQL 执行后的路由决策（自我修正循环的核心）
 
     - 执行成功 → result_analyzer（继续分析）
-    - 执行失败 且 重试次数 < MAX → sql_generator（自我修正）
-    - 执行失败 且 重试次数 >= MAX → response_builder（返回错误）
+    - DB 连接类错误（db_error 有值）→ response_builder（不触发 LLM 重试）
+    - SQL 逻辑类错误 且 重试次数 < MAX → sql_generator（自我修正）
+    - SQL 逻辑类错误 且 重试次数 >= MAX → response_builder（返回错误）
     """
+    db_error  = state.get("db_error", "")
     sql_error = state.get("sql_error", "")
     retry_count = state.get("sql_retry_count", 0)
 
-    if not sql_error:
+    if not sql_error and not db_error:
         # 执行成功
         return "result_analyzer"
-    elif retry_count < MAX_SQL_RETRIES:
-        # 失败但还有重试机会 → 自我修正
+
+    if db_error:
+        # 数据库连接/基础设施错误 —— 重新生成 SQL 无意义，直接返回错误
+        logger.warning(
+            f"[graph] DB connection error, skipping LLM retry → response_builder: {db_error[:80]}"
+        )
+        return "response_builder"
+
+    if retry_count < MAX_SQL_RETRIES:
+        # SQL 逻辑错误，还有重试机会 → 自我修正
         logger.info(
             f"[graph] SQL execution failed (retry {retry_count}/{MAX_SQL_RETRIES}), "
             f"routing to sql_generator for self-correction"

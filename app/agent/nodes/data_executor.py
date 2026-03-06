@@ -90,10 +90,13 @@ def data_executor_node(state: AgentState) -> dict:
         }
     else:
         error_msg = result.get("error", "Unknown execution error")
-        logger.warning(f"[data_executor] Failed: {error_msg}")
-        trace_step(trace, "data_executor", _t0, summary=f"执行失败: {error_msg[:60]}",
-                   status="error", detail={"error": error_msg, "sql": sql[:200]})
-        return {
+        is_db_conn_err = result.get("db_connection_error", False)
+        logger.warning(f"[data_executor] Failed ({'db_conn' if is_db_conn_err else 'sql'}): {error_msg}")
+        trace_step(trace, "data_executor", _t0,
+                   summary=f"{'DB连接错误' if is_db_conn_err else '执行失败'}: {error_msg[:60]}",
+                   status="error",
+                   detail={"error": error_msg, "sql": sql[:200], "db_connection_error": is_db_conn_err})
+        result_payload = {
             "query_result": {
                 "success": False,
                 "data": [],
@@ -101,6 +104,13 @@ def data_executor_node(state: AgentState) -> dict:
                 "sql": sql,
                 "error": error_msg,
             },
-            "sql_error": error_msg,
             "pipeline_trace": trace,
         }
+        if is_db_conn_err:
+            # 连接类错误：写 db_error，不写 sql_error
+            # → _route_after_execution 不会路由到 sql_generator，直接 response_builder
+            result_payload["db_error"] = error_msg
+            result_payload["sql_error"] = ""   # 清空，避免残留触发额外重试
+        else:
+            result_payload["sql_error"] = error_msg
+        return result_payload
