@@ -424,7 +424,7 @@ _VALUE_KEYWORDS: Dict[str, Tuple[str, str]] = {
     # 以下为生产库 cc_semi_mvp 专用关键词（整数枚举，physical_condition 格式）
     # ══════════════════════════════════════════════════════════════
 
-    # ── BatchStatus (local_production_batch.status) ──
+    # ── BatchStatus (matrix_routerx_operation_lot.status) ──
     "在制品": ("semi:BatchStatus", "Running"),
     "wip": ("semi:BatchStatus", "Running"),
     "在制": ("semi:BatchStatus", "Running"),

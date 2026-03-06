@@ -549,13 +549,14 @@
     },
     {
       "logic_relation": "semi:containsSublot",
-      "description": "Lot(批次) 包含哪些 Sublot(local_production_batch)",
+      "description": "Lot(批次/主批) 包含哪些 Sublot(子批次)，同表自连接：sublot.parent_id = lot.id",
       "strategy": "ForeignKey",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot",
         "source_key": "id",
-        "target_table": "local_production_batch",
-        "target_key": "lot_id"
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "parent_id",
+        "note": "ProductionLot 与 Sublot 共用同一张物理表，通过 parent_id 区分：parent_id=0 为主批次，parent_id!=0 为子批次，值为所属主批次的 id"
       },
       "domain_class": "semi:ProductionLot",
       "range_class": "semi:Sublot"
