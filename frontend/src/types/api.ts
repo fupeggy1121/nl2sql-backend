@@ -40,7 +40,7 @@ export interface PipelineStep {
   step: string
   elapsed_ms: number
   summary: string
-  status: 'ok' | 'error' | 'skip'
+  status: 'ok' | 'warn' | 'error' | 'skip'
   detail?: Record<string, unknown>
   llm_tokens?: LlmTokenUsage
 }
