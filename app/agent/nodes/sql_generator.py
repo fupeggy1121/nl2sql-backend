@@ -100,6 +100,12 @@ def sql_generator_node(state: AgentState) -> dict:
             "error_context": error_context,
         })
 
+    # ── 4.5 确定性表名修正（语义引擎物理表名强制替换）──
+    # LLM 可能幻觉出英文翻译表名（如 stations / wafers / batches），
+    # 但 semantic_ctx 已精确知道真实物理表名，故在此做确定性后处理。
+    if sql and semantic_ctx:
+        sql = _enforce_physical_table_names(sql, semantic_ctx)
+
     # 读取本次 LLM 调用的 token 用量
     from app.services.llm_provider import get_last_llm_usage
     llm_usage = get_last_llm_usage()
@@ -181,6 +187,88 @@ def _extract_mandatory_table_constraint(semantic_ctx: dict) -> str:
         + "\n".join(lines)
         + "\n"
     )
+
+
+def _enforce_physical_table_names(sql: str, semantic_ctx: dict) -> str:
+    """
+    确定性表名修正：利用语义引擎已解析的物理表名，修正 LLM 幻觉出的表名。
+
+    原理：
+    - LLM 常把「站点」翻译为 stations，把「晶圆」翻译为 wafers 等
+    - semantic_ctx.matched_classes 已精确记录了应使用的物理表名
+    - 只要 SQL 中出现了不属于真实物理表的名称，就用语义匹配的物理表替换
+
+    在 generate_sql 之后、sql_validator 之前执行。
+    """
+    if not sql or not semantic_ctx:
+        return sql
+
+    import re
+
+    # 1. 从 semantic_ctx 获取本次查询涉及的物理表（非虚拟类）
+    classes = semantic_ctx.get("matched_classes", [])
+    physical_tables_from_semantic = []   # 有序列表，用于多表场景按顺序对应
+    for c in classes:
+        if not c.get("virtual") and c.get("physical_table"):
+            physical_tables_from_semantic.append(c["physical_table"])
+
+    if not physical_tables_from_semantic:
+        return sql
+
+    # 2. 加载所有合法物理表名（用于判断 SQL 中哪些表名是非法的）
+    try:
+        from app.ontology.mapping import get_mapping
+        all_valid_tables = {
+            t.table_name.lower()
+            for t in get_mapping().list_physical_tables()
+            if t.table_name
+        }
+    except Exception:
+        all_valid_tables = {t.lower() for t in physical_tables_from_semantic}
+
+    # 也从 annotation_metadata 补充（Supabase schema 注解）
+    try:
+        from app.services.nl2sql_enhanced import get_enhanced_nl2sql_converter
+        ann = get_enhanced_nl2sql_converter().annotation_metadata
+        for t in ann.get("tables", {}).keys():
+            all_valid_tables.add(t.lower())
+    except Exception:
+        pass
+
+    # 3. 提取 SQL 中 FROM / JOIN 后的表名
+    token_pattern = re.compile(
+        r'\b(FROM|JOIN)\s+([\w_]+)', re.IGNORECASE
+    )
+    replacements = {}   # bad_name -> good_name
+
+    for m in token_pattern.finditer(sql):
+        tbl = m.group(2)
+        if tbl.lower() in all_valid_tables:
+            continue  # 合法，跳过
+        # 非法表名：在 semantic 物理表中找最佳替换
+        if len(physical_tables_from_semantic) == 1:
+            replacement = physical_tables_from_semantic[0]
+        else:
+            from difflib import SequenceMatcher
+            replacement = max(
+                physical_tables_from_semantic,
+                key=lambda t: SequenceMatcher(None, tbl.lower(), t.lower()).ratio(),
+            )
+        replacements[tbl] = replacement
+
+    if not replacements:
+        return sql
+
+    corrected = sql
+    for bad, good in replacements.items():
+        corrected = re.sub(
+            rf'\b{re.escape(bad)}\b', good, corrected, flags=re.IGNORECASE
+        )
+        logger.info(
+            f"[sql_generator] 确定性表名修正: {bad!r} → {good!r} (语义引擎)"
+        )
+
+    return corrected
 
 
 def _build_optimized_query(
