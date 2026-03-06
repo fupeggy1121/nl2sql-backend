@@ -430,7 +430,9 @@
         "source_key": "lot_id",
         "target_key": "id",
         "target_table": "matrix_routerx_operation_lot"
-      }
+      },
+      "domain_class": "semi:Wafer",
+      "range_class": "semi:ProductionLot"
     },
     {
       "logic_relation": "semi:belongsToSublot",
@@ -442,7 +444,9 @@
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "id",
         "note": "matrix_routerx_operation_lot_wafer.sub_lot_id → matrix_routerx_operation_lot.id（WHERE parent_id != 0）"
-      }
+      },
+      "domain_class": "semi:Wafer",
+      "range_class": "semi:Sublot"
     },
     {
       "logic_relation": "semi:locatedInSlot",
@@ -450,7 +454,9 @@
       "strategy": "Virtual",
       "join_logic": {
         "note": "Wafer在MySQL生产执行层为虚拟类。Carrier与批次关联：carrier.lot_code = routerx_lot.lot_code（批次整体粒度）。"
-      }
+      },
+      "domain_class": "semi:Wafer",
+      "range_class": "semi:Carrier"
     },
     {
       "logic_relation": "semi:atStation",
@@ -462,7 +468,9 @@
         "target_table": "matrix_routerx_config_process",
         "target_key": "id",
         "note": "Sublot与ProductionLot同表，process_id 存储当前所处站点。路径：Wafer.sub_lot_id → lot.id（Sublot）→ lot.process_id → process.id（ProcessStation）"
-      }
+      },
+      "domain_class": "semi:Sublot",
+      "range_class": "semi:ProcessStation"
     },
     {
       "logic_relation": "semi:currentlyFollowsModel",
@@ -484,7 +492,9 @@
           }
         ],
         "note": "matrix_routerx_operation_lot.product_id → product.id → product.product_model_id → product_model.id"
-      }
+      },
+      "domain_class": "semi:ProductionLot",
+      "range_class": "semi:ProductModel"
     },
     {
       "logic_relation": "semi:currentlyOnRoute",
@@ -496,7 +506,9 @@
         "target_table": "routerx_router_config",
         "target_key": "id",
         "note": "matrix_routerx_operation_lot.process_route_id → routerx_router_config.id"
-      }
+      },
+      "domain_class": "semi:Wafer",
+      "range_class": "semi:Route"
     },
     {
       "logic_relation": "semi:basedOnOrder",
@@ -508,7 +520,9 @@
         "target_table": "production_scheduling",
         "target_key": "id",
         "note": "matrix_routerx_operation_lot.order_id → production_scheduling.id"
-      }
+      },
+      "domain_class": "semi:ProductionLot",
+      "range_class": "semi:ProductionOrder"
     },
     {
       "logic_relation": "semi:definesRequirementFor",
@@ -529,7 +543,9 @@
             "to_key": "id"
           }
         ]
-      }
+      },
+      "domain_class": "semi:ProductionOrder",
+      "range_class": "semi:ProductModel"
     },
     {
       "logic_relation": "semi:containsSublot",
@@ -540,7 +556,9 @@
         "source_key": "id",
         "target_table": "local_production_batch",
         "target_key": "lot_id"
-      }
+      },
+      "domain_class": "semi:ProductionLot",
+      "range_class": "semi:Sublot"
     },
     {
       "logic_relation": "semi:isCarriedBy",
@@ -552,7 +570,9 @@
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "current_lot_code",
         "note": "carrier.lot_code 冗余存储关联的批次号。matrix_routerx_operation_lot.current_lot_code 为批次号。批次粒度关联，非晶圆粒度。"
-      }
+      },
+      "domain_class": "semi:Sublot",
+      "range_class": "semi:Carrier"
     },
     {
       "logic_relation": "semi:usesRoute",
@@ -563,7 +583,9 @@
         "source_key": "route_id",
         "target_table": "routerx_router_config",
         "target_key": "id"
-      }
+      },
+      "domain_class": "semi:ProductModel",
+      "range_class": "semi:Route"
     },
     {
       "logic_relation": "semi:consistsOfStation",
@@ -576,7 +598,9 @@
         "target_table": "matrix_routerx_config_process",
         "target_key": "id",
         "note": "routerx_router_config.processes 是jsonb数组，每项含 process_id 引用 matrix_routerx_config_process.id，顺序即工序序列。"
-      }
+      },
+      "domain_class": "semi:Route",
+      "range_class": "semi:ProcessStation"
     },
     {
       "logic_relation": "semi:requiresEquipment",
@@ -588,7 +612,9 @@
         "target_table": "equipment",
         "target_key": "classify_id",
         "note": "equipment_group_list 是jsonb数组，存储设备分类组ID，通过 equipment.classify_id 关联。"
-      }
+      },
+      "domain_class": "semi:ProcessStation",
+      "range_class": "semi:Equipment"
     },
     {
       "logic_relation": "semi:hostsRecipe",
@@ -600,7 +626,9 @@
         "target_table": "equipment",
         "target_key": "id",
         "note": "反向：recipe_manage.equipment_list jsonb数组记录可运行该配方的设备ID。正向：equipment→recipe关联需通过 matrix_routerx_config_process.recipe_group_id 或 product_model.recipe_id 间接推导。"
-      }
+      },
+      "domain_class": "semi:Equipment",
+      "range_class": "semi:Recipe"
     },
     {
       "logic_relation": "semi:hasBOM",
@@ -612,7 +640,9 @@
         "target_table": "product_bom",
         "target_key": "material_id",
         "note": "product_model.material_id 与 product_bom.material_id 通过相同物料ID关联，同时过滤 product_bom.status=1(生效)"
-      }
+      },
+      "domain_class": "semi:ProductModel",
+      "range_class": "semi:BOM"
     },
     {
       "logic_relation": "semi:consumesRawMaterial",
@@ -628,7 +658,9 @@
         "target_key": "material_id",
         "filter_condition": "material.material_type IN ('raw', 'wafer', '原料')",
         "note": "product_bom_material 连接bom与物料，通过 material.material_type 筛选原料类型"
-      }
+      },
+      "domain_class": "semi:BOM",
+      "range_class": "semi:RawMaterial"
     },
     {
       "logic_relation": "semi:consumesAuxiliary",
@@ -643,7 +675,9 @@
         "target_pk": "id",
         "target_key": "material_id",
         "note": "若辅料主数据在 material 表则使用 material_type筛选；若在 accy_model 则通过 material_id 关联。"
-      }
+      },
+      "domain_class": "semi:BOM",
+      "range_class": "semi:Auxiliary"
     },
     {
       "logic_relation": "semi:requiresSparePart",
@@ -651,7 +685,9 @@
       "strategy": "Virtual",
       "join_logic": {
         "note": "MySQL中设备与备件的直接关联关系未明确定义。可通过 material 表 material_type='spare_part' 以及设备维修记录间接推导，暂标记为虚拟关系。"
-      }
+      },
+      "domain_class": "semi:Equipment",
+      "range_class": "semi:SparePart"
     },
     {
       "logic_relation": "semi:hasConstraint",
@@ -659,7 +695,9 @@
       "strategy": "Virtual",
       "join_logic": {
         "note": "MySQL中工艺约束嵌入在 product_model（含route_id/recipe_id）和 matrix_routerx_config_process（含equipment_group_list/recipe_group_id）中。ProcessConstraint是虚拟中间类，无独立表。"
-      }
+      },
+      "domain_class": "semi:ProductModel",
+      "range_class": "semi:ProcessConstraint"
     },
     {
       "logic_relation": "semi:appliesAtStation",
@@ -671,7 +709,9 @@
         "target_table": "matrix_routerx_config_process",
         "target_key": "id",
         "note": "ProcessConstraint在MySQL中直接体现为 matrix_routerx_config_process 行本身，无需跨表JOIN。"
-      }
+      },
+      "domain_class": "semi:ProcessConstraint",
+      "range_class": "semi:ProcessStation"
     },
     {
       "logic_relation": "semi:specifiesRecipe",
@@ -683,7 +723,9 @@
         "target_table": "recipe_manage",
         "target_key": "id",
         "note": "matrix_routerx_config_process.recipe_group_id → recipe_manage.id，指定此工序使用的配方组。"
-      }
+      },
+      "domain_class": "semi:ProcessConstraint",
+      "range_class": "semi:Recipe"
     },
     {
       "logic_relation": "semi:isDefinedBy",
@@ -694,7 +736,9 @@
         "source_key": "product_model_id",
         "target_table": "product_model",
         "target_key": "id"
-      }
+      },
+      "domain_class": "semi:Product",
+      "range_class": "semi:ProductModel"
     },
     {
       "logic_relation": "semi:anchoredAtStation",
@@ -706,7 +750,9 @@
         "target_table": "matrix_routerx_config_process",
         "target_key": "id",
         "note": "若 product_bom_material 含 station_id 字段则直接关联；否则此关系虚拟（待确认字段）。"
-      }
+      },
+      "domain_class": "semi:BOM",
+      "range_class": "semi:ProcessStation"
     },
     {
       "logic_relation": "semi:hasInput",
@@ -717,7 +763,12 @@
         "source_key": "lot_id",
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "id"
-      }
+      },
+      "domain_class": "semi:Action",
+      "range_class": [
+        "semi:ProductionLot",
+        "semi:Wafer"
+      ]
     },
     {
       "logic_relation": "semi:hasOutput",
@@ -727,7 +778,12 @@
         "source_table": "routerx_lot_log",
         "output_field": "after_state",
         "note": "routerx_lot_log.after_state 记录操作后批次的新状态；before_state 记录操作前状态。"
-      }
+      },
+      "domain_class": "semi:Action",
+      "range_class": [
+        "semi:ProductionLot",
+        "semi:Wafer"
+      ]
     },
     {
       "logic_relation": "semi:modifiesStateVector",
@@ -739,7 +795,9 @@
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "id",
         "note": "routerx_lot_log记录的每条操作行为都对应 matrix_routerx_operation_lot 的状态跳转（status变化）"
-      }
+      },
+      "domain_class": "semi:Action",
+      "range_class": null
     },
     {
       "logic_relation": "semi:hasParentLot",
@@ -751,7 +809,9 @@
         "parent_key": "parent_id",
         "max_depth": 20,
         "note": "需要 WITH RECURSIVE CTE（MySQL 8.0+支持）; parent_lot_id 为自引用外键（如不存在则此关系虚拟，需确认字段）。"
-      }
+      },
+      "domain_class": "semi:ProductionLot",
+      "range_class": "semi:ProductionLot"
     }
   ],
   "value_mappings": {
@@ -762,7 +822,14 @@
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
         "is_terminal": false,
-        "nl_triggers": ["待加工", "未加工", "刚投料", "新投批", "待执行", "未开始"],
+        "nl_triggers": [
+          "待加工",
+          "未加工",
+          "刚投料",
+          "新投批",
+          "待执行",
+          "未开始"
+        ],
         "note": "status=0 待加工/待执行"
       },
       "Running": {
@@ -771,7 +838,16 @@
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
         "is_terminal": false,
-        "nl_triggers": ["在制品", "wip", "在制", "加工中", "在跑", "WIP数量", "在机台", "在产批次"],
+        "nl_triggers": [
+          "在制品",
+          "wip",
+          "在制",
+          "加工中",
+          "在跑",
+          "WIP数量",
+          "在机台",
+          "在产批次"
+        ],
         "note": "status=50 加工中。WIP统计口径由 BR-001 定义：以wafer为粒度COUNT wafer.id，路径 Wafer→Sublot(atStation)→ProcessStation"
       },
       "Completed": {
@@ -780,7 +856,14 @@
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
         "is_terminal": true,
-        "nl_triggers": ["已完结", "完工", "完成", "完结", "已完成", "已结束"],
+        "nl_triggers": [
+          "已完结",
+          "完工",
+          "完成",
+          "完结",
+          "已完成",
+          "已结束"
+        ],
         "note": "status=100 完结"
       },
       "Cancelled": {
@@ -789,7 +872,13 @@
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
         "is_terminal": true,
-        "nl_triggers": ["作废", "取消", "已作废", "已取消", "取消批次"],
+        "nl_triggers": [
+          "作废",
+          "取消",
+          "已作废",
+          "已取消",
+          "取消批次"
+        ],
         "note": "status=-50 已作废"
       }
     },
@@ -800,7 +889,11 @@
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "process_status",
         "is_terminal": false,
-        "nl_triggers": ["待进站", "未进站", "进站前"],
+        "nl_triggers": [
+          "待进站",
+          "未进站",
+          "进站前"
+        ],
         "note": "process_status=0 PRE_IN_STATION 待加工，对应status=50（加工中）下的子状态"
       },
       "PreExecuting": {
@@ -809,7 +902,11 @@
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "process_status",
         "is_terminal": false,
-        "nl_triggers": ["已进站", "待执行", "进站等待"],
+        "nl_triggers": [
+          "已进站",
+          "待执行",
+          "进站等待"
+        ],
         "note": "process_status=50 PRE_EXECUTING 已进站"
       },
       "Executing": {
@@ -818,7 +915,10 @@
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "process_status",
         "is_terminal": false,
-        "nl_triggers": ["执行中", "加工执行中"],
+        "nl_triggers": [
+          "执行中",
+          "加工执行中"
+        ],
         "note": "process_status=100 EXECUTING 执行中"
       },
       "PreOutStation": {
@@ -827,7 +927,11 @@
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "process_status",
         "is_terminal": false,
-        "nl_triggers": ["待出站", "已执行", "等待出站"],
+        "nl_triggers": [
+          "待出站",
+          "已执行",
+          "等待出站"
+        ],
         "note": "process_status=150 PRE_OUT_STATION 待出站"
       },
       "OutStation": {
@@ -836,7 +940,11 @@
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "process_status",
         "is_terminal": false,
-        "nl_triggers": ["已出站", "离站", "出站完成"],
+        "nl_triggers": [
+          "已出站",
+          "离站",
+          "出站完成"
+        ],
         "note": "process_status=200 OUT_STATION 已出站"
       }
     },
@@ -847,7 +955,11 @@
         "applies_to_table": "equipment",
         "applies_to_column": "status",
         "is_terminal": false,
-        "nl_triggers": ["启用设备", "开启设备", "在用设备"],
+        "nl_triggers": [
+          "启用设备",
+          "开启设备",
+          "在用设备"
+        ],
         "note": "status=1 OPEN"
       },
       "Inactive": {
@@ -856,7 +968,12 @@
         "applies_to_table": "equipment",
         "applies_to_column": "status",
         "is_terminal": true,
-        "nl_triggers": ["停用设备", "关闭设备", "下线设备", "停机设备"],
+        "nl_triggers": [
+          "停用设备",
+          "关闭设备",
+          "下线设备",
+          "停机设备"
+        ],
         "note": "status=0 CLOSE"
       }
     },
@@ -867,7 +984,10 @@
         "applies_to_table": "product_model",
         "applies_to_column": "product_status",
         "is_terminal": false,
-        "nl_triggers": ["草稿产品", "产品草稿"],
+        "nl_triggers": [
+          "草稿产品",
+          "产品草稿"
+        ],
         "note": "product_status=0"
       },
       "PendingApproval": {
@@ -876,7 +996,10 @@
         "applies_to_table": "product_model",
         "applies_to_column": "product_status",
         "is_terminal": false,
-        "nl_triggers": ["待审核产品", "产品审核中"],
+        "nl_triggers": [
+          "待审核产品",
+          "产品审核中"
+        ],
         "note": "product_status=1"
       },
       "Active": {
@@ -885,7 +1008,11 @@
         "applies_to_table": "product_model",
         "applies_to_column": "product_status",
         "is_terminal": false,
-        "nl_triggers": ["激活产品", "在产产品", "已激活产品"],
+        "nl_triggers": [
+          "激活产品",
+          "在产产品",
+          "已激活产品"
+        ],
         "note": "product_status=2"
       }
     },
@@ -896,7 +1023,11 @@
         "applies_to_table": "product_bom",
         "applies_to_column": "status",
         "is_terminal": false,
-        "nl_triggers": ["生效bom", "有效bom", "激活bom"],
+        "nl_triggers": [
+          "生效bom",
+          "有效bom",
+          "激活bom"
+        ],
         "note": "1 生效"
       },
       "Inactive": {
@@ -905,7 +1036,11 @@
         "applies_to_table": "product_bom",
         "applies_to_column": "status",
         "is_terminal": true,
-        "nl_triggers": ["失效bom", "作废bom", "停用bom"],
+        "nl_triggers": [
+          "失效bom",
+          "作废bom",
+          "停用bom"
+        ],
         "note": "0 失效"
       }
     },
@@ -916,7 +1051,10 @@
         "applies_to_table": "accy_accessory",
         "applies_to_column": "status",
         "is_terminal": false,
-        "nl_triggers": ["待上机", "辅料待上机"]
+        "nl_triggers": [
+          "待上机",
+          "辅料待上机"
+        ]
       },
       "InUse": {
         "description": "辅料上机中",
@@ -924,7 +1062,10 @@
         "applies_to_table": "accy_accessory",
         "applies_to_column": "status",
         "is_terminal": false,
-        "nl_triggers": ["上机中", "辅料使用中"]
+        "nl_triggers": [
+          "上机中",
+          "辅料使用中"
+        ]
       },
       "PendingReturn": {
         "description": "辅料退库待确认",
@@ -932,7 +1073,10 @@
         "applies_to_table": "accy_accessory",
         "applies_to_column": "status",
         "is_terminal": false,
-        "nl_triggers": ["退库待确认", "辅料退库中"]
+        "nl_triggers": [
+          "退库待确认",
+          "辅料退库中"
+        ]
       },
       "Returned": {
         "description": "辅料已退库",
@@ -940,7 +1084,10 @@
         "applies_to_table": "accy_accessory",
         "applies_to_column": "status",
         "is_terminal": true,
-        "nl_triggers": ["已退库", "辅料退库完成"]
+        "nl_triggers": [
+          "已退库",
+          "辅料退库完成"
+        ]
       }
     },
     "semi:CarrierStatus": {
@@ -950,7 +1097,11 @@
         "applies_to_table": "carrier",
         "applies_to_column": "status",
         "is_terminal": false,
-        "nl_triggers": ["空闲载具", "可用载具", "空载具"]
+        "nl_triggers": [
+          "空闲载具",
+          "可用载具",
+          "空载具"
+        ]
       },
       "InUse": {
         "description": "载具使用中",
@@ -958,7 +1109,11 @@
         "applies_to_table": "carrier",
         "applies_to_column": "status",
         "is_terminal": false,
-        "nl_triggers": ["使用中载具", "在用载具", "载具在用"]
+        "nl_triggers": [
+          "使用中载具",
+          "在用载具",
+          "载具在用"
+        ]
       },
       "Matainence": {
         "description": "载具保养中",
@@ -966,7 +1121,11 @@
         "applies_to_table": "carrier",
         "applies_to_column": "status",
         "is_terminal": false,
-        "nl_triggers": ["保养中载具", "载具保养", "维护载具"]
+        "nl_triggers": [
+          "保养中载具",
+          "载具保养",
+          "维护载具"
+        ]
       }
     }
   },
@@ -976,7 +1135,15 @@
       "name": "WIP统计口径",
       "description": "WIP（在制品）以wafer为统计粒度，不以lot（批次）为统计单位。加工处理以子批次(Sublot, parent_id!=0)为调度单位，必须通过2跳路径：Wafer → Sublot(parent_id!=0) → ProcessStation。主批次(parent_id=0)不含工序信息，直接JOIN会导致重复计数。正确SQL：SELECT p.name AS 站点名称, p.code AS 站点编码, COUNT(DISTINCT w.id) AS 在制品数量 FROM matrix_routerx_operation_lot_wafer w JOIN matrix_routerx_operation_lot sub ON w.sub_lot_id = sub.id AND sub.parent_id != 0 JOIN matrix_routerx_config_process p ON sub.process_id = p.id WHERE sub.status = 50 GROUP BY p.name, p.code ORDER BY 在制品数量 DESC。sub.status=50 表示加工中的子批次；sub.process_id 关联当前所在站点。",
       "physical_sql_template": "SELECT p.name AS 站点名称, p.code AS 站点编码, COUNT(DISTINCT w.id) AS 在制品数量 FROM matrix_routerx_operation_lot_wafer w JOIN matrix_routerx_operation_lot sub ON w.sub_lot_id = sub.id AND sub.parent_id != 0 JOIN matrix_routerx_config_process p ON sub.process_id = p.id WHERE sub.status = 50 GROUP BY p.name, p.code ORDER BY 在制品数量 DESC",
-      "trigger_keywords": ["在制品", "WIP", "wip", "在制", "站点在制", "各站点", "各个站点"],
+      "trigger_keywords": [
+        "在制品",
+        "WIP",
+        "wip",
+        "在制",
+        "站点在制",
+        "各站点",
+        "各个站点"
+      ],
       "involved_tables": [
         "matrix_routerx_operation_lot_wafer",
         "matrix_routerx_operation_lot",
@@ -1019,39 +1186,86 @@
   ],
   "metric_definitions": {
     "wafer_wip": {
-      "zh_names": ["在制品数量", "WIP数量", "在制wafer数", "在机台wafer数", "在制品wafer", "各站在制", "站点在制品"],
+      "zh_names": [
+        "在制品数量",
+        "WIP数量",
+        "在制wafer数",
+        "在机台wafer数",
+        "在制品wafer",
+        "各站在制",
+        "站点在制品"
+      ],
       "anchor_table": "matrix_routerx_operation_lot_wafer",
       "formula": "COUNT(DISTINCT matrix_routerx_operation_lot_wafer.id)",
       "join_path": "matrix_routerx_operation_lot_wafer → matrix_routerx_operation_lot(parent_id!=0) → matrix_routerx_config_process",
       "auto_filter": "matrix_routerx_operation_lot.status = 50 AND matrix_routerx_operation_lot.parent_id != 0",
-      "granularity": ["工站", "机台", "产品", "路线", "时段"],
+      "granularity": [
+        "工站",
+        "机台",
+        "产品",
+        "路线",
+        "时段"
+      ],
       "description": "当前在制品晶圆数，以Wafer为粒度统计，通过子批次(Sublot)关联工站"
     },
     "lot_yield": {
-      "zh_names": ["批次良率", "良率", "Yield", "出站良率", "工序良率"],
+      "zh_names": [
+        "批次良率",
+        "良率",
+        "Yield",
+        "出站良率",
+        "工序良率"
+      ],
       "anchor_table": "matrix_routerx_operation_lot",
       "formula": "SUM(qualified_qty) / NULLIF(SUM(total_qty), 0)",
       "join_path": null,
       "auto_filter": null,
-      "granularity": ["产品", "工站", "日期", "班次"],
+      "granularity": [
+        "产品",
+        "工站",
+        "日期",
+        "班次"
+      ],
       "description": "出站良率，基于报工记录的合格数/总数，qualified_qty和total_qty来自报工表"
     },
     "cycle_time": {
-      "zh_names": ["周期时间", "加工周期", "cycle time", "站点耗时", "工序耗时", "CTQ"],
+      "zh_names": [
+        "周期时间",
+        "加工周期",
+        "cycle time",
+        "站点耗时",
+        "工序耗时",
+        "CTQ"
+      ],
       "anchor_table": "matrix_routerx_operation_lot",
       "formula": "AVG(EXTRACT(EPOCH FROM (out_time - in_time)) / 3600.0)",
       "join_path": null,
       "auto_filter": "matrix_routerx_operation_lot.process_status = 200",
-      "granularity": ["工站", "产品", "路线"],
+      "granularity": [
+        "工站",
+        "产品",
+        "路线"
+      ],
       "description": "工序周期时间（小时），基于进站(in_time)和出站(out_time)时间差，PostgreSQL使用EXTRACT(EPOCH)"
     },
     "lot_throughput": {
-      "zh_names": ["批次吞吐", "产出批次", "throughput", "出站批次数", "吞吐量"],
+      "zh_names": [
+        "批次吞吐",
+        "产出批次",
+        "throughput",
+        "出站批次数",
+        "吞吐量"
+      ],
       "anchor_table": "matrix_routerx_operation_lot",
       "formula": "COUNT(DISTINCT matrix_routerx_operation_lot.id)",
       "join_path": null,
       "auto_filter": "matrix_routerx_operation_lot.process_status = 200",
-      "granularity": ["工站", "日期", "班次", "设备"],
+      "granularity": [
+        "工站",
+        "日期",
+        "班次",
+        "设备"
+      ],
       "description": "指定时段内完成出站的批次数，以process_status=200（已出站）为口径"
     }
   }

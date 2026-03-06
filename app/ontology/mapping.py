@@ -53,6 +53,9 @@ class RelationMapping:
     logic_relation: str          # e.g. "semi:belongsToLot"
     description: str
     strategy: str                # ForeignKey / JoinTable / Indirect / Recursive / Denormalized
+    # OWL TTL 中对应 ObjectProperty 的 rdfs:domain / rdfs:range（语义节点，用于 NetworkX 图）
+    domain_class: Optional[str] = None  # e.g. "semi:Wafer"
+    range_class: Optional[object] = None  # str 或 List[str]（owl:unionOf 时为列表）
     join_conditions: List[JoinCondition] = field(default_factory=list)
     bridge_table: Optional[str] = None
     order_by: Optional[str] = None
@@ -67,6 +70,9 @@ class RecursiveMapping:
     parent_key: str           # e.g. "parent_batch_id"
     max_depth: int = 20
     description: str = ""
+    # OWL TTL 语义锚定（同 RelationMapping）
+    domain_class: Optional[str] = None
+    range_class: Optional[object] = None
     note: Optional[str] = None
 
 @dataclass
@@ -337,6 +343,8 @@ class MappingDictionary:
                         parent_key=jl.get("parent_key", ""),
                         max_depth=jl.get("max_depth", 20),
                         description=item.get("description", ""),
+                        domain_class=item.get("domain_class"),
+                        range_class=item.get("range_class"),
                         note=jl.get("note"),
                     )
                     self._recursive_map[rec.logic_relation] = rec
@@ -345,6 +353,8 @@ class MappingDictionary:
                 logic_relation=item["logic_relation"],
                 description=item.get("description", ""),
                 strategy=strategy,
+                domain_class=item.get("domain_class"),
+                range_class=item.get("range_class"),
                 join_conditions=conditions,
                 bridge_table=bridge,
                 order_by=order_by,
