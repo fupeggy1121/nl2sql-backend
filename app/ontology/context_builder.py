@@ -25,6 +25,7 @@ from app.ontology.mapping import (
     BusinessRule,
     JoinCondition,
     MappingDictionary,
+    MetricDefinition,
     PhysicalTable,
     RecursiveMapping,
     RelationMapping,
@@ -104,6 +105,7 @@ class SemanticContext:
     filters: List[ResolvedFilter] = field(default_factory=list)
     recursive: List[ResolvedRecursive] = field(default_factory=list)
     business_rules: List[BusinessRule] = field(default_factory=list)
+    metrics: List[MetricDefinition] = field(default_factory=list)  # Phase 2: matched metric definitions
 
     # 快捷属性
     @property
@@ -162,6 +164,19 @@ class SemanticContext:
             for r in self.recursive:
                 lines.append(f"  -- {r.description}")
                 lines.append(r.cte_sql)
+        if self.metrics:
+            lines.append("")
+            lines.append("-- Metrics")
+            for m in self.metrics:
+                lines.append(f"-- Metric: {m.zh_names[0] if m.zh_names else m.metric_id}")
+                lines.append(f"   FORMULA: {m.formula}")
+                lines.append(f"   ANCHOR_TABLE: {m.anchor_table}")
+                if m.join_path:
+                    lines.append(f"   JOIN_PATH: {m.join_path}")
+                if m.auto_filter:
+                    lines.append(f"   AUTO_FILTER: {m.auto_filter}")
+                if m.granularity:
+                    lines.append(f"   GRANULARITY: {', '.join(m.granularity)}")
         return "\n".join(lines)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -232,6 +247,19 @@ class SemanticContext:
                 for br in self.business_rules
             ],
             "schema_snippet": self.schema_snippet,
+            "metrics": [
+                {
+                    "metric_id": m.metric_id,
+                    "zh_names": m.zh_names,
+                    "anchor_table": m.anchor_table,
+                    "formula": m.formula,
+                    "granularity": m.granularity,
+                    "join_path": m.join_path,
+                    "auto_filter": m.auto_filter,
+                    "description": m.description,
+                }
+                for m in self.metrics
+            ],
         }
 
 
@@ -505,8 +533,27 @@ class SemanticContextBuilder:
             [m.keyword for m in matched],
         )
 
-        # Step 2: 值映射
+        # Step 1.5: Phase 2 — 指标匹配
+        ctx.metrics = self._match_metrics(user_query)
+        if ctx.metrics:
+            logger.info(
+                "Matched %d metrics: %s",
+                len(ctx.metrics),
+                [m.metric_id for m in ctx.metrics],
+            )
+
+        # Step 2: 値映射
         filters = self._match_values(user_query)
+
+        # Step 2.1: Phase 1 — nl_triggers 补充匹配（对 _VALUE_KEYWORDS 未覆盖的词产生精确状态过滤）
+        nl_filters = self._match_values_nl_triggers(user_query, filters)
+        filters.extend(nl_filters)
+
+        # Step 2.2: Phase 1 — WIP 语义自动推导“排除终态”过滤（仅对 Running/WIP 语义）
+        wip_filter = self._auto_wip_filter(user_query, filters)
+        if wip_filter:
+            filters.append(wip_filter)
+
         ctx.filters = filters
         if filters:
             logger.info(
@@ -806,6 +853,106 @@ class SemanticContextBuilder:
             key_columns=pt.key_columns,
             virtual=pt.virtual,
             filter_condition=pt.filter_condition,
+        )
+
+    # ----------------------------------------------------------------- #
+    # Step 1.5: Phase 2 --- 指标匹配
+    # ----------------------------------------------------------------- #
+
+    def _match_metrics(self, query: str) -> List[MetricDefinition]:
+        """Phase 2: 从查询中识别指标名称，返回匹配到的 MetricDefinition 列表"""
+        results: List[MetricDefinition] = []
+        seen_ids: Set[str] = set()
+        for metric in self._mapping.list_all_metrics():
+            if metric.metric_id in seen_ids:
+                continue
+            for name in metric.zh_names:
+                if name.lower() in query.lower() or name in query:
+                    results.append(metric)
+                    seen_ids.add(metric.metric_id)
+                    break
+        return results
+
+    # ----------------------------------------------------------------- #
+    # Step 2.1: Phase 1 --- nl_triggers 精确匹配 + WIP 终态自动推导
+    # ----------------------------------------------------------------- #
+
+    def _match_values_nl_triggers(
+        self, query: str, existing_filters: List[ResolvedFilter]
+    ) -> List[ResolvedFilter]:
+        """
+        Phase 1: 扫描所有 value_mappings 的 nl_triggers，
+        对 _VALUE_KEYWORDS 未覆盖的关键词产生精确状态过滤。
+        例: "新投批" → Pending.nl_triggers 命中 → status=0
+        """
+        results: List[ResolvedFilter] = []
+        q_lower = query.lower()
+        seen_pairs: Set[Tuple[str, str]] = {
+            (f.semantic_domain, f.semantic_value) for f in existing_filters
+            if f.semantic_value != "__wip_auto__"
+        }
+        for domain, domain_map in self._mapping._value_map.items():
+            for val_key, vm in domain_map.items():
+                pair = (domain, val_key)
+                if pair in seen_pairs:
+                    continue
+                if not vm.nl_triggers:
+                    continue
+                for trigger in vm.nl_triggers:
+                    if trigger.lower() in q_lower:
+                        seen_pairs.add(pair)
+                        results.append(ResolvedFilter(
+                            semantic_domain=domain,
+                            semantic_value=val_key,
+                            description=vm.description,
+                            physical_condition=vm.physical_condition,
+                            physical_values=vm.physical_values,
+                            applies_to_table=vm.applies_to_table,
+                            applies_to_column=vm.applies_to_column,
+                            count_target_table=vm.count_target_table,
+                            count_target_column=vm.count_target_column,
+                        ))
+                        break
+        return results
+
+    def _auto_wip_filter(
+        self, query: str, existing_filters: List[ResolvedFilter]
+    ) -> Optional[ResolvedFilter]:
+        """
+        Phase 1: 当查询包含 Running(WIP) 的 nl_triggers 且没有显式 BatchStatus 过滤时，
+        自动注入 status NOT IN (终态值)。
+
+        注意: 只检查 Running 的 nl_triggers，不检查 Pending 等其他状态。
+        Pending/Completed 等的 nl_triggers 由 _match_values_nl_triggers() 处理。
+        """
+        batch_domain = "semi:BatchStatus"
+        if any(f.semantic_domain == batch_domain for f in existing_filters):
+            return None
+
+        # 只检查 Running 的 nl_triggers（WIP 语义）
+        q_lower = query.lower()
+        vm_running = self._mapping.map_value(batch_domain, "Running")
+        triggered = False
+        if vm_running and vm_running.nl_triggers:
+            for trigger in vm_running.nl_triggers:
+                if trigger.lower() in q_lower:
+                    triggered = True
+                    break
+
+        if not triggered:
+            return None
+
+        exclusion = self._mapping.get_wip_exclusion_filter(batch_domain)
+        if not exclusion:
+            return None
+
+        return ResolvedFilter(
+            semantic_domain=batch_domain,
+            semantic_value="__wip_auto__",
+            description="自动排除终态（WIP语义推断：Completed/Cancelled）",
+            physical_condition=exclusion,
+            applies_to_table="matrix_routerx_operation_lot",
+            applies_to_column="status",
         )
 
     # ----------------------------------------------------------------- #

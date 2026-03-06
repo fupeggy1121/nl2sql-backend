@@ -114,7 +114,7 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
 
     # ── B2: 语义缓存查找（追问不使用缓存，避免上下文依赖）──
     # v4: 本体类版本前缀——当规则/模板发生重大变更时更新版本号可立即淘汰旧缓存
-    _SEMANTIC_CACHE_VERSION = "v8"
+    _SEMANTIC_CACHE_VERSION = "v9"  # Phase 1+2: is_terminal/nl_triggers + metric_definitions
     _cache_key = f"{_SEMANTIC_CACHE_VERSION}:{effective_input}"
     _cache_hit = False
     if not is_followup:

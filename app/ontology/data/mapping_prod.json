@@ -761,6 +761,8 @@
         "physical_condition": "matrix_routerx_operation_lot.status = 0",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
+        "is_terminal": false,
+        "nl_triggers": ["待加工", "未加工", "刚投料", "新投批", "待执行", "未开始"],
         "note": "status=0 待加工/待执行"
       },
       "Running": {
@@ -768,6 +770,8 @@
         "physical_condition": "matrix_routerx_operation_lot.status = 50",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
+        "is_terminal": false,
+        "nl_triggers": ["在制品", "wip", "在制", "加工中", "在跑", "WIP数量", "在机台", "在产批次"],
         "note": "status=50 加工中。WIP统计口径由 BR-001 定义：以wafer为粒度COUNT wafer.id，路径 Wafer→Sublot(atStation)→ProcessStation"
       },
       "Completed": {
@@ -775,6 +779,8 @@
         "physical_condition": "matrix_routerx_operation_lot.status = 100",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
+        "is_terminal": true,
+        "nl_triggers": ["已完结", "完工", "完成", "完结", "已完成", "已结束"],
         "note": "status=100 完结"
       },
       "Cancelled": {
@@ -782,6 +788,8 @@
         "physical_condition": "matrix_routerx_operation_lot.status = -50",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
+        "is_terminal": true,
+        "nl_triggers": ["作废", "取消", "已作废", "已取消", "取消批次"],
         "note": "status=-50 已作废"
       }
     },
@@ -791,6 +799,8 @@
         "physical_condition": "matrix_routerx_operation_lot.process_status = 0",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "process_status",
+        "is_terminal": false,
+        "nl_triggers": ["待进站", "未进站", "进站前"],
         "note": "process_status=0 PRE_IN_STATION 待加工，对应status=50（加工中）下的子状态"
       },
       "PreExecuting": {
@@ -798,6 +808,8 @@
         "physical_condition": "matrix_routerx_operation_lot.process_status = 50",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "process_status",
+        "is_terminal": false,
+        "nl_triggers": ["已进站", "待执行", "进站等待"],
         "note": "process_status=50 PRE_EXECUTING 已进站"
       },
       "Executing": {
@@ -805,6 +817,8 @@
         "physical_condition": "matrix_routerx_operation_lot.process_status = 100",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "process_status",
+        "is_terminal": false,
+        "nl_triggers": ["执行中", "加工执行中"],
         "note": "process_status=100 EXECUTING 执行中"
       },
       "PreOutStation": {
@@ -812,6 +826,8 @@
         "physical_condition": "matrix_routerx_operation_lot.process_status = 150",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "process_status",
+        "is_terminal": false,
+        "nl_triggers": ["待出站", "已执行", "等待出站"],
         "note": "process_status=150 PRE_OUT_STATION 待出站"
       },
       "OutStation": {
@@ -819,6 +835,8 @@
         "physical_condition": "matrix_routerx_operation_lot.process_status = 200",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "process_status",
+        "is_terminal": false,
+        "nl_triggers": ["已出站", "离站", "出站完成"],
         "note": "process_status=200 OUT_STATION 已出站"
       }
     },
@@ -828,6 +846,8 @@
         "physical_condition": "equipment.status = 1",
         "applies_to_table": "equipment",
         "applies_to_column": "status",
+        "is_terminal": false,
+        "nl_triggers": ["启用设备", "开启设备", "在用设备"],
         "note": "status=1 OPEN"
       },
       "Inactive": {
@@ -835,6 +855,8 @@
         "physical_condition": "equipment.status = 0",
         "applies_to_table": "equipment",
         "applies_to_column": "status",
+        "is_terminal": true,
+        "nl_triggers": ["停用设备", "关闭设备", "下线设备", "停机设备"],
         "note": "status=0 CLOSE"
       }
     },
@@ -844,6 +866,8 @@
         "physical_condition": "product_model.product_status = 0",
         "applies_to_table": "product_model",
         "applies_to_column": "product_status",
+        "is_terminal": false,
+        "nl_triggers": ["草稿产品", "产品草稿"],
         "note": "product_status=0"
       },
       "PendingApproval": {
@@ -851,6 +875,8 @@
         "physical_condition": "product_model.product_status = 1",
         "applies_to_table": "product_model",
         "applies_to_column": "product_status",
+        "is_terminal": false,
+        "nl_triggers": ["待审核产品", "产品审核中"],
         "note": "product_status=1"
       },
       "Active": {
@@ -858,6 +884,8 @@
         "physical_condition": "product_model.product_status = 2",
         "applies_to_table": "product_model",
         "applies_to_column": "product_status",
+        "is_terminal": false,
+        "nl_triggers": ["激活产品", "在产产品", "已激活产品"],
         "note": "product_status=2"
       }
     },
@@ -867,6 +895,8 @@
         "physical_condition": "product_bom.status = 1",
         "applies_to_table": "product_bom",
         "applies_to_column": "status",
+        "is_terminal": false,
+        "nl_triggers": ["生效bom", "有效bom", "激活bom"],
         "note": "1 生效"
       },
       "Inactive": {
@@ -874,6 +904,8 @@
         "physical_condition": "product_bom.status = 0",
         "applies_to_table": "product_bom",
         "applies_to_column": "status",
+        "is_terminal": true,
+        "nl_triggers": ["失效bom", "作废bom", "停用bom"],
         "note": "0 失效"
       }
     },
@@ -882,25 +914,33 @@
         "description": "辅料待上机",
         "physical_condition": "accy_accessory.status = 0",
         "applies_to_table": "accy_accessory",
-        "applies_to_column": "status"
+        "applies_to_column": "status",
+        "is_terminal": false,
+        "nl_triggers": ["待上机", "辅料待上机"]
       },
       "InUse": {
         "description": "辅料上机中",
         "physical_condition": "accy_accessory.status = 1",
         "applies_to_table": "accy_accessory",
-        "applies_to_column": "status"
+        "applies_to_column": "status",
+        "is_terminal": false,
+        "nl_triggers": ["上机中", "辅料使用中"]
       },
       "PendingReturn": {
         "description": "辅料退库待确认",
         "physical_condition": "accy_accessory.status = 2",
         "applies_to_table": "accy_accessory",
-        "applies_to_column": "status"
+        "applies_to_column": "status",
+        "is_terminal": false,
+        "nl_triggers": ["退库待确认", "辅料退库中"]
       },
       "Returned": {
         "description": "辅料已退库",
         "physical_condition": "accy_accessory.status = 3",
         "applies_to_table": "accy_accessory",
-        "applies_to_column": "status"
+        "applies_to_column": "status",
+        "is_terminal": true,
+        "nl_triggers": ["已退库", "辅料退库完成"]
       }
     },
     "semi:CarrierStatus": {
@@ -908,19 +948,25 @@
         "description": "载具可用/空闲",
         "physical_condition": "carrier.status = 0",
         "applies_to_table": "carrier",
-        "applies_to_column": "status"
+        "applies_to_column": "status",
+        "is_terminal": false,
+        "nl_triggers": ["空闲载具", "可用载具", "空载具"]
       },
       "InUse": {
         "description": "载具使用中",
         "physical_condition": "carrier.status = 1",
         "applies_to_table": "carrier",
-        "applies_to_column": "status"
+        "applies_to_column": "status",
+        "is_terminal": false,
+        "nl_triggers": ["使用中载具", "在用载具", "载具在用"]
       },
       "Matainence": {
         "description": "载具保养中",
         "physical_condition": "carrier.status = 2",
         "applies_to_table": "carrier",
-        "applies_to_column": "status"
+        "applies_to_column": "status",
+        "is_terminal": false,
+        "nl_triggers": ["保养中载具", "载具保养", "维护载具"]
       }
     }
   },
@@ -970,5 +1016,43 @@
         "semi:ProductionLot"
       ]
     }
-  ]
+  ],
+  "metric_definitions": {
+    "wafer_wip": {
+      "zh_names": ["在制品数量", "WIP数量", "在制wafer数", "在机台wafer数", "在制品wafer", "各站在制", "站点在制品"],
+      "anchor_table": "matrix_routerx_operation_lot_wafer",
+      "formula": "COUNT(DISTINCT matrix_routerx_operation_lot_wafer.id)",
+      "join_path": "matrix_routerx_operation_lot_wafer → matrix_routerx_operation_lot(parent_id!=0) → matrix_routerx_config_process",
+      "auto_filter": "matrix_routerx_operation_lot.status = 50 AND matrix_routerx_operation_lot.parent_id != 0",
+      "granularity": ["工站", "机台", "产品", "路线", "时段"],
+      "description": "当前在制品晶圆数，以Wafer为粒度统计，通过子批次(Sublot)关联工站"
+    },
+    "lot_yield": {
+      "zh_names": ["批次良率", "良率", "Yield", "出站良率", "工序良率"],
+      "anchor_table": "matrix_routerx_operation_lot",
+      "formula": "SUM(qualified_qty) / NULLIF(SUM(total_qty), 0)",
+      "join_path": null,
+      "auto_filter": null,
+      "granularity": ["产品", "工站", "日期", "班次"],
+      "description": "出站良率，基于报工记录的合格数/总数，qualified_qty和total_qty来自报工表"
+    },
+    "cycle_time": {
+      "zh_names": ["周期时间", "加工周期", "cycle time", "站点耗时", "工序耗时", "CTQ"],
+      "anchor_table": "matrix_routerx_operation_lot",
+      "formula": "AVG(EXTRACT(EPOCH FROM (out_time - in_time)) / 3600.0)",
+      "join_path": null,
+      "auto_filter": "matrix_routerx_operation_lot.process_status = 200",
+      "granularity": ["工站", "产品", "路线"],
+      "description": "工序周期时间（小时），基于进站(in_time)和出站(out_time)时间差，PostgreSQL使用EXTRACT(EPOCH)"
+    },
+    "lot_throughput": {
+      "zh_names": ["批次吞吐", "产出批次", "throughput", "出站批次数", "吞吐量"],
+      "anchor_table": "matrix_routerx_operation_lot",
+      "formula": "COUNT(DISTINCT matrix_routerx_operation_lot.id)",
+      "join_path": null,
+      "auto_filter": "matrix_routerx_operation_lot.process_status = 200",
+      "granularity": ["工站", "日期", "班次", "设备"],
+      "description": "指定时段内完成出站的批次数，以process_status=200（已出站）为口径"
+    }
+  }
 }

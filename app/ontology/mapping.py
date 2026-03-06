@@ -81,6 +81,8 @@ class ValueMapping:
     count_target_table: Optional[str] = None   # COUNT 的目标表 (e.g. "wafers")
     count_target_column: Optional[str] = None  # COUNT 的目标列 (e.g. "id")
     join_path: Optional[str] = None            # JOIN 路径描述
+    is_terminal: bool = False                  # Phase 1: 是否为终态（完结/作废等）
+    nl_triggers: List[str] = field(default_factory=list)  # Phase 1: 自然语言触发词
     note: Optional[str] = None
 
 
@@ -98,6 +100,19 @@ class BusinessRule:
     warning_tables: List[str] = field(default_factory=list)
     # Fast Path 触发条件：用户查询必须包含其中至少一个关键词才激活该规则的 SQL 模板
     trigger_keywords: List[str] = field(default_factory=list)
+
+
+@dataclass
+class MetricDefinition:
+    """Phase 2: 指标定义 — 为 LLM 提供结构化指标语义"""
+    metric_id: str
+    zh_names: List[str]           # 触发该指标的中文名称列表
+    anchor_table: str             # 指标的主表
+    formula: str                  # 聚合公式（PostgreSQL 语法）
+    granularity: List[str]        # 支持的统计粒度
+    description: str
+    join_path: Optional[str] = None   # JOIN 路径提示（可选）
+    auto_filter: Optional[str] = None # 自动注入的 WHERE 条件（可选）
 
 
 # --------------------------------------------------------------------- #
@@ -230,6 +245,7 @@ class MappingDictionary:
         self._recursive_map: Dict[str, RecursiveMapping] = {}        # "semi:hasParentLot" → RecursiveMapping
         self._value_map: Dict[str, Dict[str, ValueMapping]] = {}     # "semi:WaferState" -> {"WIP": ValueMapping}
         self._business_rules: List[BusinessRule] = []
+        self._metrics: Dict[str, MetricDefinition] = {}              # Phase 2: "wafer_wip" → MetricDefinition
 
         self._load()
 
@@ -245,6 +261,7 @@ class MappingDictionary:
         self._parse_relation_mappings(self._raw.get("relation_mappings", []))
         self._parse_value_mappings(self._raw.get("value_mappings", {}))
         self._parse_business_rules(self._raw.get("business_rules", []))
+        self._parse_metrics(self._raw.get("metric_definitions", {}))
 
     def _parse_object_mappings(self, items: List[Dict]) -> None:
         for item in items:
@@ -349,6 +366,8 @@ class MappingDictionary:
                     count_target_table=val_data.get("count_target_table"),
                     count_target_column=val_data.get("count_target_column"),
                     join_path=val_data.get("join_path"),
+                    is_terminal=val_data.get("is_terminal", False),
+                    nl_triggers=val_data.get("nl_triggers", []),
                     note=val_data.get("note"),
                 )
                 self._value_map[domain][val_key] = vm
@@ -368,6 +387,20 @@ class MappingDictionary:
                 trigger_keywords=item.get("trigger_keywords", []),
             )
             self._business_rules.append(br)
+
+    def _parse_metrics(self, data: Dict[str, Dict]) -> None:
+        """Phase 2: 解析 metric_definitions 节"""
+        for metric_id, md in data.items():
+            self._metrics[metric_id] = MetricDefinition(
+                metric_id=metric_id,
+                zh_names=md.get("zh_names", []),
+                anchor_table=md.get("anchor_table", ""),
+                formula=md.get("formula", ""),
+                granularity=md.get("granularity", []),
+                description=md.get("description", ""),
+                join_path=md.get("join_path"),
+                auto_filter=md.get("auto_filter"),
+            )
 
     # ----------------------------------------------------------------- #
     # 1. 逻辑类 → 物理表
@@ -507,6 +540,56 @@ class MappingDictionary:
     def list_values_in_domain(self, domain: str) -> Dict[str, ValueMapping]:
         """返回某个域下的所有值映射"""
         return self._value_map.get(domain, {})
+
+    def get_terminal_conditions(self, domain: str) -> List[str]:
+        """Phase 1: 返回指定域内所有终态的 physical_condition 列表"""
+        import re as _re
+        domain_map = self.list_values_in_domain(domain)
+        if not domain_map:
+            prefixed = f"semi:{domain}" if not domain.startswith("semi:") else domain
+            domain_map = self.list_values_in_domain(prefixed)
+        return [
+            vm.physical_condition
+            for vm in domain_map.values()
+            if vm.is_terminal and vm.physical_condition
+        ]
+
+    def get_wip_exclusion_filter(self, domain: str = "semi:BatchStatus") -> Optional[str]:
+        """
+        Phase 1: 从终态列表自动构造 NOT IN 过滤条件。
+        例: 返回 "matrix_routerx_operation_lot.status NOT IN (100, -50)"
+        """
+        import re as _re
+        conditions = self.get_terminal_conditions(domain)
+        if not conditions:
+            return None
+        # 提取数值（含负数），例 "...status = 100" → "100"
+        nums: List[str] = []
+        for cond in conditions:
+            m = _re.search(r'=\s*(-?\d+)', cond)
+            if m:
+                nums.append(m.group(1))
+        if not nums:
+            return None
+        # 从任意一条 condition 拿 table.column 前缀
+        prefix_match = _re.match(r'([\w.]+)\s*=', conditions[0])
+        if not prefix_match:
+            return None
+        col_ref = prefix_match.group(1).rstrip()  # e.g. "matrix_routerx_operation_lot.status"
+        return f"{col_ref} NOT IN ({', '.join(nums)})"
+
+    def find_metric_by_name(self, query: str) -> Optional["MetricDefinition"]:
+        """Phase 2: 在所有指标 zh_names 中做子串匹配，返回第一个命中的 MetricDefinition"""
+        q = query.lower()
+        for metric in self._metrics.values():
+            for name in metric.zh_names:
+                if name.lower() in q or name in query:
+                    return metric
+        return None
+
+    def list_all_metrics(self) -> List["MetricDefinition"]:
+        """Phase 2: 返回所有指标定义"""
+        return list(self._metrics.values())
 
     # ----------------------------------------------------------------- #
     # 4. 业务规则
