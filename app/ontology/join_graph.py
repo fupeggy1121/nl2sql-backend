@@ -1,0 +1,237 @@
+"""
+语义连接图 —— 基于 relation_mappings 构建 NetworkX DiGraph
+
+架构层级：
+  OWL TTL（启动校验） → relation_mappings（语义×物理桥） → JoinGraph（运行时索引）
+
+设计原则：
+  - 图节点 = OWL 语义类（如 "semi:ProductionLot"）
+  - 图有向边 = OWL ObjectProperty，携带 join_logic（物理表/键）
+  - union range（hasInput/hasOutput）展开为各目标类分别建边
+  - 不带 range_class 的属性（modifiesStateVector）跳过（不可路径化）
+  - BFS 最短路径 → 返回每跳 JoinEdge（含 RelationMapping 引用），
+    调用方可直接生成 SQL JOIN 链，无需再回查 TTL
+"""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
+
+import networkx as nx
+
+if TYPE_CHECKING:
+    from .mapping import MappingDictionary, RelationMapping
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class JoinEdge:
+    """一条语义路径上的单跳信息"""
+    logic_relation: str          # e.g. "semi:belongsToLot"
+    from_class: str              # e.g. "semi:Wafer"
+    to_class: str                # e.g. "semi:ProductionLot"
+    reversed: bool               # True = 沿反向边走（range→domain）
+    relation_mapping: "RelationMapping"  # 携带完整物理 join 信息
+
+
+class JoinGraph:
+    """
+    基于 relation_mappings 构建的语义连接图。
+
+    节点: OWL class short name（"semi:ProductionLot"）
+    有向边 domain→range，edge attr 来自对应的 RelationMapping。
+    图同时添加反向边（range→domain），以支持双向路径发现；
+    反向边的 logic_relation 前缀 "^" 标识（与 OntologyGraph 保持一致）。
+    """
+
+    def __init__(self) -> None:
+        self._g: nx.DiGraph = nx.DiGraph()
+        self._built: bool = False
+
+    # ----------------------------------------------------------------- #
+    # 构建
+    # ----------------------------------------------------------------- #
+
+    def build(self, mapping: "MappingDictionary") -> "JoinGraph":
+        """
+        从已加载的 MappingDictionary 构建图。
+        应在 OntologyValidator.validate_relation_mappings() 之后调用，
+        确保 domain_class / range_class 与 TTL 一致。
+        """
+        g = nx.DiGraph()
+        edge_count = 0
+
+        for logic_rel, rm in mapping._relation_map.items():
+            domain = rm.domain_class
+            range_raw = rm.range_class
+
+            if domain is None or range_raw is None:
+                logger.debug(
+                    "JoinGraph: 跳过 %s（domain=%s, range=%s）",
+                    logic_rel, domain, range_raw,
+                )
+                continue
+
+            # union range 展开为多条边
+            targets: List[str] = (
+                range_raw if isinstance(range_raw, list) else [range_raw]
+            )
+
+            for target in targets:
+                # 正向边 domain → range
+                g.add_edge(
+                    domain, target,
+                    logic_relation=logic_rel,
+                    reversed=False,
+                    rm=rm,
+                )
+                # 反向边 range → domain（^前缀，用于双向路径发现）
+                g.add_edge(
+                    target, domain,
+                    logic_relation="^" + logic_rel,
+                    reversed=True,
+                    rm=rm,
+                )
+                edge_count += 1
+
+        self._g = g
+        self._built = True
+        logger.info(
+            "JoinGraph built: %d nodes, %d logical edges (%d directed)",
+            g.number_of_nodes(),
+            edge_count,
+            g.number_of_edges(),
+        )
+        return self
+
+    # ----------------------------------------------------------------- #
+    # 路径查找
+    # ----------------------------------------------------------------- #
+
+    def find_path(
+        self,
+        source_class: str,
+        target_class: str,
+    ) -> Optional[List[JoinEdge]]:
+        """
+        BFS 最短路径（有向，同时允许反向边）。
+
+        Returns
+        -------
+        None
+            如果两类之间没有连通路径
+        List[JoinEdge]
+            路径上每一跳的 JoinEdge，调用方可直接使用其 relation_mapping
+            生成 SQL JOIN 链
+        """
+        if not self._built:
+            logger.warning("JoinGraph.find_path called before build()")
+            return None
+
+        if source_class == target_class:
+            return []
+
+        if source_class not in self._g or target_class not in self._g:
+            logger.debug(
+                "JoinGraph: 节点不存在: source=%s target=%s",
+                source_class, target_class,
+            )
+            return None
+
+        try:
+            node_path: List[str] = nx.shortest_path(
+                self._g, source_class, target_class
+            )
+        except nx.NetworkXNoPath:
+            return None
+        except nx.NodeNotFound:
+            return None
+
+        edges: List[JoinEdge] = []
+        for i in range(len(node_path) - 1):
+            u, v = node_path[i], node_path[i + 1]
+            edge_data = self._g[u][v]
+            edges.append(JoinEdge(
+                logic_relation=edge_data["logic_relation"],
+                from_class=u,
+                to_class=v,
+                reversed=edge_data["reversed"],
+                relation_mapping=edge_data["rm"],
+            ))
+        return edges
+
+    def find_path_undirected(
+        self,
+        source_class: str,
+        target_class: str,
+    ) -> Optional[List[JoinEdge]]:
+        """
+        忽略边方向的 BFS（undirected fallback）。
+        当正向路径不存在时可用作备选。
+        """
+        if not self._built:
+            return None
+        try:
+            ug = self._g.to_undirected()
+            node_path = nx.shortest_path(ug, source_class, target_class)
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            return None
+
+        edges: List[JoinEdge] = []
+        for i in range(len(node_path) - 1):
+            u, v = node_path[i], node_path[i + 1]
+            if self._g.has_edge(u, v):
+                edge_data = self._g[u][v]
+            else:
+                edge_data = self._g[v][u]
+            edges.append(JoinEdge(
+                logic_relation=edge_data["logic_relation"],
+                from_class=u,
+                to_class=v,
+                reversed=edge_data["reversed"],
+                relation_mapping=edge_data["rm"],
+            ))
+        return edges
+
+    # ----------------------------------------------------------------- #
+    # 工具方法
+    # ----------------------------------------------------------------- #
+
+    def neighbors(self, class_name: str) -> List[str]:
+        """返回某个语义类的直接邻居（所有 range 类）"""
+        if class_name not in self._g:
+            return []
+        return list(self._g.successors(class_name))
+
+    def has_direct_edge(self, source: str, target: str) -> bool:
+        return self._g.has_edge(source, target)
+
+    @property
+    def node_count(self) -> int:
+        return self._g.number_of_nodes()
+
+    @property
+    def edge_count(self) -> int:
+        return self._g.number_of_edges() // 2  # 正反向各一条，除2得逻辑边数
+
+    @property
+    def is_ready(self) -> bool:
+        return self._built
+
+
+# ─── 模块级单例 ──────────────────────────────────────────────────────────────
+_join_graph: Optional[JoinGraph] = None
+
+
+def get_join_graph() -> Optional[JoinGraph]:
+    """获取全局 JoinGraph 单例（lifespan 初始化后可用）"""
+    return _join_graph
+
+
+def init_join_graph(mapping: "MappingDictionary") -> JoinGraph:
+    """在 lifespan 中调用，构建并缓存全局 JoinGraph"""
+    global _join_graph
+    _join_graph = JoinGraph().build(mapping)
+    return _join_graph

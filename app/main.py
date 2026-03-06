@@ -40,6 +40,30 @@ async def lifespan(app: FastAPI):
     except Exception as _e:
         logger.warning(f"Synonym DB preload skipped: {_e}")
 
+    # Phase 3: OWL TTL 一致性校验 + NetworkX JoinGraph 初始化
+    # OWL TTL 是语义契约——校验确保 relation_mappings 与 TTL 同步
+    # JoinGraph 将校验后的 mappings 转为运行时图，BFS 替代每次解析 TTL
+    try:
+        from app.ontology.mapping import get_mapping
+        from app.ontology.config import DEFAULT_TTL_PATH
+        from app.ontology.ontology_validator import validate_relation_mappings
+        from app.ontology.join_graph import init_join_graph
+
+        _mapping = get_mapping()
+        issues = validate_relation_mappings(DEFAULT_TTL_PATH, _mapping, strict=False)
+        if issues:
+            logger.warning(
+                f"OWL TTL 校验发现 {len(issues)} 处不一致，请同步更新 "
+                "mapping_prod.json 或 semi-cim-ontology.ttl"
+            )
+        jg = init_join_graph(_mapping)
+        logger.info(
+            f"JoinGraph ready: {jg.node_count} semantic classes, "
+            f"{jg.edge_count} logical relations"
+        )
+    except Exception as _e:
+        logger.warning(f"JoinGraph init skipped: {_e}")
+
     yield
 
     logger.info("AI Agent service shutting down")

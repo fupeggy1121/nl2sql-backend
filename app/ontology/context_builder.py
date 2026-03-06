@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from app.ontology.loader import get_ontology
+from app.ontology.join_graph import get_join_graph
 from app.ontology.mapping import (
     BusinessRule,
     JoinCondition,
@@ -1030,6 +1031,11 @@ class SemanticContextBuilder:
     def _resolve_joins(self, classes: List[MatchedClass]) -> List[ResolvedJoin]:
         """
         对匹配到的类两两做路径发现，然后将每一跳的本体关系翻译为物理 JOIN。
+
+        路径发现策略（优先级）：
+          1. NetworkX JoinGraph BFS — 直接从 relation_mappings 物理图查找
+             （OWL TTL 校验通过后构建，无需运行时解析 TTL）
+          2. OntologyGraph（rdflib）— JoinGraph 未命中时 fallback
         """
         if len(classes) < 2:
             return []
@@ -1042,16 +1048,43 @@ class SemanticContextBuilder:
         if len(physical_classes) < 2:
             return []
 
+        join_graph = get_join_graph()  # 全局单例，lifespan 初始化后可用
+
         for i in range(len(physical_classes)):
             for j in range(i + 1, len(physical_classes)):
                 source = physical_classes[i].logic_class
                 target = physical_classes[j].logic_class
+
+                # ── 优先：NetworkX JoinGraph BFS ──────────────────────────
+                if join_graph and join_graph.is_ready:
+                    jg_edges = join_graph.find_path(source, target)
+                    if jg_edges is None:
+                        # 有向路径不通，尝试无向（反向关系也可联表）
+                        jg_edges = join_graph.find_path_undirected(source, target)
+
+                    if jg_edges is not None:
+                        for edge in jg_edges:
+                            actual_rel = edge.logic_relation.lstrip("^")
+                            if actual_rel in seen_relations:
+                                continue
+                            seen_relations.add(actual_rel)
+                            rm = edge.relation_mapping
+                            resolved.append(ResolvedJoin(
+                                logic_relation=rm.logic_relation,
+                                strategy=rm.strategy,
+                                conditions=rm.join_conditions,
+                                bridge_table=rm.bridge_table,
+                                order_by=rm.order_by,
+                                note=rm.note,
+                            ))
+                        continue  # 本对已处理，跳到下一对
+
+                # ── Fallback：OntologyGraph（rdflib TTL 图）───────────────
                 path = self._ontology.find_path(source, target)
                 if path is None:
                     continue
 
                 for from_cls, rel_uri, to_cls in path:
-                    # 处理反向边标记
                     actual_rel = rel_uri.lstrip("^")
                     if actual_rel in seen_relations:
                         continue
