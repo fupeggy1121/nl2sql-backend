@@ -190,6 +190,27 @@ class BusinessRuleUpdate(BaseModel):
     semantic_pattern: Optional[str] = None
 
 
+class MetricDefinitionIn(BaseModel):
+    metric_id: str
+    zh_names: List[str] = []
+    anchor_table: str = ""
+    formula: str = ""
+    granularity: List[str] = []
+    description: str = ""
+    join_path: Optional[str] = None
+    auto_filter: Optional[str] = None
+
+
+class MetricDefinitionUpdate(BaseModel):
+    zh_names: Optional[List[str]] = None
+    anchor_table: Optional[str] = None
+    formula: Optional[str] = None
+    granularity: Optional[List[str]] = None
+    description: Optional[str] = None
+    join_path: Optional[str] = None
+    auto_filter: Optional[str] = None
+
+
 class SwitchModeIn(BaseModel):
     mode: str  # "prod" | "demo" | "auto" | "mysql" | "supabase"
 
@@ -205,6 +226,7 @@ async def get_summary():
     rm = data.get("relation_mappings", [])
     vm = data.get("value_mappings", {})
     br = data.get("business_rules", [])
+    md = data.get("metric_definitions", {})
     return {
         "data": {
             "mapping_file": str(_get_mapping_path()),
@@ -214,6 +236,7 @@ async def get_summary():
             "relation_mappings": len(rm),
             "value_domains": len(vm),
             "business_rules": len(br),
+            "metric_definitions": len(md),
         }
     }
 
@@ -267,6 +290,7 @@ async def reload_cache():
     rm = data.get("relation_mappings", [])
     vm = data.get("value_mappings", {})
     br = data.get("business_rules", [])
+    md = data.get("metric_definitions", {})
     return {
         "message": "Cache reloaded",
         "data": {
@@ -275,6 +299,7 @@ async def reload_cache():
                 "relation_mappings": len(rm),
                 "value_domains": len(vm),
                 "business_rules": len(br),
+                "metric_definitions": len(md),
             }
         }
     }
@@ -559,6 +584,76 @@ async def delete_rule(rule_id: str):
     _append_changelog("delete", "business_rule", rule_id, target, None)
     _reload_cache()
     return {"message": f"Deleted: {rule_id}"}
+
+
+# ══════════════════════════════════════════════════════════════════
+# Metric Definitions
+# ══════════════════════════════════════════════════════════════════
+
+@router.get("/metrics")
+async def list_metrics(q: str = Query("")):
+    """列出所有指标定义"""
+    data = _load_raw()
+    md: Dict[str, Any] = data.get("metric_definitions", {})
+    items = []
+    for metric_id, m in md.items():
+        entry = {"metric_id": metric_id, **m}
+        if q:
+            q_l = q.lower()
+            searchable = (
+                metric_id.lower()
+                + " " + (m.get("description") or "").lower()
+                + " " + " ".join(m.get("zh_names", [])).lower()
+            )
+            if q_l not in searchable:
+                continue
+        items.append(entry)
+    return {"data": items, "total": len(items)}
+
+
+@router.post("/metrics", status_code=201)
+async def create_metric(body: MetricDefinitionIn):
+    """新增指标定义"""
+    data = _load_raw()
+    md: Dict[str, Any] = data.setdefault("metric_definitions", {})
+    if body.metric_id in md:
+        raise HTTPException(status_code=409, detail=f"Metric already exists: {body.metric_id}")
+    entry = {k: v for k, v in body.dict().items() if k != "metric_id"}
+    md[body.metric_id] = entry
+    _save_raw(data)
+    _append_changelog("create", "metric_definition", body.metric_id, None, entry)
+    _reload_cache()
+    return {"data": {"metric_id": body.metric_id, **entry}}
+
+
+@router.put("/metrics/{metric_id}")
+async def update_metric(metric_id: str, body: MetricDefinitionUpdate):
+    """更新指标定义（部分更新）"""
+    data = _load_raw()
+    md: Dict[str, Any] = data.get("metric_definitions", {})
+    if metric_id not in md:
+        raise HTTPException(status_code=404, detail=f"Metric not found: {metric_id}")
+    before = dict(md[metric_id])
+    updates = {k: v for k, v in body.dict().items() if v is not None}
+    md[metric_id].update(updates)
+    _save_raw(data)
+    _append_changelog("update", "metric_definition", metric_id, before, md[metric_id])
+    _reload_cache()
+    return {"data": {"metric_id": metric_id, **md[metric_id]}}
+
+
+@router.delete("/metrics/{metric_id}")
+async def delete_metric(metric_id: str):
+    """删除指标定义"""
+    data = _load_raw()
+    md: Dict[str, Any] = data.get("metric_definitions", {})
+    if metric_id not in md:
+        raise HTTPException(status_code=404, detail=f"Metric not found: {metric_id}")
+    before = md.pop(metric_id)
+    _save_raw(data)
+    _append_changelog("delete", "metric_definition", metric_id, before, None)
+    _reload_cache()
+    return {"message": f"Deleted: {metric_id}"}
 
 
 # ══════════════════════════════════════════════════════════════════

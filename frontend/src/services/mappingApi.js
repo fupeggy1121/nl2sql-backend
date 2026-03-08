@@ -150,6 +150,31 @@ export const mappingApi = {
   deleteRule: (id) =>
     request(`/rules/${enc(id)}`, { method: 'DELETE' }),
 
+  // ── metric_definitions CRUD ───────────────────────────────────
+
+  /**
+   * 获取指标定义列表
+   * @param {Object} params - { q }
+   */
+  getMetrics: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== ''))
+    ).toString();
+    return request('/metrics' + (qs ? `?${qs}` : ''));
+  },
+
+  /** 新增指标定义 */
+  createMetric: (data) =>
+    request('/metrics', { method: 'POST', body: JSON.stringify(data) }),
+
+  /** 更新指标定义（部分更新） */
+  updateMetric: (metricId, data) =>
+    request(`/metrics/${enc(metricId)}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  /** 删除指标定义 */
+  deleteMetric: (metricId) =>
+    request(`/metrics/${enc(metricId)}`, { method: 'DELETE' }),
+
   // ── 变更日志 ──────────────────────────────────────────────────
 
   /**

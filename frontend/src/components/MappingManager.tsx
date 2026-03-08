@@ -17,7 +17,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Plus, Search, RefreshCw, Trash2, Edit2, ChevronDown, ChevronRight,
   History, Database, GitBranch, Tag, FileText, AlertCircle, X, Check,
-  Book
+  Book, BarChart2
 } from 'lucide-react';
 import { mappingApi } from '../services/mappingApi';
 
@@ -72,6 +72,17 @@ interface BusinessRule {
   semantic_pattern?: string;
 }
 
+interface MetricDefinition {
+  metric_id: string;
+  zh_names: string[];
+  anchor_table: string;
+  formula: string;
+  granularity: string[];
+  description: string;
+  join_path?: string | null;
+  auto_filter?: string | null;
+}
+
 interface ChangelogEntry {
   timestamp: string;
   user: string;
@@ -90,9 +101,10 @@ interface Summary {
   relation_mappings: number;
   value_domains: number;
   business_rules: number;
+  metric_definitions: number;
 }
 
-type Tab = 'objects' | 'relations' | 'values' | 'rules' | 'changelog';
+type Tab = 'objects' | 'relations' | 'values' | 'rules' | 'metrics' | 'changelog';
 
 // ══════════════════════════════════════════════════════════════════
 // Helper: Modal
@@ -1165,6 +1177,7 @@ function ChangelogTab() {
           <option value="relation_mapping">关系映射</option>
           <option value="value_mapping">值映射</option>
           <option value="business_rule">业务规则</option>
+          <option value="metric_definition">指标定义</option>
         </select>
         <select value={filterAction} onChange={e => { setFilterAction(e.target.value); setPage(1); }} className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none">
           <option value="">全部操作</option>
@@ -1250,6 +1263,7 @@ export default function MappingManager() {
     { key: 'relations', label: '关系映射',  icon: <GitBranch size={15} />,   count: summary?.relation_mappings },
     { key: 'values',    label: '值映射',    icon: <Tag size={15} />,          count: summary?.value_domains },
     { key: 'rules',     label: '业务规则',  icon: <Book size={15} />,         count: summary?.business_rules },
+    { key: 'metrics',   label: '指标定义',  icon: <BarChart2 size={15} />,    count: summary?.metric_definitions },
     { key: 'changelog', label: '变更记录',  icon: <History size={15} /> },
   ];
 
@@ -1304,6 +1318,7 @@ export default function MappingManager() {
             {tab === 'relations' && <RelationMappingsTab />}
             {tab === 'values'    && <ValueMappingsTab />}
             {tab === 'rules'     && <BusinessRulesTab />}
+            {tab === 'metrics'   && <MetricsTab />}
             {tab === 'changelog' && <ChangelogTab />}
           </div>
         </div>
