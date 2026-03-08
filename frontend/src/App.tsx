@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   BotMessageSquare, Book, Tag, Network, Sparkles, BarChart,
-  Plus, MessageSquare
+  Plus, MessageSquare, FlaskConical
 } from 'lucide-react'
 import { DbModeBadge } from './components/DbModeBadge'
 import MappingManager from './components/MappingManager'
@@ -9,10 +9,11 @@ import OntologyViewer from './components/OntologyViewer'
 import SynonymManager from './components/SynonymManager'
 import { MESPage } from './modules/mes'
 import { ReportsModule } from './components/Reports/ReportsModule'
+import NLTestManager from './components/NLTestManager'
 import { useData } from './hooks/useData'
 
 // ── Types ─────────────────────────────────────────────────────────
-type TopModule = 'ai-chat' | 'ontology-management'
+type TopModule = 'ai-chat' | 'ontology-management' | 'nl-testing'
 
 interface ChatSession {
   id: string
@@ -61,6 +62,8 @@ export default function App() {
     setActiveTopModule(mod)
     if (mod === 'ontology-management') {
       setActiveSubModule('semantic-mapping-management')
+    } else if (mod === 'nl-testing') {
+      setActiveSubModule('nl-testing')
     } else {
       const sessions = await fetchChatSessions()
       const latest = await fetchLatestChatSession()
@@ -82,6 +85,9 @@ export default function App() {
   }, [chatSessions.length, createChatSession])
 
   const renderSidebar = () => {
+    if (activeTopModule === 'nl-testing') {
+      return null
+    }
     if (activeTopModule === 'ontology-management') {
       return (
         <nav style={{ width: 200, flexShrink: 0, background: '#fff', borderRight: '1px solid #e5e7eb', padding: '16px 0' }}>
@@ -128,6 +134,9 @@ export default function App() {
   }
 
   const renderContent = () => {
+    if (activeTopModule === 'nl-testing') {
+      return <NLTestManager />
+    }
     if (activeTopModule === 'ontology-management') {
       switch (activeSubModule) {
         case 'semantic-mapping-management': return <MappingManager />
@@ -144,6 +153,7 @@ export default function App() {
   const topNavItems = [
     { id: 'ai-chat' as TopModule,             label: '智能报表', icon: Sparkles },
     { id: 'ontology-management' as TopModule, label: '本体管理', icon: Book },
+    { id: 'nl-testing' as TopModule,          label: '语义测试', icon: FlaskConical },
   ]
 
   return (
@@ -173,7 +183,7 @@ export default function App() {
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         {renderSidebar()}
-        <main style={{ flex: 1, minHeight: 0, overflow: activeTopModule === 'ontology-management' ? 'auto' : 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <main style={{ flex: 1, minHeight: 0, overflow: (activeTopModule === 'ontology-management' || activeTopModule === 'nl-testing') ? 'auto' : 'hidden', display: 'flex', flexDirection: 'column' }}>
           {renderContent()}
         </main>
       </div>

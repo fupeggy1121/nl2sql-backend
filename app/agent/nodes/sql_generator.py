@@ -621,14 +621,35 @@ def _format_semantic_context(semantic_ctx: dict) -> str:
                     f"  ⚠ COUNT 统计对象: COUNT(DISTINCT {ct_table}.{ct_col})，不是 COUNT({f.get('applies_to_table', '?')}.id)（JOIN可能产生重复行，必须DISTINCT去重）"
                 )
 
+    # 指标定义（Phase 2: metric_definitions）
+    metrics = semantic_ctx.get("metrics", [])
+    if metrics:
+        lines.append("【指标定义 — 必须按此公式生成SQL，禁止猜测计算方式】:")
+        for m in metrics:
+            lines.append(f"  📊 {m.get('metric_id', '')}: {m.get('description', '')}")
+            lines.append(f"    公式: {m.get('formula', '')}")
+            lines.append(f"    锚点表: {m.get('anchor_table', '')}")
+            if m.get('join_path'):
+                lines.append(f"    JOIN路径: {m.get('join_path', '')}")
+            if m.get('auto_filter'):
+                lines.append(f"    ⚠ 必含WHERE/AND条件: {m.get('auto_filter', '')}")
+            if m.get('granularity'):
+                gran = m['granularity']
+                if isinstance(gran, list):
+                    gran = ', '.join(gran)
+                lines.append(f"    支持维度(GROUP BY): {gran}")
+
     # 业务规则
     rules = semantic_ctx.get("business_rules", [])
     if rules:
-        lines.append("业务规则提醒:")
+        lines.append("【业务规则约束 — 路径/过滤约束，不要照搬示例SQL】:")
         for r in rules:
             lines.append(f"  ⚠ {r.get('name', '')}: {r.get('description', '')}")
             if r.get("sql_example"):
-                lines.append(f"    参考SQL模板 (按需调整，不要照抄——根据实际查询需求增减字段或过滤条件):")
+                lines.append(
+                    f"    ↳ 路径示例(仅供JOIN路径参考，必须根据实际查询的维度/指标重新组合，"
+                    f"禁止直接复制此SQL):"
+                )
                 lines.append(f"    {r['sql_example']}")
 
     return "\n".join(lines) if len(lines) > 1 else ""

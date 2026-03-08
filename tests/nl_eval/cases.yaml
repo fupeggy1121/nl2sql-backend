@@ -1,0 +1,81 @@
+# NL 语义查询端到端测试用例
+# run_count 控制每条用例跑多少次（验证稳健性）
+#
+# expected 字段：
+#   sql_contains   — SQL 中必须出现的关键字（不区分大小写）
+#   sql_excludes   — SQL 中不能出现的字符串
+#   tables_present — pipeline_trace.semantic_resolver.physical_tables 中必须包含
+#   sql_pattern    — 可选正则，对生成 SQL 做完整 pattern 匹配
+
+cases:
+  - id: wip_by_station
+    nl: "统计各站点的在制品数量"
+    intent: "按工艺站点分组，统计 WIP(status=50) 批次/晶圆数量"
+    run_count: 3
+    expected:
+      sql_contains: ["GROUP BY", "status"]
+      sql_excludes: ["local_production_batch"]
+      tables_present: ["matrix_routerx_operation_lot"]
+
+  - id: wafer_wip_count
+    nl: "当前在制的晶圆总数是多少"
+    intent: "WIP 状态下所有晶圆数量（wafer 粒度）"
+    run_count: 3
+    expected:
+      sql_contains: ["COUNT", "wafer"]
+      sql_excludes: ["local_production_batch"]
+      tables_present: ["matrix_routerx_operation_lot_wafer"]
+
+  - id: wafer_wip_by_station
+    nl: "各站点在制晶圆数量分布"
+    intent: "Wafer→Sublot(atStation)→ProcessStation，按站点 GROUP BY COUNT(wafer)"
+    run_count: 3
+    expected:
+      sql_contains: ["COUNT", "GROUP BY"]
+      sql_excludes: ["local_production_batch"]
+      tables_present: ["matrix_routerx_operation_lot_wafer"]
+
+  - id: equipment_list
+    nl: "查询所有设备信息"
+    intent: "直接查设备表，不带过滤"
+    run_count: 2
+    expected:
+      sql_contains: ["equipment"]
+      sql_excludes: []
+      tables_present: ["equipment"]
+
+  - id: carrier_available
+    nl: "当前可用的片篮数量"
+    intent: "统计状态可用的 carrier 数量"
+    run_count: 2
+    expected:
+      sql_contains: ["COUNT", "carrier"]
+      sql_excludes: []
+      tables_present: ["carrier"]
+
+  - id: completed_lots
+    nl: "已完结的批次有多少条"
+    intent: "统计 status=100 的批次数量"
+    run_count: 2
+    expected:
+      sql_contains: ["COUNT", "status"]
+      sql_excludes: ["local_production_batch"]
+      tables_present: ["matrix_routerx_operation_lot"]
+
+  - id: wip_with_equipment
+    nl: "统计每台设备上当前处理的批次数量"
+    intent: "Equipment + Sublot 双类关联，按设备聚合 WIP（边界测试）"
+    run_count: 3
+    expected:
+      sql_contains: ["GROUP BY", "equipment"]
+      sql_excludes: ["local_production_batch"]
+      tables_present: []
+
+  - id: nonexistent_station
+    nl: "查询 XX不存在站点 的在制数量"
+    intent: "不存在站点名的过滤——SQL 能生成，结果应为空行"
+    run_count: 2
+    expected:
+      sql_contains: ["status"]
+      sql_excludes: ["local_production_batch"]
+      tables_present: []

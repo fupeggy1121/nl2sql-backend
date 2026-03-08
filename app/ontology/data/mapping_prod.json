@@ -156,7 +156,7 @@
     },
     {
       "logic_class": "semi:Carrier",
-      "physical_table": "carrier",
+      "physical_table": "carrier_info",
       "primary_key": "id",
       "label_cn": "载具",
       "display_column": "code",
@@ -166,12 +166,31 @@
       "key_columns": [
         "id",
         "code",
+        "type_code",
         "status",
-        "smif_pod_code",
-        "sub_lot_code",
-        "lot_code",
+        "sub_status",
+        "maintenance_countdown",
+        "remaining_useful_life",
+        "usage_unit",
+        "bind_carrier_group",
+        "bind_carrier_group_name",
+        "num",
+        "extra",
+        "create_user_id",
+        "create_user",
+        "update_user_id",
+        "update_user",
+        "gmt_update",
         "gmt_create",
-        "gmt_update"
+        "deleted",
+        "trace_id",
+        "maintenance_countdown_unit",
+        "highlight_display",
+        "capacity",
+        "lot_code",
+        "sub_lot_code",
+        "capacity_unit",
+        "location"
       ]
     },
     {
@@ -311,42 +330,72 @@
       "physical_table": "material",
       "primary_key": "id",
       "label_cn": "原料",
-      "display_column": "name",
-      "filter_condition": "material_type IN ('raw', 'wafer', '原料', '硅片')",
+      "display_column": "material_name",
+      "filter_condition": "type = material",
       "properties": {},
       "key_columns": [
         "id",
-        "name",
-        "code",
+        "material_no",
         "material_type",
-        "spec",
+        "type",
+        "material_version",
+        "material_name",
+        "material_spec",
         "unit",
+        "check_lot_no",
+        "description",
         "classify_id",
-        "status"
+        "classify_name",
+        "status",
+        "extra",
+        "create_user_id",
+        "create_user",
+        "gmt_create",
+        "update_user_id",
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "trace_id",
+        "category_code"
       ],
-      "note": "使用 material 表，通过 material_type 筛选原料类型行。具体枚举值需对照实际数据库中的 material_type 字段值确认。"
+      "note": "使用 material 表，通过 type 筛选原料类型行。具体枚举值需对照实际数据库中的 type 字段值确认。"
     },
     {
       "logic_class": "semi:Auxiliary",
-      "physical_table": "accy_model",
+      "physical_table": "material",
       "primary_key": "id",
       "label_cn": "辅料主数据",
-      "display_column": "name",
+      "display_column": "material_name",
       "properties": {
         "semi:hasState": "status"
       },
       "key_columns": [
         "id",
-        "name",
-        "code",
-        "status",
-        "accy_type",
-        "spec",
+        "material_no",
+        "material_type",
+        "type",
+        "material_version",
+        "material_name",
+        "material_spec",
         "unit",
+        "check_lot_no",
+        "description",
         "classify_id",
-        "gmt_create"
+        "classify_name",
+        "status",
+        "extra",
+        "create_user_id",
+        "create_user",
+        "gmt_create",
+        "update_user_id",
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "trace_id",
+        "category_code"
       ],
-      "note": "accy_model 是辅料主数据定义表（型号/规格）。accy_accessory 是辅料实体上机记录，status:0=待上机,1=上机中,2=退库待确认,3=已退库。"
+      "note": "accy_model 是辅料主数据定义表（型号/规格）。accy_accessory 是辅料实体上机记录，status:0=待上机,1=上机中,2=退库待确认,3=已退库。",
+      "filter_condition": "type = auxiliary"
     },
     {
       "logic_class": "semi:SparePart",
@@ -381,21 +430,38 @@
     },
     {
       "logic_class": "semi:Product",
-      "physical_table": "product",
+      "physical_table": "material",
       "primary_key": "id",
       "label_cn": "产品",
-      "display_column": "name",
+      "display_column": "material_name",
       "properties": {},
       "key_columns": [
         "id",
-        "name",
-        "code",
-        "material_id",
-        "product_model_id",
+        "material_no",
+        "material_type",
+        "type",
+        "material_version",
+        "material_name",
+        "material_spec",
+        "unit",
+        "check_lot_no",
+        "description",
+        "classify_id",
+        "classify_name",
         "status",
-        "gmt_create"
+        "extra",
+        "create_user_id",
+        "create_user",
+        "gmt_create",
+        "update_user_id",
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "trace_id",
+        "category_code"
       ],
-      "note": "product 是具体的产品实体或型号记录。通过 product_model_id 关联 product_model（semi:ProductModel）。routerx_lot.product_id → product.id。"
+      "note": "product 是具体的产成品实体物料。通过 material_no 关联 product_model（semi:ProductModel），产品模型是对特定产品类型物料的制造维度完整定义。物料主数据定义\"这是什么物料\"），产品模型进一步定义\"这种物料如何被制造出来、制造成什么样\"。两者共同构成MES对一种产品的完整认知",
+      "filter_condition": "type = product"
     },
     {
       "logic_class": "semi:Action",
@@ -475,23 +541,12 @@
     {
       "logic_relation": "semi:currentlyFollowsModel",
       "description": "Lot 当前遵循的 ProductModel — 通过 product→product_model",
-      "strategy": "Indirect",
+      "strategy": "ForeignKey",
       "join_logic": {
-        "path": [
-          {
-            "from_table": "matrix_routerx_operation_lot",
-            "from_key": "product_id",
-            "to_table": "product",
-            "to_key": "id"
-          },
-          {
-            "from_table": "product",
-            "from_key": "product_model_id",
-            "to_table": "product_model",
-            "to_key": "id"
-          }
-        ],
-        "note": "matrix_routerx_operation_lot.product_id → product.id → product.product_model_id → product_model.id"
+        "source_table": "matrix_routerx_operation_lot",
+        "target_table": "product_model",
+        "source_key": "product_id",
+        "target_key": "id"
       },
       "domain_class": "semi:ProductionLot",
       "range_class": "semi:ProductModel"
@@ -563,14 +618,13 @@
     },
     {
       "logic_relation": "semi:isCarriedBy",
-      "description": "批次由哪个 Carrier(载具) 承载",
-      "strategy": "Denormalized",
+      "description": "子批次由哪个 Carrier(载具) 承载",
+      "strategy": "ForeignKey",
       "join_logic": {
-        "source_table": "carrier",
-        "source_key": "lot_code",
-        "target_table": "matrix_routerx_operation_lot",
-        "target_key": "current_lot_code",
-        "note": "carrier.lot_code 冗余存储关联的批次号。matrix_routerx_operation_lot.current_lot_code 为批次号。批次粒度关联，非晶圆粒度。"
+        "source_table": "matrix_routerx_operation_lot",
+        "target_table": "carrier_info",
+        "target_key": "code",
+        "source_key": "carrier_code"
       },
       "domain_class": "semi:Sublot",
       "range_class": "semi:Carrier"
@@ -682,7 +736,7 @@
     },
     {
       "logic_relation": "semi:requiresSparePart",
-      "description": "Equipment 需要哪些备件 — 通过 material 表筛选备件类型",
+      "description": "Equipment 需要安装哪些备件，通过 material 表筛选备件类型的物料",
       "strategy": "Virtual",
       "join_logic": {
         "note": "MySQL中设备与备件的直接关联关系未明确定义。可通过 material 表 material_type='spare_part' 以及设备维修记录间接推导，暂标记为虚拟关系。"
@@ -730,13 +784,13 @@
     },
     {
       "logic_relation": "semi:isDefinedBy",
-      "description": "Product(产品实例) 由 ProductModel 定义",
+      "description": "针对产品Product(产成品实例) 这种物料，需要在MES定义对应的“产品模型”，产品模型在制造维度通过目标状态规格定义\"应该变成什么\"、通过转换约束模型定义\"如何合法地变成\"，所以产品模型是物料状态演化的目标模板和转换过程的规则总成。",
       "strategy": "ForeignKey",
       "join_logic": {
-        "source_table": "product",
-        "source_key": "product_model_id",
+        "source_table": "material",
+        "source_key": "material_no",
         "target_table": "product_model",
-        "target_key": "id"
+        "target_key": "product_code"
       },
       "domain_class": "semi:Product",
       "range_class": "semi:ProductModel"
@@ -1134,8 +1188,9 @@
     {
       "rule_id": "BR-001",
       "name": "WIP统计口径",
-      "description": "WIP（在制品）以wafer为统计粒度，不以lot（批次）为统计单位。加工处理以子批次(Sublot, parent_id!=0)为调度单位，必须通过2跳路径：Wafer → Sublot(parent_id!=0) → ProcessStation。主批次(parent_id=0)不含工序信息，直接JOIN会导致重复计数。正确SQL：SELECT p.name AS 站点名称, p.code AS 站点编码, COUNT(DISTINCT w.id) AS 在制品数量 FROM matrix_routerx_operation_lot_wafer w JOIN matrix_routerx_operation_lot sub ON w.sub_lot_id = sub.id AND sub.parent_id != 0 JOIN matrix_routerx_config_process p ON sub.process_id = p.id WHERE sub.status = 50 GROUP BY p.name, p.code ORDER BY 在制品数量 DESC。sub.status=50 表示加工中的子批次；sub.process_id 关联当前所在站点。",
+      "description": "WIP（在制品）以wafer为统计粒度，不以lot（批次）为统计单位。必须通过2跳路径：wafer_wafer → matrix_routerx_operation_lot(sub, parent_id!=0, status=50) → matrix_routerx_config_process。主批次(parent_id=0)不含工序信息，直接JOIN会导致重复计数。【产品料号扩展路径】：子批次通过 sub.parent_id 回溯主批次(lot, parent_id=0)，主批次的 product_id 直接外键关联 product_model.id（ForeignKey）；当查询包含产品料号维度时必须加此2跳：JOIN matrix_routerx_operation_lot lot ON sub.parent_id = lot.id JOIN product_model pm ON lot.product_id = pm.id。数量过滤使用 HAVING COUNT(DISTINCT wafer_wafer.id) > N。必须根据查询的实际维度（GROUP BY列）和指标（FROM wafer_wip定义）自由组合SQL，不要照搬单一固定模板。",
       "physical_sql_template": "SELECT p.name AS 站点名称, p.code AS 站点编码, COUNT(DISTINCT w.id) AS 在制品数量 FROM matrix_routerx_operation_lot_wafer w JOIN matrix_routerx_operation_lot sub ON w.sub_lot_id = sub.id AND sub.parent_id != 0 JOIN matrix_routerx_config_process p ON sub.process_id = p.id WHERE sub.status = 50 GROUP BY p.name, p.code ORDER BY 在制品数量 DESC",
+      "physical_sql_template_with_product_model": "SELECT p.name AS 站点名称, p.code AS 站点编码, pm.name AS 产品料号, COUNT(DISTINCT w.id) AS 在制品数量 FROM matrix_routerx_operation_lot_wafer w JOIN matrix_routerx_operation_lot sub ON w.sub_lot_id = sub.id AND sub.parent_id != 0 JOIN matrix_routerx_config_process p ON sub.process_id = p.id JOIN matrix_routerx_operation_lot lot ON sub.parent_id = lot.id JOIN product_model pm ON lot.product_id = pm.id WHERE sub.status = 50 GROUP BY p.name, p.code, pm.name HAVING COUNT(DISTINCT w.id) > {threshold} ORDER BY 在制品数量 DESC",
       "trigger_keywords": [
         "在制品",
         "WIP",
@@ -1167,8 +1222,8 @@
     },
     {
       "rule_id": "BR-003",
-      "name": "产品→产品模型的两跳关联",
-      "description": "matrix_routerx_operation_lot 记录的 product_id 指向 product 表（产品实例），而非 product_model。查询产品模型时需两跳：matrix_routerx_operation_lot.product_id→product.id→product.product_model_id→product_model.id。",
+      "name": "批次关联产品模型的直连FK",
+      "description": "matrix_routerx_operation_lot.product_id 直接对应 product_model.id（semi:currentlyFollowsModel，ForeignKey策略）。WIP查询中需要关联产品料号时：子批次(sub, parent_id!=0) → JOIN matrix_routerx_operation_lot lot ON sub.parent_id = lot.id → JOIN product_model pm ON lot.product_id = pm.id。注意：子批次无直接 product_id，必须通过 parent_id 回溯到主批次后再关联产品模型。",
       "applies_to_classes": [
         "semi:ProductionLot",
         "semi:Product",

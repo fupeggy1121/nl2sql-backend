@@ -262,6 +262,7 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
             "joins": ctx_dict.get("joins", []),
             "filters": ctx_dict.get("filters", []),
             "business_rules": ctx_dict.get("business_rules", []),
+            "metrics": ctx_dict.get("metrics", []),
             "physical_tables": tables,
         })
 
