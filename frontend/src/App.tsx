@@ -32,7 +32,7 @@ const ontologySubItems = [
 
 // ── Main App ──────────────────────────────────────────────────────
 export default function App() {
-  const { fetchChatSessions, createChatSession, fetchLatestChatSession, dashboards, createDashboard, deleteDashboard } = useData()
+  const { fetchChatSessions, createChatSession, fetchLatestChatSession, dashboards, createDashboard, deleteDashboard, savedReports, deleteSavedReport } = useData()
 
   const [activeTopModule, setActiveTopModule] = useState<TopModule>('ai-chat')
   const [activeSubModule, setActiveSubModule] = useState<string>('')
@@ -142,10 +142,28 @@ export default function App() {
           )}
           {/* ── 保存的报表 ─────────────────────────────── */}
           <div style={{ padding: '12px 16px 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: 4 }}>报表</div>
-          <button onClick={() => setActiveSubModule('saved-reports')}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', background: activeSubModule === 'saved-reports' ? '#eff6ff' : 'transparent', color: activeSubModule === 'saved-reports' ? '#1d4ed8' : '#374151', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', borderLeft: activeSubModule === 'saved-reports' ? '2px solid #2563eb' : '2px solid transparent' }}>
-            <BarChart size={14} />保存的报表
-          </button>
+          {savedReports.map(r => {
+            const active = activeSubModule === `report-${r.id}`
+            return (
+              <div key={r.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
+                onMouseEnter={e => { const btn = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.del-rpt'); if (btn) btn.style.opacity = '1' }}
+                onMouseLeave={e => { const btn = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.del-rpt'); if (btn) btn.style.opacity = '0' }}>
+                <button onClick={() => { setActiveTopModule('ai-chat'); setActiveSubModule(`report-${r.id}`) }}
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', background: active ? '#eff6ff' : 'transparent', color: active ? '#1d4ed8' : '#374151', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', borderLeft: active ? '2px solid #2563eb' : '2px solid transparent', overflow: 'hidden' }}>
+                  <BarChart size={13} style={{ flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+                </button>
+                <button className="del-rpt" title="删除报表"
+                  onClick={e => { e.stopPropagation(); if (confirm(`删除报表「${r.name}」？`)) { deleteSavedReport(r.id); if (activeSubModule === `report-${r.id}`) setActiveSubModule(chatSessions[0]?.id || '') } }}
+                  style={{ opacity: 0, transition: 'opacity .15s', position: 'absolute', right: 8, background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '2px 4px', display: 'flex', alignItems: 'center' }}>
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            )
+          })}
+          {savedReports.length === 0 && (
+            <div style={{ padding: '6px 18px', fontSize: 12, color: '#d1d5db', fontStyle: 'italic' }}>暂无保存的报表</div>
+          )}
           <div style={{ padding: '12px 16px 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: 4 }}>AI 对话</div>
           <button onClick={startNewConversation}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', background: 'transparent', color: '#4b5563', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', borderLeft: '2px solid transparent' }}>
@@ -179,7 +197,11 @@ export default function App() {
         default:                            return <MappingManager />
       }
     }
-    if (activeSubModule === 'saved-reports') return <ReportsModule reportId={activeSubModule} />
+    if (activeSubModule === 'saved-reports') return <ReportsModule reportId={undefined} />
+    if (activeSubModule.startsWith('report-')) {
+      const id = activeSubModule.replace('report-', '')
+      return <ReportsModule reportId={id} />
+    }
     if (activeSubModule.startsWith('dashboard-')) {
       const id = activeSubModule.replace('dashboard-', '')
       return <DashboardModule dashboardId={id} />
