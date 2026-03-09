@@ -9,7 +9,12 @@
       "primary_key": null,
       "label_cn": "晶圆",
       "display_column": "wafer_code",
-      "properties": {},
+      "properties": {
+        "semi:hasWaferCode": "wafer_code",
+        "semi:hasSlotNo": "slot_no",
+        "semi:hasState": "status",
+        "semi:hasNGCode": "ng_code"
+      },
       "key_columns": [
         "id",
         "wafer_code",
@@ -45,7 +50,14 @@
       "label_cn": "生产批次",
       "display_column": "current_lot_code",
       "properties": {
-        "semi:hasState": "status"
+        "semi:hasLotCode": "current_lot_code",
+        "semi:hasState": "status",
+        "semi:hasProcessStatus": "process_status",
+        "semi:hasLotType": "type",
+        "semi:hasProductCode": "product_code",
+        "semi:hasRecipeCode": "recipe_code",
+        "semi:hasCarrierCode": "carrier_code",
+        "semi:hasWaferStatistics": "wafer_statistics"
       },
       "key_columns": [
         "id",
@@ -93,7 +105,10 @@
       "display_column": "current_lot_code",
       "filter_condition": "parent_id != 0",
       "properties": {
-        "semi:hasState": "status"
+        "semi:hasLotCode": "current_lot_code",
+        "semi:hasState": "status",
+        "semi:hasProcessStatus": "process_status",
+        "semi:hasCarrierCode": "carrier_code"
       },
       "key_columns": [
         "id",
@@ -115,7 +130,12 @@
       "primary_key": "id",
       "label_cn": "工艺站点(工序)",
       "display_column": "name",
-      "properties": {},
+      "properties": {
+        "semi:hasStationCode": "code",
+        "semi:hasStationName": "name",
+        "semi:hasStationType": "type",
+        "semi:hasVersion": "version"
+      },
       "key_columns": [
         "id",
         "name",
@@ -139,6 +159,8 @@
       "label_cn": "设备",
       "display_column": "name",
       "properties": {
+        "semi:hasEquipmentCode": "code",
+        "semi:hasEquipmentName": "name",
         "semi:hasState": "status",
         "semi:isQualified": null
       },
@@ -161,7 +183,11 @@
       "label_cn": "载具",
       "display_column": "code",
       "properties": {
-        "semi:hasState": "status"
+        "semi:hasCarrierCode": "code",
+        "semi:hasState": "status",
+        "semi:hasCarrierType": "type_code",
+        "semi:hasCarrierSubStatus": "sub_status",
+        "semi:hasCapacity": "capacity"
       },
       "key_columns": [
         "id",
@@ -199,7 +225,12 @@
       "primary_key": "id",
       "label_cn": "工艺路径",
       "display_column": "name",
-      "properties": {},
+      "properties": {
+        "semi:hasRouteCode": "code",
+        "semi:hasRouteName": "name",
+        "semi:hasRouteType": "route_type",
+        "semi:hasVersion": "version_n"
+      },
       "key_columns": [
         "id",
         "name",
@@ -222,7 +253,10 @@
       "label_cn": "产品模型",
       "display_column": "name",
       "properties": {
-        "semi:hasState": "product_status"
+        "semi:hasProductModelCode": "code",
+        "semi:hasProductModelName": "name",
+        "semi:hasState": "product_status",
+        "semi:hasVersion": "version_n"
       },
       "key_columns": [
         "id",
@@ -245,7 +279,12 @@
       "label_cn": "生产工单/排程",
       "display_column": "schedule_no",
       "properties": {
-        "semi:hasState": "status"
+        "semi:hasOrderNo": "schedule_no",
+        "semi:hasState": "status",
+        "semi:hasProductCode": "product_code",
+        "semi:hasTotalQty": "total_qty",
+        "semi:hasPlanStartTime": "plan_start_time",
+        "semi:hasPlanEndTime": "plan_end_time"
       },
       "key_columns": [
         "id",
@@ -268,7 +307,10 @@
       "label_cn": "物料清单(BOM)",
       "display_column": "name",
       "properties": {
-        "semi:hasState": "status"
+        "semi:hasBOMCode": "code",
+        "semi:hasBOMName": "name",
+        "semi:hasState": "status",
+        "semi:hasVersion": "version_n"
       },
       "key_columns": [
         "id",
@@ -289,7 +331,10 @@
       "label_cn": "配方",
       "display_column": "name",
       "properties": {
-        "semi:hasState": "status"
+        "semi:hasRecipeCode": "code",
+        "semi:hasRecipeName": "name",
+        "semi:hasState": "status",
+        "semi:hasVersion": "version_n"
       },
       "key_columns": [
         "id",
@@ -310,7 +355,14 @@
       "primary_key": "id",
       "label_cn": "物料主数据",
       "display_column": "name",
-      "properties": {},
+      "properties": {
+        "semi:hasMaterialCode": "code",
+        "semi:hasMaterialName": "name",
+        "semi:hasMaterialType": "material_type",
+        "semi:hasMaterialSpec": "spec",
+        "semi:hasUnit": "unit",
+        "semi:hasState": "status"
+      },
       "key_columns": [
         "id",
         "name",
@@ -332,7 +384,13 @@
       "label_cn": "原料",
       "display_column": "material_name",
       "filter_condition": "type = material",
-      "properties": {},
+      "properties": {
+        "semi:hasMaterialCode": "material_no",
+        "semi:hasMaterialName": "material_name",
+        "semi:hasMaterialSpec": "material_spec",
+        "semi:hasUnit": "unit",
+        "semi:hasState": "status"
+      },
       "key_columns": [
         "id",
         "material_no",
@@ -367,6 +425,10 @@
       "label_cn": "辅料主数据",
       "display_column": "material_name",
       "properties": {
+        "semi:hasMaterialCode": "material_no",
+        "semi:hasMaterialName": "material_name",
+        "semi:hasMaterialSpec": "material_spec",
+        "semi:hasUnit": "unit",
         "semi:hasState": "status"
       },
       "key_columns": [
@@ -404,7 +466,12 @@
       "label_cn": "备件",
       "display_column": "name",
       "filter_condition": "material_type IN ('spare_part', 'spare', '备件')",
-      "properties": {},
+      "properties": {
+        "semi:hasMaterialCode": "code",
+        "semi:hasMaterialName": "name",
+        "semi:hasMaterialType": "material_type",
+        "semi:hasState": "status"
+      },
       "key_columns": [
         "id",
         "name",
@@ -434,7 +501,14 @@
       "primary_key": "id",
       "label_cn": "产品",
       "display_column": "material_name",
-      "properties": {},
+      "properties": {
+        "semi:hasMaterialCode": "material_no",
+        "semi:hasMaterialName": "material_name",
+        "semi:hasMaterialType": "material_type",
+        "semi:hasMaterialSpec": "material_spec",
+        "semi:hasUnit": "unit",
+        "semi:hasState": "status"
+      },
       "key_columns": [
         "id",
         "material_no",
@@ -469,7 +543,12 @@
       "primary_key": "id",
       "label_cn": "生产动作/操作日志",
       "display_column": "operation_type",
-      "properties": {},
+      "properties": {
+        "semi:hasLotCode": "lot_code",
+        "semi:hasOperationType": "operation_type",
+        "semi:hasBeforeState": "before_state",
+        "semi:hasAfterState": "after_state"
+      },
       "key_columns": [
         "id",
         "lot_id",

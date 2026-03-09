@@ -217,11 +217,17 @@ semi:hasParentLot a owl:ObjectProperty ;
 ### ==========================================
 ### 3. 数据属性与元数据 (Data & Metadata)
 ### ==========================================
+### 设计原则：
+###   - TTL DatatypeProperty 定义语义属性名（"这个字段叫什么"）
+###   - mapping_prod.json 的 properties 字段维护物理绑定（"这个语义属性映射哪列"）
+###   - 只对有业务语义的字段建模，审计字段(create_user_id/deleted/trace_id等)不建模
+### ==========================================
 
+# 3.1 通用状态属性 (无域限制，适用于所有有状态的类)
 semi:hasState a owl:DatatypeProperty ;
-    rdfs:domain [ owl:unionOf (semi:Wafer semi:Equipment semi:Carrier) ] ;
-    rdfs:range xsd:string ;
-    rdfs:label "状态标记" .
+    rdfs:range xsd:integer ;
+    rdfs:label "状态标记" ;
+    rdfs:comment "整数状态码，各类具体枚举含义见 mapping_prod.json value_mappings。" .
 
 semi:isQualified a owl:DatatypeProperty ;
     rdfs:domain semi:Equipment ;
@@ -232,6 +238,234 @@ semi:hasControlLimit a owl:DatatypeProperty ;
     rdfs:domain semi:ProcessConstraint ;
     rdfs:range xsd:string ;
     rdfs:label "制程卡控界限" .
+
+semi:hasVersion a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:ProcessStation semi:Route semi:ProductModel semi:BOM semi:Recipe) ] ;
+    rdfs:range xsd:integer ;
+    rdfs:label "版本号" ;
+    rdfs:comment "对应 version / version_n 字段。" .
+
+# 3.2 Wafer 数据属性
+semi:hasWaferCode a owl:DatatypeProperty ;
+    rdfs:domain semi:Wafer ;
+    rdfs:range xsd:string ;
+    rdfs:label "晶圆编号" ;
+    rdfs:comment "晶圆唯一标识，对应 matrix_routerx_operation_lot_wafer.wafer_code。" .
+
+semi:hasSlotNo a owl:DatatypeProperty ;
+    rdfs:domain semi:Wafer ;
+    rdfs:range xsd:integer ;
+    rdfs:label "槽位号" ;
+    rdfs:comment "晶圆在载具中的物理位置，对应 slot_no。" .
+
+semi:hasNGCode a owl:DatatypeProperty ;
+    rdfs:domain semi:Wafer ;
+    rdfs:range xsd:string ;
+    rdfs:label "NG码" ;
+    rdfs:comment "不良原因/NG分类码，对应 ng_code。" .
+
+# 3.3 生产批次 / 子批次 数据属性
+semi:hasLotCode a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:ProductionLot semi:Sublot semi:Action) ] ;
+    rdfs:range xsd:string ;
+    rdfs:label "批次号" ;
+    rdfs:comment "批次唯一业务标识符，对应 current_lot_code（批次/子批次）或 lot_code（动作日志）。" .
+
+semi:hasProcessStatus a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:ProductionLot semi:Sublot) ] ;
+    rdfs:range xsd:integer ;
+    rdfs:label "站点加工状态" ;
+    rdfs:comment "批次在当前工序的加工进展状态，对应 process_status。" .
+
+semi:hasLotType a owl:DatatypeProperty ;
+    rdfs:domain semi:ProductionLot ;
+    rdfs:range xsd:integer ;
+    rdfs:label "批次类型" ;
+    rdfs:comment "批次分类标识，对应 type 字段。" .
+
+semi:hasWaferStatistics a owl:DatatypeProperty ;
+    rdfs:domain semi:ProductionLot ;
+    rdfs:range xsd:string ;
+    rdfs:label "晶圆统计" ;
+    rdfs:comment "批次内晶圆数量的JSON统计信息，对应 wafer_statistics。" .
+
+semi:hasProductCode a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:ProductionOrder semi:ProductionLot) ] ;
+    rdfs:range xsd:string ;
+    rdfs:label "品种编码" ;
+    rdfs:comment "产品/品种编码（反规范化冗余字段），对应 product_code。" .
+
+semi:hasRecipeCode a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:Recipe semi:ProductionLot) ] ;
+    rdfs:range xsd:string ;
+    rdfs:label "配方编码" ;
+    rdfs:comment "对应 recipe_manage.code 或批次的反规范化字段 recipe_code。" .
+
+semi:hasCarrierCode a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:Carrier semi:ProductionLot semi:Sublot) ] ;
+    rdfs:range xsd:string ;
+    rdfs:label "载具编码" ;
+    rdfs:comment "载具唯一标识，对应 carrier_info.code（载具实体）或 lot.carrier_code（批次当前绑定载具）。" .
+
+# 3.4 工艺站点数据属性
+semi:hasStationCode a owl:DatatypeProperty ;
+    rdfs:domain semi:ProcessStation ;
+    rdfs:range xsd:string ;
+    rdfs:label "工序编码" .
+
+semi:hasStationName a owl:DatatypeProperty ;
+    rdfs:domain semi:ProcessStation ;
+    rdfs:range xsd:string ;
+    rdfs:label "工序名称" .
+
+semi:hasStationType a owl:DatatypeProperty ;
+    rdfs:domain semi:ProcessStation ;
+    rdfs:range xsd:integer ;
+    rdfs:label "工序类型" .
+
+# 3.5 设备数据属性
+semi:hasEquipmentCode a owl:DatatypeProperty ;
+    rdfs:domain semi:Equipment ;
+    rdfs:range xsd:string ;
+    rdfs:label "设备编码" .
+
+semi:hasEquipmentName a owl:DatatypeProperty ;
+    rdfs:domain semi:Equipment ;
+    rdfs:range xsd:string ;
+    rdfs:label "设备名称" .
+
+# 3.6 载具专属数据属性 (载具编码 hasCarrierCode 已在 3.3 定义)
+semi:hasCarrierType a owl:DatatypeProperty ;
+    rdfs:domain semi:Carrier ;
+    rdfs:range xsd:string ;
+    rdfs:label "载具类型码" ;
+    rdfs:comment "对应 type_code 字段。" .
+
+semi:hasCarrierSubStatus a owl:DatatypeProperty ;
+    rdfs:domain semi:Carrier ;
+    rdfs:range xsd:integer ;
+    rdfs:label "载具子状态" ;
+    rdfs:comment "对应 sub_status 字段，细分描述载具当前使用阶段。" .
+
+semi:hasCapacity a owl:DatatypeProperty ;
+    rdfs:domain semi:Carrier ;
+    rdfs:range xsd:integer ;
+    rdfs:label "载具容量" ;
+    rdfs:comment "载具可容纳的最大晶圆/物料数量，对应 capacity。" .
+
+# 3.7 工艺路径数据属性
+semi:hasRouteCode a owl:DatatypeProperty ;
+    rdfs:domain semi:Route ;
+    rdfs:range xsd:string ;
+    rdfs:label "路径编码" .
+
+semi:hasRouteName a owl:DatatypeProperty ;
+    rdfs:domain semi:Route ;
+    rdfs:range xsd:string ;
+    rdfs:label "路径名称" .
+
+semi:hasRouteType a owl:DatatypeProperty ;
+    rdfs:domain semi:Route ;
+    rdfs:range xsd:string ;
+    rdfs:label "路径类型" .
+
+# 3.8 产品模型数据属性
+semi:hasProductModelCode a owl:DatatypeProperty ;
+    rdfs:domain semi:ProductModel ;
+    rdfs:range xsd:string ;
+    rdfs:label "产品模型编码" .
+
+semi:hasProductModelName a owl:DatatypeProperty ;
+    rdfs:domain semi:ProductModel ;
+    rdfs:range xsd:string ;
+    rdfs:label "产品模型名称" .
+
+# 3.9 生产工单数据属性
+semi:hasOrderNo a owl:DatatypeProperty ;
+    rdfs:domain semi:ProductionOrder ;
+    rdfs:range xsd:string ;
+    rdfs:label "工单编号" ;
+    rdfs:comment "对应 production_scheduling.schedule_no。" .
+
+semi:hasTotalQty a owl:DatatypeProperty ;
+    rdfs:domain semi:ProductionOrder ;
+    rdfs:range xsd:integer ;
+    rdfs:label "计划总数量" .
+
+semi:hasPlanStartTime a owl:DatatypeProperty ;
+    rdfs:domain semi:ProductionOrder ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "计划开始时间" .
+
+semi:hasPlanEndTime a owl:DatatypeProperty ;
+    rdfs:domain semi:ProductionOrder ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "计划结束时间" .
+
+# 3.10 BOM 数据属性
+semi:hasBOMCode a owl:DatatypeProperty ;
+    rdfs:domain semi:BOM ;
+    rdfs:range xsd:string ;
+    rdfs:label "BOM编码" .
+
+semi:hasBOMName a owl:DatatypeProperty ;
+    rdfs:domain semi:BOM ;
+    rdfs:range xsd:string ;
+    rdfs:label "BOM名称" .
+
+# 3.11 配方数据属性 (配方编码 hasRecipeCode 已在 3.3 定义)
+semi:hasRecipeName a owl:DatatypeProperty ;
+    rdfs:domain semi:Recipe ;
+    rdfs:range xsd:string ;
+    rdfs:label "配方名称" .
+
+# 3.12 物料数据属性 (Material 及其子类共享)
+semi:hasMaterialCode a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:Material semi:Product semi:RawMaterial semi:Auxiliary semi:SparePart) ] ;
+    rdfs:range xsd:string ;
+    rdfs:label "物料编码" ;
+    rdfs:comment "对应 material_no 或 code 字段。" .
+
+semi:hasMaterialName a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:Material semi:Product semi:RawMaterial semi:Auxiliary semi:SparePart) ] ;
+    rdfs:range xsd:string ;
+    rdfs:label "物料名称" ;
+    rdfs:comment "对应 material_name 或 name 字段。" .
+
+semi:hasMaterialType a owl:DatatypeProperty ;
+    rdfs:domain semi:Material ;
+    rdfs:range xsd:string ;
+    rdfs:label "物料类型" .
+
+semi:hasMaterialSpec a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:Material semi:Product semi:RawMaterial semi:Auxiliary) ] ;
+    rdfs:range xsd:string ;
+    rdfs:label "物料规格" ;
+    rdfs:comment "对应 spec 或 material_spec 字段。" .
+
+semi:hasUnit a owl:DatatypeProperty ;
+    rdfs:domain semi:Material ;
+    rdfs:range xsd:string ;
+    rdfs:label "物料单位" .
+
+# 3.13 动作日志数据属性
+semi:hasOperationType a owl:DatatypeProperty ;
+    rdfs:domain semi:Action ;
+    rdfs:range xsd:string ;
+    rdfs:label "操作类型" ;
+    rdfs:comment "如进站、出站、拆批、并批、Hold、Release，对应 operation_type。" .
+
+semi:hasBeforeState a owl:DatatypeProperty ;
+    rdfs:domain semi:Action ;
+    rdfs:range xsd:string ;
+    rdfs:label "操作前状态" ;
+    rdfs:comment "对应 before_state 字段。" .
+
+semi:hasAfterState a owl:DatatypeProperty ;
+    rdfs:domain semi:Action ;
+    rdfs:range xsd:string ;
+    rdfs:label "操作后状态" ;
+    rdfs:comment "对应 after_state 字段。" .
 
 # 底层解耦元数据
 semi:isMappedToTable a owl:AnnotationProperty ; rdfs:label "映射物理表" .

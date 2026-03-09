@@ -56,6 +56,7 @@ class MatchedClass:
     primary_key: Optional[str]
     display_column: Optional[str]
     key_columns: List[str] = field(default_factory=list)
+    properties: Dict[str, Optional[str]] = field(default_factory=dict)  # 语义属性 → 物理字段
     virtual: bool = False
     filter_condition: Optional[str] = None  # 同表多类区分条件，e.g. "parent_id != 0"
 
@@ -130,9 +131,17 @@ class SemanticContext:
         lines = []
         for mc in self.matched_classes:
             if mc.physical_table and mc.key_columns:
-                cols = ", ".join(mc.key_columns)
                 lines.append(f"-- {mc.label_cn}({mc.logic_class})")
-                lines.append(f"TABLE {mc.physical_table} ({cols})")
+                lines.append(f"TABLE {mc.physical_table}")
+                if mc.properties:
+                    lines.append("  -- 语义属性(semantic_prop → physical_column):")
+                    for sem_prop, phys_col in mc.properties.items():
+                        if phys_col is not None:
+                            lines.append(f"  --   {sem_prop} → {phys_col}")
+                semantic_cols = set(mc.properties.values()) - {None}
+                remaining = [c for c in mc.key_columns if c not in semantic_cols]
+                if remaining:
+                    lines.append(f"  -- 其余列: {', '.join(remaining)}")
                 if mc.filter_condition:
                     lines.append(f"  -- ⚠ 同表多类过滤: WHERE {mc.filter_condition}")
         if self.joins:
@@ -193,6 +202,7 @@ class SemanticContext:
                     "primary_key": mc.primary_key,
                     "display_column": mc.display_column,
                     "key_columns": mc.key_columns,
+                    "properties": {k: v for k, v in mc.properties.items() if v is not None},
                     "virtual": mc.virtual,
                     **({"filter_condition": mc.filter_condition} if mc.filter_condition else {}),
                 }
@@ -869,6 +879,7 @@ class SemanticContextBuilder:
             primary_key=pt.primary_key,
             display_column=pt.display_column,
             key_columns=pt.key_columns,
+            properties=pt.properties,
             virtual=pt.virtual,
             filter_condition=pt.filter_condition,
         )
