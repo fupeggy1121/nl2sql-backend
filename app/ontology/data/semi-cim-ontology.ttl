@@ -479,6 +479,3 @@ semi:hasAfterState a owl:DatatypeProperty ;
     rdfs:label "操作后状态" ;
     rdfs:comment "对应 after_state 字段。" .
 
-# 底层解耦元数据
-semi:isMappedToTable a owl:AnnotationProperty ; rdfs:label "映射物理表" .
-semi:isMappedToField a owl:AnnotationProperty ; rdfs:label "映射物理字段" .

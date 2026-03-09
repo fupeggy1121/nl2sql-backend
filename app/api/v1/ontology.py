@@ -84,13 +84,10 @@ class ClassInfo(BaseModel):
 
 @router.get("/data_properties")
 async def list_data_properties():
-    """列出所有 owl:DatatypeProperty（含 AnnotationProperty）"""
+    """列出所有 owl:DatatypeProperty"""
     ontology = get_ontology()
     result = []
     for uri, prop in ontology.data_properties.items():
-        # 过滤掉 isMappedToTable / isMappedToField 等纯元数据注解
-        if uri in ("semi:isMappedToTable", "semi:isMappedToField"):
-            continue
         result.append({
             "uri": uri,
             "label": prop.label or uri.replace("semi:", ""),

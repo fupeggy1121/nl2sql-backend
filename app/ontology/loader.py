@@ -140,16 +140,6 @@ def load_ontology(ttl_path: Optional[Path] = None, force_reload: bool = False) -
         )
         onto.add_data_property(prop)
 
-    # ── 4. 提取 AnnotationProperty (isMappedToTable 等元数据) ──
-    for s, _, _ in rdf.triples((None, RDF.type, OWL.AnnotationProperty)):
-        if isinstance(s, URIRef):
-            prop = OntologyProperty(
-                uri=_short_uri(s),
-                label=_get_label(rdf, s),
-                comment=_get_comment(rdf, s),
-            )
-            onto.add_data_property(prop)
-
     if CACHE_ONTOLOGY:
         _cached_graph = onto
 
