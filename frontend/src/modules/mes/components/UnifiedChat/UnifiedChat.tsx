@@ -304,6 +304,7 @@ setCurrentIntent(queryPlan.query_intent || null);
           },
           intent: currentIntent,
           pipeline_trace: response.pipeline_trace,
+          sqlSuggestion: { sql, originalQuery: '' },
         };
 
         setMessages((prev) => [...prev, resultMessage]);
