@@ -116,6 +116,9 @@ export const ontologyApi = {
   /** 获取 D3 力导向图数据 (nodes + links JSON) */
   getGraph: () => request('/graph'),
 
+  /** 获取所有 DatatypeProperty 定义（用于属性绑定下拉）*/
+  getDataProperties: () => request('/data_properties'),
+
   /** 语义解析 */
   resolve: (query) => request('/resolve', {
     method: 'POST',

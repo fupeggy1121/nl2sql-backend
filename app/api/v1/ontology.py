@@ -82,6 +82,27 @@ class ClassInfo(BaseModel):
 # ── 端点 ──
 
 
+@router.get("/data_properties")
+async def list_data_properties():
+    """列出所有 owl:DatatypeProperty（含 AnnotationProperty）"""
+    ontology = get_ontology()
+    result = []
+    for uri, prop in ontology.data_properties.items():
+        # 过滤掉 isMappedToTable / isMappedToField 等纯元数据注解
+        if uri in ("semi:isMappedToTable", "semi:isMappedToField"):
+            continue
+        result.append({
+            "uri": uri,
+            "label": prop.label or uri.replace("semi:", ""),
+            "comment": prop.comment or "",
+            "range_type": prop.range_type or "xsd:string",
+            "domain_uris": list(prop.domain_uris) if prop.domain_uris else [],
+        })
+    # 按 uri 排序，方便前端下拉展示
+    result.sort(key=lambda x: x["uri"])
+    return result
+
+
 @router.get("/summary")
 async def ontology_summary() -> Dict[str, Any]:
     """本体 & 映射统计概览"""

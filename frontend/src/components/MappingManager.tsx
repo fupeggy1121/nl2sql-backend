@@ -17,9 +17,10 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Plus, Search, RefreshCw, Trash2, Edit2, ChevronDown, ChevronRight,
   History, Database, GitBranch, Tag, FileText, AlertCircle, X, Check,
-  Book, BarChart2
+  Book, BarChart2, Link2
 } from 'lucide-react';
 import { mappingApi } from '../services/mappingApi';
+import { ontologyApi } from '../services/ontologyApi';
 
 // ══════════════════════════════════════════════════════════════════
 // Types
@@ -209,6 +210,234 @@ function Badge({ text, colorCls }: { text: string; colorCls: string }) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+// Helper: PropertiesAndColumnsEditor
+// 替代原先的 Key Columns 纯文本框，分为:
+//   上半部分 — 语义属性绑定 (properties: sem:hasX → physical_col)
+//   下半部分 — 完整列清单   (key_columns, 逗号分隔)
+// ══════════════════════════════════════════════════════════════════
+
+interface DataProperty {
+  uri: string;
+  label: string;
+  comment: string;
+  range_type: string;
+  domain_uris: string[];
+}
+
+interface PropRow {
+  id: number;
+  semProp: string;
+  physCol: string;
+}
+
+function PropertiesAndColumnsEditor({
+  properties,
+  onPropertiesChange,
+  keyColsStr,
+  onKeyColsChange,
+  logicClass,
+}: {
+  properties: Record<string, string | null>;
+  onPropertiesChange: (p: Record<string, string | null>) => void;
+  keyColsStr: string;
+  onKeyColsChange: (s: string) => void;
+  logicClass?: string;
+}) {
+  const [dataProps, setDataProps] = useState<DataProperty[]>([]);
+  const [loadingDp, setLoadingDp] = useState(false);
+  const [rows, setRows] = useState<PropRow[]>([]);
+  const nextId = React.useRef(0);
+
+  // 从 properties dict 初始化行
+  useEffect(() => {
+    const initial: PropRow[] = Object.entries(properties || {}).map(([k, v]) => ({
+      id: nextId.current++,
+      semProp: k,
+      physCol: v ?? '',
+    }));
+    setRows(initial);
+  }, []); // 仅初始化一次
+
+  // 拉取本体数据属性列表
+  useEffect(() => {
+    setLoadingDp(true);
+    ontologyApi.getDataProperties()
+      .then((data: DataProperty[]) => setDataProps(data))
+      .catch(() => setDataProps([]))
+      .finally(() => setLoadingDp(false));
+  }, []);
+
+  // 把 rows 同步回 properties dict
+  const syncUp = (newRows: PropRow[]) => {
+    const dict: Record<string, string | null> = {};
+    newRows.forEach(r => {
+      if (r.semProp.trim()) {
+        dict[r.semProp.trim()] = r.physCol.trim() || null;
+      }
+    });
+    onPropertiesChange(dict);
+  };
+
+  const updateRow = (id: number, field: 'semProp' | 'physCol', value: string) => {
+    const updated = rows.map(r => r.id === id ? { ...r, [field]: value } : r);
+    setRows(updated);
+    syncUp(updated);
+  };
+
+  const addRow = () => {
+    const newRow: PropRow = { id: nextId.current++, semProp: '', physCol: '' };
+    const updated = [...rows, newRow];
+    setRows(updated);
+    syncUp(updated);
+  };
+
+  const removeRow = (id: number) => {
+    const updated = rows.filter(r => r.id !== id);
+    setRows(updated);
+    syncUp(updated);
+  };
+
+  // 快速推断：根据 logicClass 过滤出域包含该类的属性（优先显示）
+  const relevantProps = useMemo(() => {
+    if (!logicClass || dataProps.length === 0) return dataProps;
+    const cls = logicClass.startsWith('semi:') ? logicClass : `semi:${logicClass}`;
+    const relevant = dataProps.filter(p =>
+      p.domain_uris.length === 0 || p.domain_uris.includes(cls)
+    );
+    const others = dataProps.filter(p =>
+      p.domain_uris.length > 0 && !p.domain_uris.includes(cls)
+    );
+    return [...relevant, ...others];
+  }, [dataProps, logicClass]);
+
+  const alreadyBound = new Set(rows.map(r => r.semProp).filter(Boolean));
+
+  return (
+    <div className="space-y-4">
+      {/* ─── Section 1: 语义属性绑定 ─── */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Link2 size={14} className="text-blue-500" />
+            <span className="text-sm font-medium text-gray-700">语义属性绑定</span>
+            <span className="text-xs text-gray-400 ml-1">
+              (DatatypeProperty → 物理列，LLM 读取此映射理解字段业务含义)
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={addRow}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 border border-blue-300 rounded-md hover:bg-blue-50 transition-colors"
+          >
+            <Plus size={12} /> 添加绑定
+          </button>
+        </div>
+
+        {rows.length === 0 ? (
+          <div className="flex items-center justify-center h-16 border border-dashed border-gray-200 rounded-lg text-xs text-gray-400">
+            暂无语义绑定 — 点击「添加绑定」开始
+          </div>
+        ) : (
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            {/* Header */}
+            <div className="grid grid-cols-[1fr_auto_1fr_auto] bg-gray-50 border-b border-gray-200 px-3 py-2 text-xs font-medium text-gray-500 uppercase gap-2">
+              <span>本体属性 (DatatypeProperty)</span>
+              <span className="w-5 text-center text-gray-300">→</span>
+              <span>物理列</span>
+              <span className="w-6" />
+            </div>
+            {/* Rows */}
+            <div className="divide-y divide-gray-100">
+              {rows.map(row => {
+                const matched = dataProps.find(p => p.uri === row.semProp);
+                return (
+                  <div
+                    key={row.id}
+                    className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-2 px-3 py-2 hover:bg-gray-50"
+                  >
+                    {/* Semantic property */}
+                    <div className="relative">
+                      <input
+                        list={`dp-list-${row.id}`}
+                        value={row.semProp}
+                        onChange={e => updateRow(row.id, 'semProp', e.target.value)}
+                        placeholder="semi:hasState"
+                        className="w-full px-2 py-1.5 text-xs font-mono border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                      />
+                      <datalist id={`dp-list-${row.id}`}>
+                        {relevantProps
+                          .filter(p => !alreadyBound.has(p.uri) || p.uri === row.semProp)
+                          .map(p => (
+                            <option key={p.uri} value={p.uri}>{p.label} ({p.range_type})</option>
+                          ))}
+                      </datalist>
+                      {matched && (
+                        <div className="mt-0.5 flex items-center gap-1">
+                          <span className="text-[10px] text-blue-600 font-medium">{matched.label}</span>
+                          {matched.range_type && (
+                            <span className="text-[10px] text-gray-400">· {matched.range_type.replace('xsd:', '')}</span>
+                          )}
+                          {matched.comment && (
+                            <span className="text-[10px] text-gray-300 truncate max-w-[160px]" title={matched.comment}>
+                              {matched.comment}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {/* Arrow */}
+                    <span className="text-gray-300 text-sm self-start mt-2">→</span>
+                    {/* Physical column */}
+                    <input
+                      value={row.physCol}
+                      onChange={e => updateRow(row.id, 'physCol', e.target.value)}
+                      placeholder="status"
+                      className="w-full px-2 py-1.5 text-xs font-mono border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500/40 self-start"
+                    />
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      onClick={() => removeRow(row.id)}
+                      className="self-start mt-1.5 p-1 text-gray-300 hover:text-red-500 transition-colors"
+                      title="删除此绑定"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {loadingDp && (
+          <p className="text-[10px] text-gray-400 flex items-center gap-1">
+            <RefreshCw size={10} className="animate-spin" /> 加载本体属性列表…
+          </p>
+        )}
+      </div>
+
+      {/* ─── Section 2: 完整列清单 ─── */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <Database size={14} className="text-gray-400" />
+          <span className="text-sm font-medium text-gray-700">完整列清单 (key_columns)</span>
+        </div>
+        <textarea
+          value={keyColsStr}
+          onChange={e => onKeyColsChange(e.target.value)}
+          className={textareaCls}
+          rows={3}
+          placeholder="id, status, current_lot_code, gmt_create, ..."
+        />
+        <p className="text-xs text-gray-400">
+          所有列名（逗号分隔）。包含已绑定语义属性的列和其余原始列，完整提供给 LLM schema 上下文使用。
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
 // Tab 1: Object Mappings
 // ══════════════════════════════════════════════════════════════════
 
@@ -345,7 +574,7 @@ function ObjectMappingsTab() {
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Physical Table</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">中文标签</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Display Col</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Key Cols</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">语义属性 / 列</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
             </tr>
           </thead>
@@ -369,7 +598,17 @@ function ObjectMappingsTab() {
                 </td>
                 <td className="px-4 py-3 text-gray-800">{item.label_cn}</td>
                 <td className="px-4 py-3 font-mono text-xs text-gray-500">{item.display_column || '—'}</td>
-                <td className="px-4 py-3 text-xs text-gray-400">{(item.key_columns || []).length} 列</td>
+                <td className="px-4 py-3 text-xs">
+                  <div className="flex items-center gap-2">
+                    {Object.keys(item.properties || {}).length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-medium">
+                        <Link2 size={10} />
+                        {Object.keys(item.properties).length} 语义属性
+                      </span>
+                    )}
+                    <span className="text-gray-400">{(item.key_columns || []).length} 列</span>
+                  </div>
+                </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-2">
                     <button onClick={() => openEdit(item)} className="p-1 text-gray-400 hover:text-blue-600 transition-colors">
@@ -485,14 +724,13 @@ function ObjectMappingsTab() {
             />
           </Field>
 
-          <Field label="Key Columns" hint="给 LLM 的 schema 提示列（逗号分隔）">
-            <textarea
-              value={keyColsStr}
-              onChange={e => setEditItem({ ...editItem, key_columns: e.target.value as any })}
-              className={textareaCls}
-              placeholder="id, equipment_code, name, status, classify_id"
-            />
-          </Field>
+          <PropertiesAndColumnsEditor
+            properties={editItem.properties || {}}
+            onPropertiesChange={props => setEditItem({ ...editItem, properties: props })}
+            keyColsStr={keyColsStr}
+            onKeyColsChange={v => setEditItem({ ...editItem, key_columns: v as any })}
+            logicClass={editItem.logic_class}
+          />
 
           <div className="flex items-center gap-2">
             <input
@@ -1175,7 +1413,7 @@ function ChangelogTab() {
           <option value="">全部类型</option>
           <option value="object_mapping">对象映射</option>
           <option value="relation_mapping">关系映射</option>
-          <option value="value_mapping">值映射</option>
+          <option value="value_mapping">状态映射</option>
           <option value="business_rule">业务规则</option>
           <option value="metric_definition">指标定义</option>
         </select>
@@ -1261,7 +1499,7 @@ export default function MappingManager() {
   const TABS: { key: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
     { key: 'objects',   label: '对象映射',  icon: <Database size={15} />,    count: summary?.object_mappings },
     { key: 'relations', label: '关系映射',  icon: <GitBranch size={15} />,   count: summary?.relation_mappings },
-    { key: 'values',    label: '值映射',    icon: <Tag size={15} />,          count: summary?.value_domains },
+    { key: 'values',    label: '状态映射',    icon: <Tag size={15} />,          count: summary?.value_domains },
     { key: 'rules',     label: '业务规则',  icon: <Book size={15} />,         count: summary?.business_rules },
     { key: 'metrics',   label: '指标定义',  icon: <BarChart2 size={15} />,    count: summary?.metric_definitions },
     { key: 'changelog', label: '变更记录',  icon: <History size={15} /> },
