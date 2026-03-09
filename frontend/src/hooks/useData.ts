@@ -1,6 +1,6 @@
 // src/hooks/useData.ts
 // Local shim: uses localStorage instead of Supabase
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { SavedReport } from '../data/mockSavedReports';
 import { Message } from '../modules/mes/components/ChatInterface';
 import { Sparkles } from 'lucide-react';
@@ -82,11 +82,25 @@ function saveDashboards(dashboards: Dashboard[]): void {
   localStorage.setItem(LS_DASHBOARDS_KEY, JSON.stringify(dashboards));
 }
 
+// ── cross-instance sync event ────────────────────────────────
+const REPORTS_UPDATED_EVENT = 'nl2sql:reports-updated';
+
+function emitReportsUpdated() {
+  window.dispatchEvent(new CustomEvent(REPORTS_UPDATED_EVENT));
+}
+
 // ── hook ───────────────────────────────────────────────────────
 export function useData() {
   const [savedReports, setSavedReports] = useState<SavedReport[]>(() => loadReports());
   const [dashboards, setDashboards] = useState<Dashboard[]>(() => loadDashboards());
   const [loading] = useState(false);
+
+  // Re-sync savedReports whenever any useData() instance writes to localStorage
+  useEffect(() => {
+    const handler = () => setSavedReports(loadReports());
+    window.addEventListener(REPORTS_UPDATED_EVENT, handler);
+    return () => window.removeEventListener(REPORTS_UPDATED_EVENT, handler);
+  }, []);
 
   // ── chat messages ───────────────────────────────────────────
   const fetchChatMessages = useCallback(async (sessionId: string): Promise<Message[]> => {
@@ -125,6 +139,7 @@ export function useData() {
     const updated = [newReport, ...existing];
     saveReports(updated);
     setSavedReports(updated);
+    emitReportsUpdated();
     return newReport;
   }, []);
 
@@ -133,6 +148,7 @@ export function useData() {
     const updated = existing.filter(r => r.id !== id);
     saveReports(updated);
     setSavedReports(updated);
+    emitReportsUpdated();
   }, []);
 
   // ── chat sessions ────────────────────────────────────────────
