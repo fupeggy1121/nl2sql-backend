@@ -1191,15 +1191,6 @@
       "description": "WIP（在制品）以wafer为统计粒度，不以lot（批次）为统计单位。必须通过2跳路径：wafer_wafer → matrix_routerx_operation_lot(sub, parent_id!=0, status=50) → matrix_routerx_config_process。主批次(parent_id=0)不含工序信息，直接JOIN会导致重复计数。【产品料号扩展路径】：子批次通过 sub.parent_id 回溯主批次(lot, parent_id=0)，主批次的 product_id 直接外键关联 product_model.id（ForeignKey）；当查询包含产品料号维度时必须加此2跳：JOIN matrix_routerx_operation_lot lot ON sub.parent_id = lot.id JOIN product_model pm ON lot.product_id = pm.id。数量过滤使用 HAVING COUNT(DISTINCT wafer_wafer.id) > N。必须根据查询的实际维度（GROUP BY列）和指标（FROM wafer_wip定义）自由组合SQL，不要照搬单一固定模板。",
       "physical_sql_template": "SELECT p.name AS 站点名称, p.code AS 站点编码, COUNT(DISTINCT w.id) AS 在制品数量 FROM matrix_routerx_operation_lot_wafer w JOIN matrix_routerx_operation_lot sub ON w.sub_lot_id = sub.id AND sub.parent_id != 0 JOIN matrix_routerx_config_process p ON sub.process_id = p.id WHERE sub.status = 50 GROUP BY p.name, p.code ORDER BY 在制品数量 DESC",
       "physical_sql_template_with_product_model": "SELECT p.name AS 站点名称, p.code AS 站点编码, pm.name AS 产品料号, COUNT(DISTINCT w.id) AS 在制品数量 FROM matrix_routerx_operation_lot_wafer w JOIN matrix_routerx_operation_lot sub ON w.sub_lot_id = sub.id AND sub.parent_id != 0 JOIN matrix_routerx_config_process p ON sub.process_id = p.id JOIN matrix_routerx_operation_lot lot ON sub.parent_id = lot.id JOIN product_model pm ON lot.product_id = pm.id WHERE sub.status = 50 GROUP BY p.name, p.code, pm.name HAVING COUNT(DISTINCT w.id) > {threshold} ORDER BY 在制品数量 DESC",
-      "trigger_keywords": [
-        "在制品",
-        "WIP",
-        "wip",
-        "在制",
-        "站点在制",
-        "各站点",
-        "各个站点"
-      ],
       "involved_tables": [
         "matrix_routerx_operation_lot_wafer",
         "matrix_routerx_operation_lot",
