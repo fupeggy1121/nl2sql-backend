@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   BotMessageSquare, Book, Tag, Network, Sparkles, BarChart,
-  Plus, MessageSquare, FlaskConical
+  Plus, MessageSquare, FlaskConical, LayoutDashboard, Trash2
 } from 'lucide-react'
 import { DbModeBadge } from './components/DbModeBadge'
 import MappingManager from './components/MappingManager'
@@ -10,6 +10,8 @@ import SynonymManager from './components/SynonymManager'
 import { MESPage } from './modules/mes'
 import { ReportsModule } from './components/Reports/ReportsModule'
 import NLTestManager from './components/NLTestManager'
+import { DashboardModule } from './components/Dashboard/DashboardModule'
+import { DashboardEditor } from './components/Dashboard/DashboardEditor'
 import { useData } from './hooks/useData'
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -30,12 +32,13 @@ const ontologySubItems = [
 
 // ── Main App ──────────────────────────────────────────────────────
 export default function App() {
-  const { fetchChatSessions, createChatSession, fetchLatestChatSession } = useData()
+  const { fetchChatSessions, createChatSession, fetchLatestChatSession, dashboards, createDashboard, deleteDashboard } = useData()
 
   const [activeTopModule, setActiveTopModule] = useState<TopModule>('ai-chat')
   const [activeSubModule, setActiveSubModule] = useState<string>('')
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [showNewDashboard, setShowNewDashboard] = useState(false)
 
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(new Date()), 1000)
@@ -107,7 +110,38 @@ export default function App() {
     }
     return (
       <nav style={{ width: 220, flexShrink: 0, background: '#fff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '12px 16px 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>模块</div>
+          {/* ── 看板 section ───────────────────────────── */}
+          <div style={{ padding: '12px 16px 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>看板</span>
+            <button title="新建看板" onClick={() => setShowNewDashboard(true)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '0 2px', display: 'flex', alignItems: 'center' }}>
+              <Plus size={13} />
+            </button>
+          </div>
+          {dashboards.map(d => {
+            const active = activeSubModule === `dashboard-${d.id}`
+            return (
+              <div key={d.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
+                onMouseEnter={e => { const btn = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.del-btn'); if (btn) btn.style.opacity = '1' }}
+                onMouseLeave={e => { const btn = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.del-btn'); if (btn) btn.style.opacity = '0' }}>
+                <button onClick={() => { setActiveTopModule('ai-chat'); setActiveSubModule(`dashboard-${d.id}`) }}
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', background: active ? '#eff6ff' : 'transparent', color: active ? '#1d4ed8' : '#374151', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', borderLeft: active ? '2px solid #2563eb' : '2px solid transparent', overflow: 'hidden' }}>
+                  <LayoutDashboard size={13} style={{ flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span>
+                </button>
+                <button className="del-btn" title="删除看板"
+                  onClick={e => { e.stopPropagation(); if (confirm(`删除看板「${d.name}」？`)) { deleteDashboard(d.id); if (activeSubModule === `dashboard-${d.id}`) setActiveSubModule(chatSessions[0]?.id || '') } }}
+                  style={{ opacity: 0, transition: 'opacity .15s', position: 'absolute', right: 8, background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '2px 4px', display: 'flex', alignItems: 'center' }}>
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            )
+          })}
+          {dashboards.length === 0 && (
+            <div style={{ padding: '6px 18px', fontSize: 12, color: '#d1d5db', fontStyle: 'italic' }}>暂无看板</div>
+          )}
+          {/* ── 保存的报表 ─────────────────────────────── */}
+          <div style={{ padding: '12px 16px 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: 4 }}>报表</div>
           <button onClick={() => setActiveSubModule('saved-reports')}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', background: activeSubModule === 'saved-reports' ? '#eff6ff' : 'transparent', color: activeSubModule === 'saved-reports' ? '#1d4ed8' : '#374151', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', borderLeft: activeSubModule === 'saved-reports' ? '2px solid #2563eb' : '2px solid transparent' }}>
             <BarChart size={14} />保存的报表
@@ -146,6 +180,10 @@ export default function App() {
       }
     }
     if (activeSubModule === 'saved-reports') return <ReportsModule reportId={activeSubModule} />
+    if (activeSubModule.startsWith('dashboard-')) {
+      const id = activeSubModule.replace('dashboard-', '')
+      return <DashboardModule dashboardId={id} />
+    }
     const sessionId = activeSubModule || chatSessions[0]?.id || 'default'
     return <MESPage sessionId={sessionId} skipDataGeneration={true} />
   }
@@ -187,6 +225,18 @@ export default function App() {
           {renderContent()}
         </main>
       </div>
+
+      {showNewDashboard && (
+        <DashboardEditor
+          onSave={async (data) => {
+            const d = await createDashboard(data)
+            setActiveTopModule('ai-chat')
+            setActiveSubModule(`dashboard-${d.id}`)
+            setShowNewDashboard(false)
+          }}
+          onClose={() => setShowNewDashboard(false)}
+        />
+      )}
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>

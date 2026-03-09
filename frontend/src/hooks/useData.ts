@@ -4,10 +4,12 @@ import { useState, useCallback } from 'react';
 import { SavedReport } from '../data/mockSavedReports';
 import { Message } from '../modules/mes/components/ChatInterface';
 import { Sparkles } from 'lucide-react';
+import { Dashboard, DashboardWidget, WidgetLayout } from '../types/dashboard';
 
 const LS_MESSAGES_PREFIX = 'nl2sql_chat_messages_';
 const LS_SESSIONS_KEY = 'nl2sql_chat_sessions';
 const LS_REPORTS_KEY = 'nl2sql_saved_reports';
+const LS_DASHBOARDS_KEY = 'nl2sql_dashboards';
 
 // ── ChatSession ────────────────────────────────────────────────
 export interface ChatSession {
@@ -67,9 +69,23 @@ function saveReports(reports: SavedReport[]): void {
   localStorage.setItem(LS_REPORTS_KEY, JSON.stringify(serializable));
 }
 
+// ── Dashboard helpers ──────────────────────────────────────────
+function loadDashboards(): Dashboard[] {
+  try {
+    return JSON.parse(localStorage.getItem(LS_DASHBOARDS_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function saveDashboards(dashboards: Dashboard[]): void {
+  localStorage.setItem(LS_DASHBOARDS_KEY, JSON.stringify(dashboards));
+}
+
 // ── hook ───────────────────────────────────────────────────────
 export function useData() {
   const [savedReports, setSavedReports] = useState<SavedReport[]>(() => loadReports());
+  const [dashboards, setDashboards] = useState<Dashboard[]>(() => loadDashboards());
   const [loading] = useState(false);
 
   // ── chat messages ───────────────────────────────────────────
@@ -145,6 +161,105 @@ export function useData() {
     return { found: true, session: sorted[0] };
   }, []);
 
+  // ── dashboards ───────────────────────────────────────────────
+  const createDashboard = useCallback(async (data: Pick<Dashboard, 'name' | 'description'>): Promise<Dashboard> => {
+    const now = new Date().toISOString();
+    const d: Dashboard = {
+      id: crypto.randomUUID(),
+      name: data.name,
+      description: data.description,
+      widgets: [],
+      globalFilters: [],
+      refreshInterval: 'manual',
+      created_at: now,
+      updated_at: now,
+    };
+    const existing = loadDashboards();
+    const updated = [d, ...existing];
+    saveDashboards(updated);
+    setDashboards(updated);
+    return d;
+  }, []);
+
+  const updateDashboard = useCallback(async (id: string, patch: Partial<Dashboard>): Promise<Dashboard | null> => {
+    const existing = loadDashboards();
+    const idx = existing.findIndex(d => d.id === id);
+    if (idx === -1) return null;
+    const updated = [...existing];
+    updated[idx] = { ...updated[idx], ...patch, updated_at: new Date().toISOString() };
+    saveDashboards(updated);
+    setDashboards(updated);
+    return updated[idx];
+  }, []);
+
+  const deleteDashboard = useCallback(async (id: string): Promise<void> => {
+    const existing = loadDashboards();
+    const updated = existing.filter(d => d.id !== id);
+    saveDashboards(updated);
+    setDashboards(updated);
+  }, []);
+
+  const getDashboard = useCallback((id: string): Dashboard | undefined => {
+    return loadDashboards().find(d => d.id === id);
+  }, []);
+
+  const addWidgetToDashboard = useCallback(async (dashboardId: string, widget: DashboardWidget): Promise<void> => {
+    const existing = loadDashboards();
+    const idx = existing.findIndex(d => d.id === dashboardId);
+    if (idx === -1) return;
+    const updated = [...existing];
+    updated[idx] = {
+      ...updated[idx],
+      widgets: [...updated[idx].widgets, widget],
+      updated_at: new Date().toISOString(),
+    };
+    saveDashboards(updated);
+    setDashboards(updated);
+  }, []);
+
+  const removeWidgetFromDashboard = useCallback(async (dashboardId: string, widgetId: string): Promise<void> => {
+    const existing = loadDashboards();
+    const idx = existing.findIndex(d => d.id === dashboardId);
+    if (idx === -1) return;
+    const updated = [...existing];
+    updated[idx] = {
+      ...updated[idx],
+      widgets: updated[idx].widgets.filter(w => w.id !== widgetId),
+      updated_at: new Date().toISOString(),
+    };
+    saveDashboards(updated);
+    setDashboards(updated);
+  }, []);
+
+  const updateWidgetLayouts = useCallback(async (dashboardId: string, layouts: { id: string; layout: WidgetLayout }[]): Promise<void> => {
+    const existing = loadDashboards();
+    const idx = existing.findIndex(d => d.id === dashboardId);
+    if (idx === -1) return;
+    const layoutMap = new Map(layouts.map(l => [l.id, l.layout]));
+    const updated = [...existing];
+    updated[idx] = {
+      ...updated[idx],
+      widgets: updated[idx].widgets.map(w => layoutMap.has(w.id) ? { ...w, layout: layoutMap.get(w.id)! } : w),
+      updated_at: new Date().toISOString(),
+    };
+    saveDashboards(updated);
+    setDashboards(updated);
+  }, []);
+
+  const updateWidget = useCallback(async (dashboardId: string, widgetId: string, patch: Partial<DashboardWidget>): Promise<void> => {
+    const existing = loadDashboards();
+    const idx = existing.findIndex(d => d.id === dashboardId);
+    if (idx === -1) return;
+    const updated = [...existing];
+    updated[idx] = {
+      ...updated[idx],
+      widgets: updated[idx].widgets.map(w => w.id === widgetId ? { ...w, ...patch } : w),
+      updated_at: new Date().toISOString(),
+    };
+    saveDashboards(updated);
+    setDashboards(updated);
+  }, []);
+
   return {
     loading,
     savedReports,
@@ -156,5 +271,15 @@ export function useData() {
     fetchChatSessions,
     createChatSession,
     fetchLatestChatSession,
+    // dashboards
+    dashboards,
+    createDashboard,
+    updateDashboard,
+    deleteDashboard,
+    getDashboard,
+    addWidgetToDashboard,
+    removeWidgetFromDashboard,
+    updateWidgetLayouts,
+    updateWidget,
   };
 }
