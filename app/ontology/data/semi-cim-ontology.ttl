@@ -223,27 +223,36 @@ semi:hasParentLot a owl:ObjectProperty ;
 ###   - 只对有业务语义的字段建模，审计字段(create_user_id/deleted/trace_id等)不建模
 ### ==========================================
 
-# 3.1 通用状态属性 (无域限制，适用于所有有状态的类)
+# 3.1 状态属性（unionOf 显式声明域，涵盖全部有状态本体类）
 semi:hasState a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (
+        semi:Wafer semi:ProductionLot semi:Sublot
+        semi:Equipment semi:Carrier
+        semi:ProductModel semi:ProductionOrder
+        semi:BOM semi:Recipe
+        semi:Material semi:RawMaterial semi:Auxiliary semi:SparePart semi:Product
+    ) ] ;
     rdfs:range xsd:integer ;
     rdfs:label "状态标记" ;
-    rdfs:comment "整数状态码，各类具体枚举含义见 mapping_prod.json value_mappings。" .
+    rdfs:comment "各类状态字段：大多数类对应 status 列（整数枚举），ProductModel 对应 product_status；各枚举值及物理列映射见 mapping_prod.json properties（语义→列）及 value_mappings（值→语义）。" .
 
 semi:isQualified a owl:DatatypeProperty ;
     rdfs:domain semi:Equipment ;
     rdfs:range xsd:boolean ;
-    rdfs:label "认证状态(Qual)" .
+    rdfs:label "认证状态(Qual)" ;
+    rdfs:comment "设备是否通过工艺认证(Qual run)；当前数据库无独立列直接存储，mapping 对应 null（语义建模保留，查询时需通过设备状态/日志推导）。" .
 
 semi:hasControlLimit a owl:DatatypeProperty ;
     rdfs:domain semi:ProcessConstraint ;
     rdfs:range xsd:string ;
-    rdfs:label "制程卡控界限" .
+    rdfs:label "制程卡控界限" ;
+    rdfs:comment "工艺参数的上下控制边界，ProcessConstraint 为虚拟中间类（无独立表），物理层嵌入 matrix_routerx_config_process 配置字段中。" .
 
 semi:hasVersion a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf (semi:ProcessStation semi:Route semi:ProductModel semi:BOM semi:Recipe) ] ;
     rdfs:range xsd:integer ;
     rdfs:label "版本号" ;
-    rdfs:comment "对应 version / version_n 字段。" .
+    rdfs:comment "版本控制字段：ProcessStation 对应 version，Route / ProductModel / BOM / Recipe 对应 version_n（字段名因表而异）。" .
 
 # 3.2 Wafer 数据属性
 semi:hasWaferCode a owl:DatatypeProperty ;
@@ -275,7 +284,7 @@ semi:hasProcessStatus a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf (semi:ProductionLot semi:Sublot) ] ;
     rdfs:range xsd:integer ;
     rdfs:label "站点加工状态" ;
-    rdfs:comment "批次在当前工序的加工进展状态，对应 process_status。" .
+    rdfs:comment "批次在当前工序的站点级加工阶段（≠批次整体状态 hasState.status）：0=待进站、50=已进站待执行、100=执行中、150=待出站、200=已出站，对应 process_status。" .
 
 semi:hasLotType a owl:DatatypeProperty ;
     rdfs:domain semi:ProductionLot ;
@@ -321,7 +330,8 @@ semi:hasStationName a owl:DatatypeProperty ;
 semi:hasStationType a owl:DatatypeProperty ;
     rdfs:domain semi:ProcessStation ;
     rdfs:range xsd:integer ;
-    rdfs:label "工序类型" .
+    rdfs:label "工序类型" ;
+    rdfs:comment "工序分类枚举（整数），对应 matrix_routerx_config_process.type，区分普通工序、检查站、合并站等类型。" .
 
 # 3.5 设备数据属性
 semi:hasEquipmentCode a owl:DatatypeProperty ;
@@ -367,7 +377,8 @@ semi:hasRouteName a owl:DatatypeProperty ;
 semi:hasRouteType a owl:DatatypeProperty ;
     rdfs:domain semi:Route ;
     rdfs:range xsd:string ;
-    rdfs:label "路径类型" .
+    rdfs:label "路径类型" ;
+    rdfs:comment "工艺路径分类标识，对应 routerx_router_config.route_type（字符串枚举，如主路线/子路线等）。" .
 
 # 3.8 产品模型数据属性
 semi:hasProductModelCode a owl:DatatypeProperty ;
@@ -435,7 +446,8 @@ semi:hasMaterialName a owl:DatatypeProperty ;
 semi:hasMaterialType a owl:DatatypeProperty ;
     rdfs:domain semi:Material ;
     rdfs:range xsd:string ;
-    rdfs:label "物料类型" .
+    rdfs:label "物料类型" ;
+    rdfs:comment "物料分类标识，对应 material_type 或 type 字段（字符串枚举），用于区分原料/辅料/备件/产品等子类。SparePart / Product 子类也共用此属性，值域因子类而异。" .
 
 semi:hasMaterialSpec a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf (semi:Material semi:Product semi:RawMaterial semi:Auxiliary) ] ;
