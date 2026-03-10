@@ -184,10 +184,12 @@
       "display_column": "code",
       "properties": {
         "semi:hasCarrierCode": "code",
-        "semi:hasState": "status",
+        "semi:hasMaintenanceStatus": "status",
         "semi:hasCarrierType": "type_code",
-        "semi:hasCarrierSubStatus": "sub_status",
-        "semi:hasCapacity": "capacity"
+        "semi:hasLoadStatus": "sub_status",
+        "semi:hasCapacity": "capacity",
+        "semi:hasMaintenanceCountdown": "maintenance_countdown",
+        "semi:hasRemainingLife": "remaining_useful_life"
       },
       "key_columns": [
         "id",
@@ -563,6 +565,78 @@
         "gmt_create"
       ],
       "note": "批次流水表，记录批次进站/出站/拆批/并批/Hold/Release等所有操作历史。追加写入不可变。"
+    },
+    {
+      "logic_class": "semi:CarrierModel",
+      "physical_table": "carrier_modelling",
+      "primary_key": "id",
+      "label_cn": "载具模型",
+      "display_column": "code",
+      "virtual": false,
+      "properties": {
+        "semi:hasCarrierModelCode": "carrier_type_code",
+        "semi:hasCarrierModelName": "carrier_type_name",
+        "semi:hasCarrierType": "carrier_type",
+        "semi:hasCarrierSize": "carrier_size",
+        "semi:hasCapacity": "capacity",
+        "semi:hasRatedLifetime": "total_use",
+        "semi:hasSupplier": "supplier"
+      },
+      "key_columns": [
+        "id",
+        "carrier_type_code",
+        "carrier_type_name",
+        "carrier_type",
+        "carrier_size",
+        "code_rule",
+        "pm_period",
+        "usage_unit",
+        "total_use",
+        "life_unit",
+        "supplier",
+        "capacity",
+        "deleted",
+        "trace_id",
+        "gmt_create",
+        "create_user_id",
+        "create_user",
+        "gmt_update",
+        "update_user_id",
+        "update_user"
+      ],
+      "note": "载具规格型号定义表。carrier_info.type_code 引用本表。"
+    },
+    {
+      "logic_class": "semi:CarrierGroup",
+      "physical_table": "carrier_group_info",
+      "primary_key": "id",
+      "label_cn": "载具组",
+      "display_column": "carrier_group_name",
+      "virtual": false,
+      "properties": {
+        "semi:hasCarrierGroupDescription": "carrier_group_desc",
+        "semi:hasCarrierGroupName": "carrier_group_name",
+        "semi:hasMaintenanceCycle": "pm_period"
+      },
+      "key_columns": [
+        "id",
+        "carrier_group_name",
+        "carrier_group_desc",
+        "carrier_id",
+        "carrier_modellings",
+        "pm_period",
+        "pm_period_unit",
+        "deleted",
+        "trace_id",
+        "gmt_create",
+        "create_user_id",
+        "create_user",
+        "gmt_update",
+        "update_user_id",
+        "update_user",
+        "extra"
+      ],
+      "note": "载具逻辑分组表。carrier_info.bind_carrier_group 及 matrix_routerx_config_process.load_carrier_group_id / unload_carrier_group_id 均引用本表 id。carrier_modellings 为 JSON 字段，存储关联的 carrier_modelling id 列表。"
     }
   ],
   "relation_mappings": [
@@ -934,6 +1008,62 @@
       "range_class": null
     },
     {
+      "logic_relation": "semi:belongsToGroup",
+      "description": "Carrier(载具实体) 归属于哪个 CarrierGroup(载具组)",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "carrier_info",
+        "source_key": "bind_carrier_group",
+        "target_table": "carrier_group_info",
+        "target_key": "id",
+        "note": "carrier_info.bind_carrier_group → carrier_group_info.id；bind_carrier_group_name 为冗余反规范化名称列。"
+      },
+      "domain_class": "semi:Carrier",
+      "range_class": "semi:CarrierGroup"
+    },
+    {
+      "logic_relation": "semi:hasModel",
+      "description": "Carrier(载具实体) 关联其所属 CarrierModel(载具模型/型号)",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "carrier_info",
+        "source_key": "type_code",
+        "target_table": "carrier_modelling",
+        "target_key": "carrier_type_code",
+        "note": "carrier_info.type_code → carrier_modelling.carrier_type_code。"
+      },
+      "domain_class": "semi:Carrier",
+      "range_class": "semi:CarrierModel"
+    },
+    {
+      "logic_relation": "semi:usesLoadCarrierGroup",
+      "description": "ProcessStation(工序) 进站时物料所在载具必须属于该 CarrierGroup(载具组)",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "matrix_routerx_config_process",
+        "source_key": "load_carrier_group_id",
+        "target_table": "carrier_group_info",
+        "target_key": "id",
+        "note": "matrix_routerx_config_process.load_carrier_group_id → carrier_group_info.id，约束进站载具所属组。"
+      },
+      "domain_class": "semi:ProcessStation",
+      "range_class": "semi:CarrierGroup"
+    },
+    {
+      "logic_relation": "semi:usesUnloadCarrierGroup",
+      "description": "ProcessStation(工序) 出站时物料转移的目标载具必须属于该 CarrierGroup(载具组)",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "matrix_routerx_config_process",
+        "source_key": "unload_carrier_group_id",
+        "target_table": "carrier_group_info",
+        "target_key": "id",
+        "note": "matrix_routerx_config_process.unload_carrier_group_id → carrier_group_info.id，约束出站载具所属组。"
+      },
+      "domain_class": "semi:ProcessStation",
+      "range_class": "semi:CarrierGroup"
+    },
+    {
       "logic_relation": "semi:hasParentLot",
       "description": "Lot 的父批次(溯源递归)",
       "strategy": "Recursive",
@@ -1224,41 +1354,84 @@
         ]
       }
     },
-    "semi:CarrierStatus": {
-      "Available": {
-        "description": "载具可用/空闲",
-        "physical_condition": "carrier.status = 0",
-        "applies_to_table": "carrier",
+    "semi:CarrierMaintenanceStatus": {
+      "Maintenance": {
+        "description": "载具保养中（当前正在进行保养作业）",
+        "physical_condition": "carrier_info.status = 1",
+        "applies_to_table": "carrier_info",
         "applies_to_column": "status",
         "is_terminal": false,
         "nl_triggers": [
-          "空闲载具",
-          "可用载具",
-          "空载具"
-        ]
-      },
-      "InUse": {
-        "description": "载具使用中",
-        "physical_condition": "carrier.status = 1",
-        "applies_to_table": "carrier",
-        "applies_to_column": "status",
-        "is_terminal": false,
-        "nl_triggers": [
-          "使用中载具",
-          "在用载具",
-          "载具在用"
-        ]
-      },
-      "Matainence": {
-        "description": "载具保养中",
-        "physical_condition": "carrier.status = 2",
-        "applies_to_table": "carrier",
-        "applies_to_column": "status",
-        "is_terminal": false,
-        "nl_triggers": [
+          "保养中",
           "保养中载具",
+          "载具保养中",
           "载具保养",
-          "维护载具"
+          "保养载具",
+          "维护中载具"
+        ]
+      },
+      "Available": {
+        "description": "载具可用（保养完成，可正常使用）",
+        "physical_condition": "carrier_info.status = 2",
+        "applies_to_table": "carrier_info",
+        "applies_to_column": "status",
+        "is_terminal": false,
+        "nl_triggers": [
+          "可用",
+          "可用状态",
+          "可用载具",
+          "空闲载具",
+          "载具可用",
+          "正常载具"
+        ]
+      },
+      "PendingMaintenance": {
+        "description": "载具待保养（已到保养周期，尚未开始保养）",
+        "physical_condition": "carrier_info.status = 3",
+        "applies_to_table": "carrier_info",
+        "applies_to_column": "status",
+        "is_terminal": false,
+        "nl_triggers": [
+          "待保养",
+          "需保养",
+          "待保养载具",
+          "需保养载具",
+          "载具待保养",
+          "到期保养",
+          "到期保养载具"
+        ]
+      }
+    },
+    "semi:CarrierLoadStatus": {
+      "Empty": {
+        "description": "载具空载（无物料装载）",
+        "physical_condition": "carrier_info.sub_status = 0",
+        "applies_to_table": "carrier_info",
+        "applies_to_column": "sub_status",
+        "is_terminal": false,
+        "nl_triggers": [
+          "空载",
+          "空载具",
+          "无物料",
+          "无物料载具",
+          "未装载",
+          "未装载载具"
+        ]
+      },
+      "Loaded": {
+        "description": "载具非空（有物料装载）",
+        "physical_condition": "carrier_info.sub_status = 1",
+        "applies_to_table": "carrier_info",
+        "applies_to_column": "sub_status",
+        "is_terminal": false,
+        "nl_triggers": [
+          "非空",
+          "有料",
+          "非空载具",
+          "有料载具",
+          "已装载",
+          "已装载载具",
+          "载具有料"
         ]
       }
     }

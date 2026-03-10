@@ -371,19 +371,7 @@ function PropertiesAndColumnsEditor({
                             <option key={p.uri} value={p.uri}>{p.label} ({p.range_type})</option>
                           ))}
                       </datalist>
-                      {matched && (
-                        <div className="mt-0.5 flex items-center gap-1">
-                          <span className="text-[10px] text-blue-600 font-medium">{matched.label}</span>
-                          {matched.range_type && (
-                            <span className="text-[10px] text-gray-400">· {matched.range_type.replace('xsd:', '')}</span>
-                          )}
-                          {matched.comment && (
-                            <span className="text-[10px] text-gray-300 truncate max-w-[160px]" title={matched.comment}>
-                              {matched.comment}
-                            </span>
-                          )}
-                        </div>
-                      )}
+
                     </div>
                     {/* Arrow */}
                     <span className="text-gray-300 text-sm self-start mt-2">→</span>

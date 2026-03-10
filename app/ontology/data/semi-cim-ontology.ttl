@@ -85,6 +85,14 @@ semi:Action a owl:Class ;
     rdfs:label "生产动作/操作" ;
     rdfs:comment "驱动物料或设备状态跳转的逻辑单元，如拆批、返工、转档等。" .
 
+semi:CarrierModel a owl:Class ;
+    rdfs:label "载具模型" ;
+    rdfs:comment "定义特定规格型号载具的设计模板，包含尺寸、容量、额定寿命等参数；Carrier 是 CarrierModel 下的实例。" .
+
+semi:CarrierGroup a owl:Class ;
+    rdfs:label "载具组" ;
+    rdfs:comment "同类型载具的逻辑分组，MES 调度抽象单元，被工艺站点引用作为载具可用性约束。" .
+
 ### ==========================================
 ### 2. 核心有机关联 (Object Properties)
 ### ==========================================
@@ -214,6 +222,27 @@ semi:hasParentLot a owl:ObjectProperty ;
     rdfs:domain semi:ProductionLot ; rdfs:range semi:ProductionLot ;
     rdfs:label "父批次(溯源)" .
 
+# 2.6 载具层级关联 (Carrier Hierarchy)
+semi:belongsToGroup a owl:ObjectProperty ;
+    rdfs:domain semi:Carrier ; rdfs:range semi:CarrierGroup ;
+    rdfs:label "归属载具组" ;
+    rdfs:comment "载具实例归属于某个载具组，反映工厂对同类载具的逻辑分组管理。" .
+
+semi:hasModel a owl:ObjectProperty ;
+    rdfs:domain semi:Carrier ; rdfs:range semi:CarrierModel ;
+    rdfs:label "关联载具模型" ;
+    rdfs:comment "载具实例关联所属载具模型，从模型继承规格参数（容量、额定寿命等）。" .
+
+semi:usesLoadCarrierGroup a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessStation ; rdfs:range semi:CarrierGroup ;
+    rdfs:label "进站载具组约束" ;
+    rdfs:comment "工序进站时物料所在载具必须属于该载具组，对应 matrix_routerx_config_process.load_carrier_group_id。" .
+
+semi:usesUnloadCarrierGroup a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessStation ; rdfs:range semi:CarrierGroup ;
+    rdfs:label "出站载具组约束" ;
+    rdfs:comment "工序出站时物料转移的目标载具必须属于该载具组，对应 matrix_routerx_config_process.unload_carrier_group_id。" .
+
 ### ==========================================
 ### 3. 数据属性与元数据 (Data & Metadata)
 ### ==========================================
@@ -227,7 +256,7 @@ semi:hasParentLot a owl:ObjectProperty ;
 semi:hasState a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf (
         semi:Wafer semi:ProductionLot semi:Sublot
-        semi:Equipment semi:Carrier
+        semi:Equipment
         semi:ProductModel semi:ProductionOrder
         semi:BOM semi:Recipe
         semi:Material semi:RawMaterial semi:Auxiliary semi:SparePart semi:Product
@@ -344,24 +373,94 @@ semi:hasEquipmentName a owl:DatatypeProperty ;
     rdfs:range xsd:string ;
     rdfs:label "设备名称" .
 
-# 3.6 载具专属数据属性 (载具编码 hasCarrierCode 已在 3.3 定义)
+# 3.6 载具数据属性
+
+# 3.6.1 载具实体 (Carrier) 专属属性 (载具编码 hasCarrierCode 已在 3.3 定义)
 semi:hasCarrierType a owl:DatatypeProperty ;
-    rdfs:domain semi:Carrier ;
+    rdfs:domain [ owl:unionOf (semi:Carrier semi:CarrierModel) ] ;
     rdfs:range xsd:string ;
     rdfs:label "载具类型码" ;
-    rdfs:comment "对应 type_code 字段。" .
+    rdfs:comment "载具类型分类标识，对应 type_code；CarrierModel 中为型号分类，Carrier 中为实例类型码。" .
 
-semi:hasCarrierSubStatus a owl:DatatypeProperty ;
+semi:hasMaintenanceStatus a owl:DatatypeProperty ;
     rdfs:domain semi:Carrier ;
     rdfs:range xsd:integer ;
-    rdfs:label "载具子状态" ;
-    rdfs:comment "对应 sub_status 字段，细分描述载具当前使用阶段。" .
+    rdfs:label "载具保养状态" ;
+    rdfs:comment "载具当前保养状态，对应 carrier_info.status 字段：1=保养中、2=可用、3=待保养。枚举见 semi:CarrierMaintenanceStatus。" .
+
+semi:hasLoadStatus a owl:DatatypeProperty ;
+    rdfs:domain semi:Carrier ;
+    rdfs:range xsd:integer ;
+    rdfs:label "载具装载状态" ;
+    rdfs:comment "载具物料装载状态，对应 carrier_info.sub_status 字段：0=空（无物料）、1=非空（有物料装载）。枚举见 semi:CarrierLoadStatus。" .
 
 semi:hasCapacity a owl:DatatypeProperty ;
-    rdfs:domain semi:Carrier ;
+    rdfs:domain [ owl:unionOf (semi:Carrier semi:CarrierModel) ] ;
     rdfs:range xsd:integer ;
     rdfs:label "载具容量" ;
-    rdfs:comment "载具可容纳的最大晶圆/物料数量，对应 capacity。" .
+    rdfs:comment "载具可容纳的最大晶圆/物料数量，对应 capacity；CarrierModel 中为标称设计容量。" .
+
+semi:hasMaintenanceCountdown a owl:DatatypeProperty ;
+    rdfs:domain semi:Carrier ;
+    rdfs:range xsd:integer ;
+    rdfs:label "距下次保养计数" ;
+    rdfs:comment "距离下一次保养的剩余使用计数（单位由 maintenance_countdown_unit 指定），对应 carrier_info.maintenance_countdown。" .
+
+semi:hasRemainingLife a owl:DatatypeProperty ;
+    rdfs:domain semi:Carrier ;
+    rdfs:range xsd:integer ;
+    rdfs:label "剩余寿命" ;
+    rdfs:comment "载具剩余可用寿命计数（单位由 usage_unit 指定），对应 carrier_info.remaining_useful_life。" .
+
+# 3.6.2 载具模型 (CarrierModel) 数据属性
+semi:hasCarrierModelCode a owl:DatatypeProperty ;
+    rdfs:domain semi:CarrierModel ;
+    rdfs:range xsd:string ;
+    rdfs:label "载具模型编码" ;
+    rdfs:comment "载具型号的唯一标识编码。" .
+
+semi:hasCarrierModelName a owl:DatatypeProperty ;
+    rdfs:domain semi:CarrierModel ;
+    rdfs:range xsd:string ;
+    rdfs:label "载具模型名称" ;
+    rdfs:comment "载具型号名称。" .
+
+semi:hasCarrierSize a owl:DatatypeProperty ;
+    rdfs:domain semi:CarrierModel ;
+    rdfs:range xsd:string ;
+    rdfs:label "载具尺寸" ;
+    rdfs:comment "载具物理尺寸规格描述（如 8寸/12寸），对应型号尺寸字段。" .
+
+semi:hasRatedLifetime a owl:DatatypeProperty ;
+    rdfs:domain semi:CarrierModel ;
+    rdfs:range xsd:integer ;
+    rdfs:label "额定寿命" ;
+    rdfs:comment "该型号载具的设计额定总寿命（与 usage_unit 单位一致）。" .
+
+semi:hasSupplier a owl:DatatypeProperty ;
+    rdfs:domain semi:CarrierModel ;
+    rdfs:range xsd:string ;
+    rdfs:label "供应商" ;
+    rdfs:comment "载具型号的供应商名称或编码。" .
+
+# 3.6.3 载具组 (CarrierGroup) 数据属性
+semi:hasCarrierGroupCode a owl:DatatypeProperty ;
+    rdfs:domain semi:CarrierGroup ;
+    rdfs:range xsd:string ;
+    rdfs:label "载具组编码" ;
+    rdfs:comment "载具组的唯一标识编码。" .
+
+semi:hasCarrierGroupName a owl:DatatypeProperty ;
+    rdfs:domain semi:CarrierGroup ;
+    rdfs:range xsd:string ;
+    rdfs:label "载具组名称" ;
+    rdfs:comment "载具组名称，通常按类型或用途命名。" .
+
+semi:hasMaintenanceCycle a owl:DatatypeProperty ;
+    rdfs:domain semi:CarrierGroup ;
+    rdfs:range xsd:integer ;
+    rdfs:label "保养周期" ;
+    rdfs:comment "该载具组的统一保养周期配置（使用次数/时长，单位由业务规则确定）。" .
 
 # 3.7 工艺路径数据属性
 semi:hasRouteCode a owl:DatatypeProperty ;
