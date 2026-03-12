@@ -114,17 +114,13 @@ class JoinGraph:
         self,
         source_class: str,
         target_class: str,
+        intent: Optional[str] = None,
     ) -> Optional[List[JoinEdge]]:
         """
         BFS 最短路径（有向，同时允许反向边）。
 
-        Returns
-        -------
-        None
-            如果两类之间没有连通路径
-        List[JoinEdge]
-            路径上每一跳的 JoinEdge，调用方可直接使用其 relation_mapping
-            生成 SQL JOIN 链
+        intent 参数保留为向后兼容接口，当前不用于子图过滤；
+        路径语义验证在 context_builder._resolve_joins 中通过中间节点纯洁性检查实现。
         """
         if not self._built:
             logger.warning("JoinGraph.find_path called before build()")
@@ -161,6 +157,54 @@ class JoinGraph:
                 relation_mapping=edge_data["rm"],
             ))
         return edges
+
+    def find_all_shortest_paths(
+        self,
+        source_class: str,
+        target_class: str,
+    ) -> List[List[JoinEdge]]:
+        """
+        返回两类之间所有最短路径（等长）。
+        用于路径语义验证：当最短路径存在多条时，
+        调用方可依据中间节点纯洁性选择最佳路径。
+        """
+        if not self._built:
+            return []
+        if source_class not in self._g or target_class not in self._g:
+            return []
+        try:
+            all_node_paths = list(nx.all_shortest_paths(self._g, source_class, target_class))
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            return []
+
+        result = []
+        for node_path in all_node_paths:
+            edges: List[JoinEdge] = []
+            for i in range(len(node_path) - 1):
+                u, v = node_path[i], node_path[i + 1]
+                edge_data = self._g[u][v]
+                edges.append(JoinEdge(
+                    logic_relation=edge_data["logic_relation"],
+                    from_class=u,
+                    to_class=v,
+                    reversed=edge_data["reversed"],
+                    relation_mapping=edge_data["rm"],
+                ))
+            result.append(edges)
+        return result
+
+    @staticmethod
+    def _edge_allowed_for_intent(edge_data: dict, intent: str) -> bool:
+        """保留向后兼容，当前不在主路径使用。"""
+        rm = edge_data.get("rm")
+        if rm is None:
+            return True
+        if intent in (rm.forbidden_intents or []):
+            return False
+        applicable = rm.applicable_intents or []
+        if applicable and intent not in applicable:
+            return False
+        return True
 
     def find_path_undirected(
         self,

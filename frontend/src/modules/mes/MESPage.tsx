@@ -10,6 +10,7 @@ interface MESPageProps {
   setMessages?: (messages: Message[]) => void; // 新增：用于将消息传递给父组件
   setIsProcessing?: (isProcessing: boolean) => void; // 新增：用于将处理状态传递给父组件
   sessionId: string; // 新增：接收会话ID
+  onNavigateToTraceability?: (params: { lotCode?: string; waferCode?: string }) => void;
 }
 
 export const MESPage: React.FC<MESPageProps> = ({
@@ -17,6 +18,7 @@ export const MESPage: React.FC<MESPageProps> = ({
   setMessages,
   setIsProcessing,
   sessionId, // 接收 sessionId
+  onNavigateToTraceability,
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +78,7 @@ export const MESPage: React.FC<MESPageProps> = ({
         setMessages={setMessages}
         setIsProcessing={setIsProcessing}
         skipDataGeneration={skipDataGeneration}
+        onNavigateToTraceability={onNavigateToTraceability}
       />
     </div>
   );

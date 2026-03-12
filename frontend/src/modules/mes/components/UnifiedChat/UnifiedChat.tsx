@@ -28,6 +28,7 @@ import { FeedbackForm } from "../FeedbackForm";
 import { FeedbackStats } from "../FeedbackStats";
 import QueryTrace, { TraceStep } from "../QueryTrace";
 import { useData } from "../../../../hooks/useData";
+import InlineTraceabilityChart from '../../../../components/Traceability/InlineTraceabilityChart';
 import './UnifiedChat.css';
 
 export interface Message {
@@ -36,7 +37,8 @@ export interface Message {
   content: string;
   timestamp: Date;
   data?: any;
-  visualizationType?: 'bar' | 'line' | 'pie' | 'scatter' | 'card' | 'gauge' | 'table' | 'heatmap' | 'radar' | 'funnel' | 'treemap' | 'boxplot' | 'bar-line-combo';
+  visualizationType?: 'bar' | 'line' | 'pie' | 'scatter' | 'card' | 'gauge' | 'table' | 'heatmap' | 'radar' | 'funnel' | 'treemap' | 'boxplot' | 'bar-line-combo' | 'traceability';
+  traceabilityData?: { lotCode?: string; waferCode?: string };
   chartConfig?: {
     title?: string;
     xAxisField?: string;
@@ -73,9 +75,37 @@ const SAMPLE_QUESTIONS = [
   '显示设备E-002的良率',
 ];
 
+// ── 追溯意图检测 ────────────────────────────────────────────────────
+const TRACEABILITY_TRIGGERS = [
+  '批次追溯', '追溯批次', '批次履历', '追溯', '生产履历',
+  '批次谱系', '谱系', 'wafer追溯', '追踪批次', 'wafer履历',
+];
+
+/** 从用户输入中提取批次号或 Wafer 号（支持 LOT-xxx / DEMO-xxx / L+多位数 / 批次关键字后跟码 等） */
+function extractTraceCode(text: string): { lotCode?: string; waferCode?: string } {
+  // 优先匹配明确标注的 wafer 代号
+  const waferMatch = text.match(/[Ww][Aa][Ff][Ee][Rr][-_]?\s*([A-Za-z0-9-]+)/);
+  if (waferMatch) return { waferCode: waferMatch[1] };
+
+  // 匹配各种批次号格式（所有 pattern 均用 group 1 捕获完整代码）
+  const lotPatterns = [
+    /[Ll][Oo][Tt][-_]?\s*([A-Za-z0-9-]+)/,           // LOT-xxx
+    /([Dd][Ee][Mm][Oo][-_][A-Za-z0-9][-A-Za-z0-9]*)/,// DEMO-2026-A01 完整代码
+    /[Ll](\d{4,})/,                                   // L + 4位以上数字
+    /批次[号码]?\s*[:：]?\s*([A-Za-z0-9-]{3,})/,      // 批次号: xxx
+    /([A-Z]{2,}-\d{4}-[A-Z]\d{2})/,                  // CC-1234-A01 工厂格式
+  ];
+  for (const pat of lotPatterns) {
+    const m = text.match(pat);
+    if (m && m[1]) return { lotCode: m[1] };
+  }
+  return {};
+}
+
 interface UnifiedChatProps {
   setMessages?: (messages: Message[]) => void;
   setIsProcessing?: (isProcessing: boolean) => void;
+  onNavigateToTraceability?: (params: { lotCode?: string; waferCode?: string }) => void;
   sessionId: string;
   skipDataGeneration?: boolean;
 }
@@ -85,6 +115,7 @@ type ChatStep = 'input' | 'clarify' | 'explain' | 'execute' | 'results';
 export function UnifiedChat({
   setMessages: setParentMessages,
   setIsProcessing: setParentIsProcessing,
+  onNavigateToTraceability,
   sessionId,
   skipDataGeneration = false,
 }: UnifiedChatProps) {
@@ -157,6 +188,38 @@ export function UnifiedChat({
   const handleSendMessage = async (messageContent?: string) => {
     const content = messageContent || input;
     if (!content.trim() || isProcessing) return;
+
+    // ── 追溯意图检测（优先于 NL2SQL 流程）──────────────────────────
+    const isTraceabilityQuery = TRACEABILITY_TRIGGERS.some((t) =>
+      content.includes(t)
+    );
+    if (isTraceabilityQuery) {
+      const traceParams = extractTraceCode(content);
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        type: 'user',
+        content: content,
+        timestamp: new Date(),
+      };
+      const replyMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        type: 'assistant',
+        content: traceParams.lotCode
+          ? `批次 ${traceParams.lotCode} 追溯履历`
+          : traceParams.waferCode
+          ? `Wafer ${traceParams.waferCode} 追溯履历`
+          : '批次追溯查询',
+        timestamp: new Date(),
+        visualizationType: 'traceability',
+        traceabilityData: traceParams,
+      };
+      setMessages((prev) => [...prev, userMessage, replyMessage]);
+      setInput('');
+      await addChatMessage(sessionId, userMessage);
+      await addChatMessage(sessionId, replyMessage);
+      return;
+    }
+    // ────────────────────────────────────────────────────────────────
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -520,6 +583,14 @@ setCurrentIntent(queryPlan.query_intent || null);
                     </span>
                   </div>
                 </div>
+
+                {/* 批次追溯内联图表 */}
+                {message.visualizationType === 'traceability' && (
+                  <InlineTraceabilityChart
+                    lotCode={message.traceabilityData?.lotCode}
+                    waferCode={message.traceabilityData?.waferCode}
+                  />
+                )}
 
                 {/* 查询追踪组件 - 当存在 pipeline_trace 时渲染 */}
                 {message.type === 'assistant' && message.pipeline_trace && message.pipeline_trace.length > 0 && (

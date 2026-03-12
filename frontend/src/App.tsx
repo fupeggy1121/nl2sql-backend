@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   BotMessageSquare, Book, Tag, Network, Sparkles, BarChart,
-  Plus, MessageSquare, FlaskConical, LayoutDashboard, Trash2
+  Plus, MessageSquare, FlaskConical, LayoutDashboard, Trash2, GitBranch
 } from 'lucide-react'
 import { DbModeBadge } from './components/DbModeBadge'
 import MappingManager from './components/MappingManager'
@@ -12,6 +12,7 @@ import { ReportsModule } from './components/Reports/ReportsModule'
 import NLTestManager from './components/NLTestManager'
 import { DashboardModule } from './components/Dashboard/DashboardModule'
 import { DashboardEditor } from './components/Dashboard/DashboardEditor'
+import { TraceabilityView } from './components/Traceability/TraceabilityView'
 import { useData } from './hooks/useData'
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -39,6 +40,7 @@ export default function App() {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
   const [currentTime, setCurrentTime] = useState(new Date())
   const [showNewDashboard, setShowNewDashboard] = useState(false)
+  const [traceabilityItems, setTraceabilityItems] = useState<{ id: string; label: string }[]>([])
 
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(new Date()), 1000)
@@ -86,6 +88,24 @@ export default function App() {
     setActiveTopModule('ai-chat')
     setActiveSubModule(id)
   }, [chatSessions.length, createChatSession])
+
+  const handleNavigateToTraceability = useCallback(
+    ({ lotCode, waferCode }: { lotCode?: string; waferCode?: string } = {}) => {
+      const subKey = lotCode
+        ? `traceability-lot:${lotCode}`
+        : waferCode
+        ? `traceability-wafer:${waferCode}`
+        : 'traceability-lot:'
+      const label = lotCode ? `批次 ${lotCode}` : waferCode ? `Wafer ${waferCode}` : '追溯查询'
+      setTraceabilityItems(prev => {
+        const exists = prev.some(i => i.id === subKey)
+        return exists ? prev : [{ id: subKey, label }, ...prev]
+      })
+      setActiveTopModule('ai-chat')
+      setActiveSubModule(subKey)
+    },
+    []
+  )
 
   const renderSidebar = () => {
     if (activeTopModule === 'nl-testing') {
@@ -164,6 +184,39 @@ export default function App() {
           {savedReports.length === 0 && (
             <div style={{ padding: '6px 18px', fontSize: 12, color: '#d1d5db', fontStyle: 'italic' }}>暂无保存的报表</div>
           )}
+          {/* ── 追溯记录 ─────────────────────────────── */}
+          <div style={{ padding: '12px 16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>追溯查询</span>
+            <button
+              onClick={() => handleNavigateToTraceability({})}
+              title="新建追溯查询"
+              style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 5, border: '1px solid #e5e7eb', background: '#f9fafb', color: '#374151', fontSize: 11, cursor: 'pointer' }}>
+              <Plus size={11} />新建
+            </button>
+          </div>
+          {traceabilityItems.length > 0 && (
+            <>
+              {traceabilityItems.map(item => {
+                const active = activeSubModule === item.id
+                return (
+                  <div key={item.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}
+                    onMouseEnter={e => { const btn = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.del-trc'); if (btn) btn.style.opacity = '1' }}
+                    onMouseLeave={e => { const btn = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.del-trc'); if (btn) btn.style.opacity = '0' }}>
+                    <button onClick={() => { setActiveTopModule('ai-chat'); setActiveSubModule(item.id) }}
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', background: active ? '#eff6ff' : 'transparent', color: active ? '#1d4ed8' : '#374151', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', borderLeft: active ? '2px solid #2563eb' : '2px solid transparent', overflow: 'hidden' }}>
+                      <GitBranch size={13} style={{ flexShrink: 0 }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</span>
+                    </button>
+                    <button className="del-trc" title="关闭追溯"
+                      onClick={e => { e.stopPropagation(); setTraceabilityItems(prev => prev.filter(i => i.id !== item.id)); if (activeSubModule === item.id) setActiveSubModule(chatSessions[0]?.id || '') }}
+                      style={{ opacity: 0, transition: 'opacity .15s', position: 'absolute', right: 8, background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', padding: '2px 4px', display: 'flex', alignItems: 'center' }}>
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                )
+              })}
+            </>
+          )}
           <div style={{ padding: '12px 16px 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: 4 }}>AI 对话</div>
           <button onClick={startNewConversation}
             style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', background: 'transparent', color: '#4b5563', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', borderLeft: '2px solid transparent' }}>
@@ -206,8 +259,12 @@ export default function App() {
       const id = activeSubModule.replace('dashboard-', '')
       return <DashboardModule dashboardId={id} />
     }
+    if (activeSubModule.startsWith('traceability-')) {
+      const params = activeSubModule.replace('traceability-', '')
+      return <TraceabilityView params={params} />
+    }
     const sessionId = activeSubModule || chatSessions[0]?.id || 'default'
-    return <MESPage sessionId={sessionId} skipDataGeneration={true} />
+    return <MESPage sessionId={sessionId} skipDataGeneration={true} onNavigateToTraceability={handleNavigateToTraceability} />
   }
 
   const topNavItems = [

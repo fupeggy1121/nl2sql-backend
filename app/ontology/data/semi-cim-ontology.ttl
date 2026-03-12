@@ -93,6 +93,38 @@ semi:CarrierGroup a owl:Class ;
     rdfs:label "载具组" ;
     rdfs:comment "同类型载具的逻辑分组，MES 调度抽象单元，被工艺站点引用作为载具可用性约束。" .
 
+semi:EquipmentGroup a owl:Class ;
+    rdfs:label "设备组" ;
+    rdfs:comment "功能相同的设备的逻辑分组（能力池），被工艺站点直接引用作为派工可行域。工序不硬编码到具体机台，而是指向设备组，支持组内动态派工。" .
+
+semi:EquipmentModel a owl:Class ;
+    rdfs:label "设备模型" ;
+    rdfs:comment "资产蓝图 (Blueprint)。定义了该型号设备的技术规格与物理极限，基于设备模型统一管理同型号设备的备件、额定寿命与厂商信息；采购依据：新增资产时直接继承模型的规格。" .
+
+# 生产履历追溯类群 (Traceability)
+semi:StationPassRecord a owl:Class ;
+    rdfs:label "过站记录" ;
+    rdfs:comment "Wafer（以批次/子批次为载体）在某道工序完成进出站全流程所产生的不可变历史记录，是履历追溯的基本事实单元。抽象基类，具体分为加工过站记录与量测过站记录。" .
+
+semi:ProcessPassRecord a owl:Class ;
+    rdfs:subClassOf semi:StationPassRecord ;
+    rdfs:label "加工过站记录" ;
+    rdfs:comment "Wafer经过加工工序时的执行记录：采集上下料时间、进出站时间、加工设备及制程参数快照（单片数据或聚合值）。每条记录对应一个子批次在一道加工工序的完整过站事件。" .
+
+semi:MeasurementPassRecord a owl:Class ;
+    rdfs:subClassOf semi:StationPassRecord ;
+    rdfs:label "量测过站记录" ;
+    rdfs:comment "Wafer经过量测工序时的检验记录：包含量测设备信息、抽检规则、逐片或聚合量测参数（取最大/最小/平均值表征批次质量属性）。表征该批次在当前阶段的质量状态快照。" .
+
+semi:ProductionEvent a owl:Class ;
+    rdfs:subClassOf semi:Action ;
+    rdfs:label "生产事件类型" ;
+    rdfs:comment "定义某类批次操作的规则/类型模板，如拆批(Split)、攒批(Merge)、返工(Rework)、进站、出站等。作为Action的子类，表示系统API接口层面的操作类型定义；可通过Named Individuals枚举具体事件类型，不直接映射物理表。" .
+
+semi:ProductionEventRecord a owl:Class ;
+    rdfs:label "生产事件记录" ;
+    rdfs:comment "某次生产事件的实际执行记录，是ProductionEvent(事件类型)与ProductionLot(批次)的关联类。映射routerx_lot_log表；每条记录对应一次具体操作（如拆批、进站、出站等），记录操作人、时间戳、状态变更及输入/输出批次。" .
+
 ### ==========================================
 ### 2. 核心有机关联 (Object Properties)
 ### ==========================================
@@ -188,9 +220,20 @@ semi:requiresSparePart a owl:ObjectProperty ;
     rdfs:range semi:SparePart ;
     rdfs:comment "驱动设备从异常/老化状态回归受控状态。" .
 
-semi:requiresEquipment a owl:ObjectProperty ;
-    rdfs:domain semi:ProcessStation ; rdfs:range semi:Equipment ;
-    rdfs:label "要求设备执行" .
+semi:containsEquipment a owl:ObjectProperty ;
+    rdfs:domain semi:EquipmentGroup ; rdfs:range semi:Equipment ;
+    rdfs:label "设备组包含设备" ;
+    rdfs:comment "设备组包含的设备实例，多对多关系（一个设备可属于多个设备组）。对应 equipment_group.equipments JSON 数组，数组元素为 equipment.id。" .
+
+semi:isInstanceOf a owl:ObjectProperty ;
+    rdfs:domain semi:Equipment ; rdfs:range semi:EquipmentModel ;
+    rdfs:label "设备型号" ;
+    rdfs:comment "设备实例所属设备模型（型号），从模型继承额定寿命、规格参数等。当设备当前寿命达到 EquipmentModel 定义的额定寿命时，系统自动触发报废预警或大修计划。N:1 关系（多台设备可属同一型号）。" .
+
+semi:usesEquipmentGroup a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessStation ; rdfs:range semi:EquipmentGroup ;
+    rdfs:label "工序绑定可用设备组" ;
+    rdfs:comment "工序引用设备组作为派工可行域，对应 matrix_routerx_config_process.equipment_group_list（JSON 数组）。" .
 
 semi:hostsRecipe a owl:ObjectProperty ;
     rdfs:domain semi:Equipment ; rdfs:range semi:Recipe ;
@@ -222,7 +265,54 @@ semi:hasParentLot a owl:ObjectProperty ;
     rdfs:domain semi:ProductionLot ; rdfs:range semi:ProductionLot ;
     rdfs:label "父批次(溯源)" .
 
-# 2.6 载具层级关联 (Carrier Hierarchy)
+# 2.6 生产履历追溯对象属性 (Traceability Object Properties)
+
+semi:hasPassRecord a owl:ObjectProperty ;
+    rdfs:domain semi:Sublot ; rdfs:range semi:StationPassRecord ;
+    rdfs:label "子批次过站记录" ;
+    rdfs:comment "子批次在某道工序产生的过站执行记录（加工或量测），是Wafer生产履历的基本事实节点。反向关联：station_pass_record.sublot_id → matrix_routerx_operation_lot.id。" .
+
+semi:recordedAtStation a owl:ObjectProperty ;
+    rdfs:domain semi:StationPassRecord ; rdfs:range semi:ProcessStation ;
+    rdfs:label "过站所在工序" ;
+    rdfs:comment "该过站记录对应的工艺站点，是在时间轴上定位Wafer所处制造位置的锚点。" .
+
+semi:processedByEquipment a owl:ObjectProperty ;
+    rdfs:domain semi:StationPassRecord ; rdfs:range semi:Equipment ;
+    rdfs:label "过站使用设备" ;
+    rdfs:comment "执行本次加工或量测的具体设备实例。与Equipment的关联构成'Wafer-工序-设备'三元组，支持从设备维度反查'某台设备何时加工了哪些批次'。" .
+
+semi:splitInto a owl:ObjectProperty ;
+    rdfs:domain semi:ProductionLot ; rdfs:range semi:ProductionLot ;
+    rdfs:label "拆批为" ;
+    rdfs:comment "拆批(Split)操作：一个批次拆分为多个子批次，每个输出批次的 parent_id 指向源批次。此关系是 hasParentLot 的反向语义。在谱系DAG中表现为一对多的发散节点。" .
+
+semi:mergedFrom a owl:ObjectProperty ;
+    rdfs:domain semi:ProductionLot ; rdfs:range semi:ProductionLot ;
+    rdfs:label "攒批自" ;
+    rdfs:comment "攒批/合批(Merge)操作：多个源批次合并为一个新批次。在谱系DAG中表现为多对一的汇聚节点，是追溯断点的最常见来源。" .
+
+semi:reworkedAs a owl:ObjectProperty ;
+    rdfs:domain semi:ProductionLot ; rdfs:range semi:ProductionLot ;
+    rdfs:label "返工为" ;
+    rdfs:comment "返工(Rework)操作：被判定为Reject的批次重新投入加工，衍生出运行于返工工艺路径的新批次标识。返工完成若判定Good则在谱系图中归并回主路径。多次返工形成循环切出-回归的有向路径。" .
+
+semi:isInstanceOfEvent a owl:ObjectProperty ;
+    rdfs:domain semi:ProductionEventRecord ; rdfs:range semi:ProductionEvent ;
+    rdfs:label "事件类型" ;
+    rdfs:comment "该执行记录对应的事件类型（如SPLIT、MERGE、REWORK等ProductionEvent实例），关联record到event类型定义。" .
+
+semi:actsOnLot a owl:ObjectProperty ;
+    rdfs:domain semi:ProductionEventRecord ; rdfs:range semi:ProductionLot ;
+    rdfs:label "作用批次" ;
+    rdfs:comment "事件执行时的输入/主体批次（routerx_lot_log.lot_id）。对于进出站等单批次操作，actsOnLot与producesLot指向同一批次。" .
+
+semi:producesLot a owl:ObjectProperty ;
+    rdfs:domain semi:ProductionEventRecord ; rdfs:range semi:ProductionLot ;
+    rdfs:label "产出批次" ;
+    rdfs:comment "事件执行后产生的输出批次（routerx_lot_log.output_lot_id）。对于拆批操作，产出批次与作用批次不同；对于状态变更操作，两者相同。" .
+
+# 2.7 载具层级关联 (Carrier Hierarchy)
 semi:belongsToGroup a owl:ObjectProperty ;
     rdfs:domain semi:Carrier ; rdfs:range semi:CarrierGroup ;
     rdfs:label "归属载具组" ;
@@ -362,7 +452,9 @@ semi:hasStationType a owl:DatatypeProperty ;
     rdfs:label "工序类型" ;
     rdfs:comment "工序分类枚举（整数），对应 matrix_routerx_config_process.type，区分普通工序、检查站、合并站等类型。" .
 
-# 3.5 设备数据属性
+# 3.5 设备与设备组数据属性
+
+# 3.5.1 设备实体 (Equipment)
 semi:hasEquipmentCode a owl:DatatypeProperty ;
     rdfs:domain semi:Equipment ;
     rdfs:range xsd:string ;
@@ -372,6 +464,50 @@ semi:hasEquipmentName a owl:DatatypeProperty ;
     rdfs:domain semi:Equipment ;
     rdfs:range xsd:string ;
     rdfs:label "设备名称" .
+
+# 3.5.2 设备组 (EquipmentGroup)
+semi:hasEquipmentGroupName a owl:DatatypeProperty ;
+    rdfs:domain semi:EquipmentGroup ;
+    rdfs:range xsd:string ;
+    rdfs:label "设备组名称" ;
+    rdfs:comment "对应 equipment_group.equipment_group_name。" .
+
+semi:hasEquipmentGroupDesc a owl:DatatypeProperty ;
+    rdfs:domain semi:EquipmentGroup ;
+    rdfs:range xsd:string ;
+    rdfs:label "设备组描述" ;
+    rdfs:comment "对应 equipment_group.equipment_group_desc。" .
+
+# 3.5.3 设备模型 (EquipmentModel)
+semi:hasEquipmentModelCode a owl:DatatypeProperty ;
+    rdfs:domain semi:EquipmentModel ;
+    rdfs:range xsd:string ;
+    rdfs:label "设备模型编码" ;
+    rdfs:comment "设备型号的唯一标识编码，对应 equipment_model.code。" .
+
+semi:hasEquipmentModelName a owl:DatatypeProperty ;
+    rdfs:domain semi:EquipmentModel ;
+    rdfs:range xsd:string ;
+    rdfs:label "设备模型名称" ;
+    rdfs:comment "设备型号名称，对应 equipment_model.name。" .
+
+semi:hasSpecification a owl:DatatypeProperty ;
+    rdfs:domain semi:EquipmentModel ;
+    rdfs:range xsd:string ;
+    rdfs:label "规格" ;
+    rdfs:comment "设备模型的技术规格参数描述，对应 equipment_model.specification。" .
+
+semi:hasManufacturer a owl:DatatypeProperty ;
+    rdfs:domain semi:EquipmentModel ;
+    rdfs:range xsd:string ;
+    rdfs:label "生产厂家" ;
+    rdfs:comment "设备型号的生产厂家名称，对应 equipment_model.manufacturer。" .
+
+semi:hasEquipmentRatedLifetime a owl:DatatypeProperty ;
+    rdfs:domain semi:EquipmentModel ;
+    rdfs:range xsd:integer ;
+    rdfs:label "额定寿命" ;
+    rdfs:comment "该型号设备的额定总寿命（运行小时数或维护周期），对应 equipment_model.rated_lifetime。当设备当前寿命达到此值时触发报废预警或大修计划。" .
 
 # 3.6 载具数据属性
 
@@ -577,4 +713,94 @@ semi:hasAfterState a owl:DatatypeProperty ;
     rdfs:range xsd:string ;
     rdfs:label "操作后状态" ;
     rdfs:comment "对应 after_state 字段。" .
+
+# 3.14 过站记录数据属性 (StationPassRecord 及其子类)
+
+# 3.14.1 过站记录公共属性 (StationPassRecord)
+semi:hasInTime a owl:DatatypeProperty ;
+    rdfs:domain semi:StationPassRecord ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "进站时间" ;
+    rdfs:comment "子批次进入工序加工区的时间戳，对应 in_time / enter_time 字段。" .
+
+semi:hasOutTime a owl:DatatypeProperty ;
+    rdfs:domain semi:StationPassRecord ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "出站时间" ;
+    rdfs:comment "子批次完成工序离开加工区的时间戳，对应 out_time / exit_time 字段。" .
+
+semi:hasLoadTime a owl:DatatypeProperty ;
+    rdfs:domain semi:StationPassRecord ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "上料时间" ;
+    rdfs:comment "操作员完成上料（将载具放置到设备进料口）的时间戳。" .
+
+semi:hasUnloadTime a owl:DatatypeProperty ;
+    rdfs:domain semi:StationPassRecord ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "下料时间" ;
+    rdfs:comment "操作员完成下料（从设备取出载具）的时间戳。" .
+
+semi:hasEquipmentSnapshot a owl:DatatypeProperty ;
+    rdfs:domain semi:StationPassRecord ;
+    rdfs:range xsd:string ;
+    rdfs:label "设备状态快照" ;
+    rdfs:comment "过站时刻的设备关键状态快照（JSON），作为因果追溯的设备侧证据链节点，可进一步关联设备履历表展开细节。" .
+
+# 3.14.2 加工过站记录专属属性 (ProcessPassRecord)
+semi:hasProcessParamRecord a owl:DatatypeProperty ;
+    rdfs:domain semi:ProcessPassRecord ;
+    rdfs:range xsd:string ;
+    rdfs:label "加工制程参数记录" ;
+    rdfs:comment "加工设备采集的关键制程参数快照（JSON），可能是单片逐片数据或批次聚合值（均值/极值等）。是分析工艺漂移和设备异常的核心数据源。" .
+
+# 3.14.3 量测过站记录专属属性 (MeasurementPassRecord)
+semi:hasMeasurementResult a owl:DatatypeProperty ;
+    rdfs:domain semi:MeasurementPassRecord ;
+    rdfs:range xsd:string ;
+    rdfs:label "量测结果数据" ;
+    rdfs:comment "量测工序采集的质量参数（JSON），含逐片数据及统计聚合值（最大/最小/平均/标准差），表征当前阶段批次整体质量属性。" .
+
+semi:hasSamplingRule a owl:DatatypeProperty ;
+    rdfs:domain semi:MeasurementPassRecord ;
+    rdfs:range xsd:string ;
+    rdfs:label "抽检规则" ;
+    rdfs:comment "该量测站点应用的抽检规则标识（如'每批抽n片'），决定量测结果对批次的代表性置信度。" .
+
+# 3.14.4 生产事件记录属性 (ProductionEventRecord)
+semi:hasEventType a owl:DatatypeProperty ;
+    rdfs:domain semi:ProductionEventRecord ;
+    rdfs:range xsd:string ;
+    rdfs:label "谱系事件类型" ;
+    rdfs:comment "批次谱系变更事件类型：SPLIT(拆批)、MERGE(攒批/合批)、REWORK(返工)。对应 routerx_lot_log.operation_type。" .
+
+semi:hasEventStartTime a owl:DatatypeProperty ;
+    rdfs:domain semi:ProductionEventRecord ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "事件开始时间" ;
+    rdfs:comment "生产事件的开始时间戳，对应 routerx_lot_log.gmt_create。" .
+
+semi:hasEventEndTime a owl:DatatypeProperty ;
+    rdfs:domain semi:ProductionEventRecord ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "事件结束时间" ;
+    rdfs:comment "生产事件的结束时间戳。" .
+
+semi:hasOperatorId a owl:DatatypeProperty ;
+    rdfs:domain semi:ProductionEventRecord ;
+    rdfs:range xsd:string ;
+    rdfs:label "操作人ID" ;
+    rdfs:comment "执行该生产事件的操作人标识，对应 routerx_lot_log.operator_id。" .
+
+semi:hasLotStatusBefore a owl:DatatypeProperty ;
+    rdfs:domain semi:ProductionEventRecord ;
+    rdfs:range xsd:string ;
+    rdfs:label "事件前批次状态" ;
+    rdfs:comment "事件执行前的批次状态快照，对应 routerx_lot_log.before_state。" .
+
+semi:hasLotStatusAfter a owl:DatatypeProperty ;
+    rdfs:domain semi:ProductionEventRecord ;
+    rdfs:range xsd:string ;
+    rdfs:label "事件后批次状态" ;
+    rdfs:comment "事件执行后的批次状态快照，对应 routerx_lot_log.after_state。" .
 

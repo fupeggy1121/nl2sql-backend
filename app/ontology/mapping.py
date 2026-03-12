@@ -60,6 +60,11 @@ class RelationMapping:
     bridge_table: Optional[str] = None
     order_by: Optional[str] = None
     note: Optional[str] = None
+    # 意图感知路径过滤：路径发现时只在意图相关的关系子图上做 BFS
+    # applicable_intents: 允许此关系参与路径的意图标签列表（空列表=全允许）
+    # forbidden_intents:  禁止此关系参与路径的意图标签列表
+    applicable_intents: List[str] = field(default_factory=list)
+    forbidden_intents: List[str] = field(default_factory=list)
 
 @dataclass
 class RecursiveMapping:
@@ -359,6 +364,8 @@ class MappingDictionary:
                 bridge_table=bridge,
                 order_by=order_by,
                 note=jl.get("note"),
+                applicable_intents=item.get("intent_tags", {}).get("applicable", []),
+                forbidden_intents=item.get("intent_tags", {}).get("forbidden", []),
             )
             self._relation_map[rm.logic_relation] = rm
 

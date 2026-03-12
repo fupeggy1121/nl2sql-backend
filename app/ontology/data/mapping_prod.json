@@ -2,6 +2,34 @@
   "version": "2026-V3",
   "customer": "Prod_cc_semi_mvp",
   "description": "半导体CIM本体→MySQL本地库物理表映射字典（TTL-first，v3全量对齐semi-cim-ontology.ttl）",
+  "query_patterns": [
+    {
+      "intent": "station_available_carrier_count",
+      "label_cn": "统计各站点可用空载具数量",
+      "nl_triggers": [
+        "站点可用载具",
+        "各站点空闲载具",
+        "可调度载具",
+        "空载具数量",
+        "载具可用数量",
+        "每个站点可以使用的载具"
+      ],
+      "sql_template": "SELECT p.name AS 站点名称, p.code AS 站点编码, COUNT(DISTINCT ci.id) AS 可用载具数量 FROM matrix_routerx_config_process p JOIN carrier_group_info cg ON p.load_carrier_group_id = cg.id JOIN carrier_info ci ON ci.bind_carrier_group = cg.id WHERE ci.status = {CarrierAvailableStatus} AND ci.sub_status = {CarrierEmptyStatus} GROUP BY p.id, p.name, p.code ORDER BY 可用载具数量 DESC",
+      "param_bindings": {
+        "CarrierAvailableStatus": "value_mappings.semi:CarrierMaintenanceStatus.Available",
+        "CarrierEmptyStatus": "value_mappings.semi:CarrierLoadStatus.Empty"
+      },
+      "tables": [
+        "matrix_routerx_config_process",
+        "carrier_group_info",
+        "carrier_info"
+      ],
+      "forbidden_tables": [
+        "matrix_routerx_operation_lot"
+      ],
+      "note": "空闲载具通过 load_carrier_group_id 路径查询。matrix_routerx_operation_lot 表反映 WIP 占用载具，与此查询无关。"
+    }
+  ],
   "object_mappings": [
     {
       "logic_class": "semi:Wafer",
@@ -150,7 +178,8 @@
         "load_carrier_group_id",
         "unload_carrier_group_id",
         "gmt_create"
-      ]
+      ],
+      "note": "【站点可用载具查询路径】统计每个站点当前可调度的空闲载具数量，正确路径：matrix_routerx_config_process.load_carrier_group_id → carrier_group_info.id → carrier_info.bind_carrier_group（过滤 carrier_info.status=可用 AND sub_status=空载）。【严禁走 lot 表路径】matrix_routerx_operation_lot.carrier_code 关联的是当前正在承载 WIP 在制品的载具（非空闲），与站点通过 process_id 关联对应的是'此批次正在此站点加工'，而非'此站点有哪些空载具可用'——两者语义完全不同，混用会导致统计错误。"
     },
     {
       "logic_class": "semi:Equipment",
@@ -175,6 +204,60 @@
         "gmt_create"
       ],
       "note": "status: 0=CLOSE(停用), 1=OPEN(启用)。sys_eqpinfo_tree 是设备树结构表，用于层级展示，不是设备实体表。"
+    },
+    {
+      "logic_class": "semi:EquipmentGroup",
+      "physical_table": "equipment_group",
+      "primary_key": "id",
+      "label_cn": "设备组",
+      "display_column": "equipment_group_name",
+      "virtual": false,
+      "properties": {
+        "semi:hasEquipmentGroupName": "equipment_group_name",
+        "semi:hasEquipmentGroupDesc": "equipment_group_desc"
+      },
+      "key_columns": [
+        "id",
+        "equipment_group_name",
+        "equipment_group_desc",
+        "code",
+        "name",
+        "description",
+        "equipments",
+        "deleted",
+        "trace_id",
+        "gmt_create",
+        "create_user_id",
+        "create_user",
+        "gmt_update",
+        "update_user_id",
+        "update_user"
+      ],
+      "note": "设备组逻辑分组表。matrix_routerx_config_process.equipment_group_list 引用本表 id 列表（JSON数组）。equipments 字段为 JSON 数组，存储组内关联设备 ID。"
+    },
+    {
+      "logic_class": "semi:EquipmentModel",
+      "physical_table": "equipment_model",
+      "primary_key": "id",
+      "label_cn": "设备模型",
+      "display_column": "name",
+      "virtual": false,
+      "properties": {
+        "semi:hasEquipmentModelCode": "code",
+        "semi:hasEquipmentModelName": "name",
+        "semi:hasSpecification": "specification",
+        "semi:hasManufacturer": "manufacturer",
+        "semi:hasEquipmentRatedLifetime": "rated_lifetime"
+      },
+      "key_columns": [
+        "id",
+        "code",
+        "name",
+        "specification",
+        "manufacturer",
+        "rated_lifetime"
+      ],
+      "note": "设备模型（资产蓝图），定义同型号设备的技术规格与额定寿命。物理表 equipment_model 及外键 equipment.model_id 待创建迁移。"
     },
     {
       "logic_class": "semi:Carrier",
@@ -637,6 +720,119 @@
         "extra"
       ],
       "note": "载具逻辑分组表。carrier_info.bind_carrier_group 及 matrix_routerx_config_process.load_carrier_group_id / unload_carrier_group_id 均引用本表 id。carrier_modellings 为 JSON 字段，存储关联的 carrier_modelling id 列表。"
+    },
+    {
+      "logic_class": "semi:StationPassRecord",
+      "physical_table": null,
+      "primary_key": null,
+      "label_cn": "过站记录(抽象基类)",
+      "display_column": null,
+      "virtual": true,
+      "properties": {},
+      "key_columns": [],
+      "note": "抽象基类，不直接对应物理表。子类 ProcessPassRecord(加工过站) 和 MeasurementPassRecord(量测过站) 各有独立物理表，通过 station_type 字段区分。"
+    },
+    {
+      "logic_class": "semi:ProcessPassRecord",
+      "physical_table": "station_process_record",
+      "primary_key": "id",
+      "label_cn": "加工过站记录",
+      "display_column": "sublot_id",
+      "virtual": false,
+      "properties": {
+        "semi:hasInTime": "in_time",
+        "semi:hasOutTime": "out_time",
+        "semi:hasLoadTime": "load_time",
+        "semi:hasUnloadTime": "unload_time",
+        "semi:hasEquipmentSnapshot": "equipment_snapshot",
+        "semi:hasProcessParamRecord": "process_params"
+      },
+      "key_columns": [
+        "id",
+        "sublot_id",
+        "lot_id",
+        "station_id",
+        "equipment_id",
+        "in_time",
+        "out_time",
+        "load_time",
+        "unload_time",
+        "equipment_snapshot",
+        "process_params",
+        "operator_id",
+        "gmt_create"
+      ],
+      "note": "加工工序过站执行记录表（待创建迁移）。station_type='process'。每行对应一个子批次在一道加工工序的完整过站事件，是Wafer加工履历还原的基本单元。"
+    },
+    {
+      "logic_class": "semi:MeasurementPassRecord",
+      "physical_table": "station_measurement_record",
+      "primary_key": "id",
+      "label_cn": "量测过站记录",
+      "display_column": "sublot_id",
+      "virtual": false,
+      "properties": {
+        "semi:hasInTime": "in_time",
+        "semi:hasOutTime": "out_time",
+        "semi:hasLoadTime": "load_time",
+        "semi:hasUnloadTime": "unload_time",
+        "semi:hasEquipmentSnapshot": "equipment_snapshot",
+        "semi:hasMeasurementResult": "measurement_result",
+        "semi:hasSamplingRule": "sampling_rule"
+      },
+      "key_columns": [
+        "id",
+        "sublot_id",
+        "lot_id",
+        "station_id",
+        "equipment_id",
+        "in_time",
+        "out_time",
+        "load_time",
+        "unload_time",
+        "equipment_snapshot",
+        "measurement_result",
+        "sampling_rule",
+        "operator_id",
+        "gmt_create"
+      ],
+      "note": "量测工序过站检验记录表（待创建迁移）。station_type='measurement'。包含抽检规则与逐片/聚合量测参数，表征当前工序阶段的质量属性快照。"
+    },
+    {
+      "logic_class": "semi:ProductionEvent",
+      "physical_table": null,
+      "label_cn": "生产事件类型",
+      "note": "Type层定义，对应生产事件类型枚举（SPLIT/MERGE/REWORK/进站/出站等）。作为Action子类，通过Named Individuals或配置表定义，不直接映射物理表。"
+    },
+    {
+      "logic_class": "semi:ProductionEventRecord",
+      "physical_table": "routerx_lot_log",
+      "primary_key": "id",
+      "label_cn": "生产事件记录",
+      "display_column": "operation_type",
+      "filter_condition": "operation_type IN ('SPLIT', 'MERGE', 'REWORK', 'split', 'merge', 'rework')",
+      "virtual": false,
+      "properties": {
+        "semi:hasEventType": "operation_type",
+        "semi:hasEventStartTime": "gmt_create",
+        "semi:hasOperatorId": "operator_id",
+        "semi:hasLotStatusBefore": "before_state",
+        "semi:hasLotStatusAfter": "after_state"
+      },
+      "key_columns": [
+        "id",
+        "lot_id",
+        "lot_code",
+        "operation_type",
+        "station_id",
+        "equipment_id",
+        "operator_id",
+        "before_state",
+        "after_state",
+        "output_lot_id",
+        "gmt_create"
+      ],
+      "note": "复用 routerx_lot_log 表，过滤谱系变更事件类型（SPLIT/MERGE/REWORK）。这些事件是批次谱系DAG的边节点，完整记录了拆批、攒批、返工时的批次标识变更上下文，是消除追溯断点的关键。"
     }
   ],
   "relation_mappings": [
@@ -771,13 +967,23 @@
     },
     {
       "logic_relation": "semi:isCarriedBy",
-      "description": "子批次由哪个 Carrier(载具) 承载",
+      "description": "子批次由哪个 Carrier(载具) 承载 —— 仅用于 WIP 在制追踪，不代表载具空闲可用",
+      "intent_tags": {
+        "applicable": [
+          "wip_tracking"
+        ],
+        "forbidden": [
+          "carrier_availability",
+          "scheduling"
+        ]
+      },
       "strategy": "ForeignKey",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot",
         "target_table": "carrier_info",
         "target_key": "code",
-        "source_key": "carrier_code"
+        "source_key": "carrier_code",
+        "note": "此关系表示'哪个批次正在使用哪个载具'，即载具处于承载 WIP 状态（sub_status=非空）。查询'站点空闲可用载具数量'时禁止使用此路径，应通过 usesLoadCarrierGroup → CarrierGroup → carrier_info(status=可用, sub_status=空载) 路径。"
       },
       "domain_class": "semi:Sublot",
       "range_class": "semi:Carrier"
@@ -811,18 +1017,45 @@
       "range_class": "semi:ProcessStation"
     },
     {
-      "logic_relation": "semi:requiresEquipment",
-      "description": "ProcessStation 要求哪些 Equipment(设备) 执行",
-      "strategy": "EmbeddedJSON",
+      "logic_relation": "semi:usesEquipmentGroup",
+      "description": "ProcessStation(工序) 绑定可用 EquipmentGroup(设备组) 作为派工可行域",
+      "strategy": "ForeignKey",
       "join_logic": {
+        "source_key": "equipment_group_list",
         "source_table": "matrix_routerx_config_process",
-        "jsonb_column": "equipment_group_list",
-        "target_table": "equipment",
-        "target_key": "classify_id",
-        "note": "equipment_group_list 是jsonb数组，存储设备分类组ID，通过 equipment.classify_id 关联。"
+        "target_key": "id",
+        "target_table": "equipment_group"
       },
       "domain_class": "semi:ProcessStation",
+      "range_class": "semi:EquipmentGroup"
+    },
+    {
+      "logic_relation": "semi:containsEquipment",
+      "description": "EquipmentGroup(设备组) 包含哪些 Equipment(设备)，多对多（设备可归属多个设备组）",
+      "strategy": "EmbeddedJSON",
+      "join_logic": {
+        "source_table": "equipment_group",
+        "jsonb_column": "equipments",
+        "target_table": "equipment",
+        "target_key": "id",
+        "note": "equipment_group.equipments 为 JSON 数组，存储 equipment.id 列表；多对多关系，一个设备可归属多个设备组。"
+      },
+      "domain_class": "semi:EquipmentGroup",
       "range_class": "semi:Equipment"
+    },
+    {
+      "logic_relation": "semi:isInstanceOf",
+      "description": "Equipment(设备实例) 关联其所属 EquipmentModel(设备模型)，N:1关系；从模型继承额定寿命、规格、厂家等参数",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "equipment",
+        "source_key": "model_id",
+        "target_table": "equipment_model",
+        "target_key": "id",
+        "note": "equipment.model_id → equipment_model.id。物理表 equipment_model 及外键 equipment.model_id 待创建迁移。"
+      },
+      "domain_class": "semi:Equipment",
+      "range_class": "semi:EquipmentModel"
     },
     {
       "logic_relation": "semi:hostsRecipe",
@@ -1037,14 +1270,21 @@
     },
     {
       "logic_relation": "semi:usesLoadCarrierGroup",
-      "description": "ProcessStation(工序) 进站时物料所在载具必须属于该 CarrierGroup(载具组)",
+      "description": "ProcessStation(工序) 进站时物料所在载具必须属于该 CarrierGroup(载具组) —— 同时是统计站点可用空载具的正确关联路径",
+      "intent_tags": {
+        "applicable": [
+          "carrier_availability",
+          "scheduling",
+          "station_capacity"
+        ]
+      },
       "strategy": "ForeignKey",
       "join_logic": {
         "source_table": "matrix_routerx_config_process",
         "source_key": "load_carrier_group_id",
         "target_table": "carrier_group_info",
         "target_key": "id",
-        "note": "matrix_routerx_config_process.load_carrier_group_id → carrier_group_info.id，约束进站载具所属组。"
+        "note": "matrix_routerx_config_process.load_carrier_group_id → carrier_group_info.id → carrier_info.bind_carrier_group。统计各站点可用空载具的完整 SQL 路径：FROM matrix_routerx_config_process p JOIN carrier_group_info cg ON p.load_carrier_group_id = cg.id JOIN carrier_info ci ON ci.bind_carrier_group = cg.id WHERE ci.status=可用 AND ci.sub_status=空载 GROUP BY p.id。此路径与 matrix_routerx_operation_lot 无关。"
       },
       "domain_class": "semi:ProcessStation",
       "range_class": "semi:CarrierGroup"
@@ -1075,6 +1315,131 @@
         "note": "需要 WITH RECURSIVE CTE（MySQL 8.0+支持）; parent_lot_id 为自引用外键（如不存在则此关系虚拟，需确认字段）。"
       },
       "domain_class": "semi:ProductionLot",
+      "range_class": "semi:ProductionLot"
+    },
+    {
+      "logic_relation": "semi:hasPassRecord",
+      "description": "Sublot 在某工序产生的过站执行记录（加工或量测），是Wafer履历追溯的基本事实单元",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot",
+        "source_key": "id",
+        "target_table": "station_process_record",
+        "target_key": "sublot_id",
+        "note": "station_process_record 与 station_measurement_record 均以 sublot_id 关联子批次。追溯时需 UNION 两表或按工序类型分别查询。"
+      },
+      "domain_class": "semi:Sublot",
+      "range_class": "semi:StationPassRecord"
+    },
+    {
+      "logic_relation": "semi:recordedAtStation",
+      "description": "过站记录对应的工艺站点，时间轴上的制造位置锚点",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "station_process_record",
+        "source_key": "station_id",
+        "target_table": "matrix_routerx_config_process",
+        "target_key": "id",
+        "note": "station_measurement_record 使用相同的 station_id → matrix_routerx_config_process.id 关联。"
+      },
+      "domain_class": "semi:StationPassRecord",
+      "range_class": "semi:ProcessStation"
+    },
+    {
+      "logic_relation": "semi:processedByEquipment",
+      "description": "过站记录关联的执行设备实例，支持从设备维度反查加工批次",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "station_process_record",
+        "source_key": "equipment_id",
+        "target_table": "equipment",
+        "target_key": "id",
+        "note": "station_measurement_record 使用相同的 equipment_id → equipment.id 关联。"
+      },
+      "domain_class": "semi:StationPassRecord",
+      "range_class": "semi:Equipment"
+    },
+    {
+      "logic_relation": "semi:splitInto",
+      "description": "批次拆批(Split)：一个批次拆分为多个子批次，在谱系DAG中为一对多发散节点",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot",
+        "source_key": "id",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "parent_id",
+        "filter_condition": "operation_type = 'SPLIT'",
+        "note": "拆批后新批次的 parent_id 指向源批次 id。可结合 routerx_lot_log(operation_type=SPLIT) 获取完整事件上下文。"
+      },
+      "domain_class": "semi:ProductionLot",
+      "range_class": "semi:ProductionLot"
+    },
+    {
+      "logic_relation": "semi:mergedFrom",
+      "description": "批次攒批(Merge)：多个源批次合并为一个新批次，是传统链式追溯产生断点最常见的场景",
+      "strategy": "EventLog",
+      "join_logic": {
+        "event_table": "routerx_lot_log",
+        "event_type_column": "operation_type",
+        "event_type_value": "MERGE",
+        "lot_id_column": "lot_id",
+        "note": "攒批事件记录在 routerx_lot_log，通过 before_state/after_state 的 JSON 可还原输入批次集合与输出批次。需解析 JSON 字段构造 DAG 边。"
+      },
+      "domain_class": "semi:ProductionLot",
+      "range_class": "semi:ProductionLot"
+    },
+    {
+      "logic_relation": "semi:reworkedAs",
+      "description": "批次返工(Rework)：Reject批次衍生出返工路径新批次，返工完成good后归并回主路径",
+      "strategy": "EventLog",
+      "join_logic": {
+        "event_table": "routerx_lot_log",
+        "event_type_column": "operation_type",
+        "event_type_value": "REWORK",
+        "lot_id_column": "lot_id",
+        "note": "返工事件使得批次标识可能变更（如加'-RW1'后缀），routerx_lot_log 记录了返工前后的 lot_code 关联，是还原多轮返工谱系路径的数据来源。"
+      },
+      "domain_class": "semi:ProductionLot",
+      "range_class": "semi:ProductionLot"
+    },
+    {
+      "logic_relation": "semi:isInstanceOfEvent",
+      "description": "事件记录对应的事件类型（ProductionEvent Named Individual），通过operation_type值查找",
+      "strategy": "ValueLookup",
+      "join_logic": {
+        "source_table": "routerx_lot_log",
+        "source_field": "operation_type",
+        "note": "operation_type值（如'SPLIT'、'MERGE'、'REWORK'）映射到ProductionEvent Named Individual。"
+      },
+      "domain_class": "semi:ProductionEventRecord",
+      "range_class": "semi:ProductionEvent"
+    },
+    {
+      "logic_relation": "semi:actsOnLot",
+      "description": "事件执行时的输入/主体批次，通过lot_id关联ProductionLot",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "routerx_lot_log",
+        "source_key": "lot_id",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "id",
+        "note": "routerx_lot_log.lot_id → matrix_routerx_operation_lot.id，定位事件的主体批次。"
+      },
+      "domain_class": "semi:ProductionEventRecord",
+      "range_class": "semi:ProductionLot"
+    },
+    {
+      "logic_relation": "semi:producesLot",
+      "description": "事件执行后产生的输出批次，通过output_lot_id关联ProductionLot",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "routerx_lot_log",
+        "source_key": "output_lot_id",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "id",
+        "note": "routerx_lot_log.output_lot_id → matrix_routerx_operation_lot.id，拆批时产出批次与作用批次不同。"
+      },
+      "domain_class": "semi:ProductionEventRecord",
       "range_class": "semi:ProductionLot"
     }
   ],

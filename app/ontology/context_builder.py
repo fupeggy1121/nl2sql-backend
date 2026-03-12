@@ -530,7 +530,7 @@ class SemanticContextBuilder:
         完整构建流程:
           1. 提取关键词 → 匹配本体类
           2. 提取值关键词 → 值映射过滤
-          3. 类间路径发现 → 物理 JOIN 翻译
+          3. 类间路径发现 → 物理 JOIN 翻译（意图感知子图过滤）
           4. 业务规则匹配
         """
         ctx = SemanticContext(user_query=user_query)
@@ -1143,14 +1143,51 @@ class SemanticContextBuilder:
     # Step 3: 类间路径 → 物理 JOIN
     # ----------------------------------------------------------------- #
 
+    # 记录类——具备自身业务状态/历史记录的实体类。
+    # 作为未被查询提及的中间节点时，路径会引入隐式业务过滤，导致语义与查询意图相悖。
+    # 判断标准：具有状态字段、时间戳、业务过滤条件的记录类，而非分组/分类/配置类。
+    _RECORD_CLASSES: Set[str] = {
+        "semi:ProductionLot",    # 批次主表，status 表示 WIP 状态
+        "semi:Sublot",           # 子批次，process_id 表示当前在哪个站点
+        "semi:Wafer",            # 晶圆单片
+        "semi:Action",           # 操作日志流水
+        "semi:ProductionOrder",  # 生产工单
+    }
+
+    def _path_has_unmentioned_record_class(
+        self,
+        edges: List,
+        endpoint_classes: Set[str],
+        matched_class_uris: Set[str],
+    ) -> bool:
+        """
+        检查路径中是否存在未被查询提及的记录类中间节点。
+
+        原则：
+          - 路径端点（source/target）不检查
+          - 中间节点如果是 _RECORD_CLASSES 且未出现在 matched_classes 中，返回 True
+          - 分类/配置/组分类类（CarrierGroup, EquipmentGroup, Route 等）充当自然桥接节点，不影响
+        """
+        for edge in edges:
+            intermediate = edge.from_class
+            if intermediate in endpoint_classes:
+                continue
+            if intermediate in self._RECORD_CLASSES and intermediate not in matched_class_uris:
+                return True
+        return False
+
     def _resolve_joins(self, classes: List[MatchedClass]) -> List[ResolvedJoin]:
         """
         对匹配到的类两两做路径发现，然后将每一跳的本体关系翻译为物理 JOIN。
 
         路径发现策略（优先级）：
-          1. NetworkX JoinGraph BFS — 直接从 relation_mappings 物理图查找
-             （OWL TTL 校验通过后构建，无需运行时解析 TTL）
-          2. OntologyGraph（rdflib）— JoinGraph 未命中时 fallback
+          1. NetworkX JoinGraph 所有最短路径 → 语义验证（中间节点纯洁性检查）→ 选最佳路径
+          2. NetworkX JoinGraph 无向 BFS fallback
+          3. OntologyGraph（rdflib）— JoinGraph 未命中时 fallback
+
+        语义验证原则：
+          当多条最短路径存在时，优先选择中间节点不包含未被查询提及的记录类的路径。
+          此原则直接使用 domain_class/range_class 已有信息，不需要额外语义标注。
         """
         if len(classes) < 2:
             return []
@@ -1165,16 +1202,38 @@ class SemanticContextBuilder:
 
         join_graph = get_join_graph()  # 全局单例，lifespan 初始化后可用
 
+        # 已匹配类的语义 URI 集合，用于中间节点纯洁性检查
+        matched_class_uris: Set[str] = {c.logic_class for c in physical_classes}
+
         for i in range(len(physical_classes)):
             for j in range(i + 1, len(physical_classes)):
                 source = physical_classes[i].logic_class
                 target = physical_classes[j].logic_class
+                endpoint_classes = {source, target}
 
-                # ── 优先：NetworkX JoinGraph BFS ──────────────────────────
+                # ── 优先：所有最短路径 + 语义验证 ──────────────────────────────
                 if join_graph and join_graph.is_ready:
-                    jg_edges = join_graph.find_path(source, target)
+                    all_paths = join_graph.find_all_shortest_paths(source, target)
+
+                    # 多条等长路径时：优先选择中间节点不含未提及记录类的路径
+                    if len(all_paths) > 1:
+                        clean_paths = [
+                            p for p in all_paths
+                            if not self._path_has_unmentioned_record_class(
+                                p, endpoint_classes, matched_class_uris
+                            )
+                        ]
+                        chosen_paths = clean_paths if clean_paths else all_paths
+                        logger.info(
+                            "[context_builder] %s→%s: %d paths, %d passed semantic validation",
+                            source, target, len(all_paths), len(chosen_paths),
+                        )
+                    else:
+                        chosen_paths = all_paths
+
+                    jg_edges = chosen_paths[0] if chosen_paths else None
+
                     if jg_edges is None:
-                        # 有向路径不通，尝试无向（反向关系也可联表）
                         jg_edges = join_graph.find_path_undirected(source, target)
 
                     if jg_edges is not None:

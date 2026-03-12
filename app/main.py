@@ -112,6 +112,10 @@ def _register_routes(app: FastAPI):
     from app.api.v1.mapping import router as mapping_router
     app.include_router(mapping_router)
 
+    # 追溯查询 API (批次 / Wafer 生产履历)
+    from app.api.v1.traceability import router as traceability_router
+    app.include_router(traceability_router)
+
     # 旧 API 兼容层
     from app.api.compat import router as compat_router
     app.include_router(compat_router)
