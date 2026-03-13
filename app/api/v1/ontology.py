@@ -312,6 +312,7 @@ async def get_graph_data() -> Dict[str, Any]:
       type: "objectProperty" | "dataPropertyEdge" | "subClassOf"
     """
     ontology = get_ontology()
+    mapping = get_mapping()
     nodes = []
     links = []
     node_ids = set()
@@ -321,12 +322,16 @@ async def get_graph_data() -> Dict[str, Any]:
         # 分组: 取类名首字母作为简单模块分组
         short = uri.replace("semi:", "")
         group = short[0].upper() if short else "?"
+        # 检查是否为虚拟类（type 层模板，无物理表）
+        pt = mapping.get_physical_table(uri)
+        is_virtual = pt.virtual if pt is not None else True  # 未在 mapping 中出现的也视为虚拟
         nodes.append({
             "id": uri,
             "label": cls.label or short,
             "comment": cls.comment or "",
             "type": "class",
             "group": group,
+            "virtual": is_virtual,
         })
         node_ids.add(uri)
 

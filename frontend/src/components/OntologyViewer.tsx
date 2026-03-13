@@ -34,6 +34,7 @@ interface GraphNode extends d3.SimulationNodeDatum {
   type: 'class' | 'dataProperty';
   group: string;
   rangeType?: string;
+  virtual?: boolean;
 }
 
 interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
@@ -200,7 +201,7 @@ export default function OntologyViewer() {
       .force('link', d3.forceLink<GraphNode, GraphLink>(links).id(d => d.id).distance(120))
       .force('charge', d3.forceManyBody().strength(-300))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius(30));
+      .force('collision', d3.forceCollide<GraphNode>().radius(d => d.virtual ? 36 : 30));
 
     simulationRef.current = simulation;
 
@@ -249,28 +250,72 @@ export default function OntologyViewer() {
       )
       .on('click', (_event, d) => setSelectedNode(d));
 
-    // Node circles
-    node.append('circle')
-      .attr('r', d => d.type === 'class' ? 18 : 10)
-      .attr('fill', d => d.type === 'class' ? getGroupColor(d.group) : '#334155')
+    // diamond path helper (for virtual/type-template classes)
+    const diamondPath = (r: number) =>
+      `M0,${-r} L${r},0 L0,${r} L${-r},0 Z`;
+
+    // ── Virtual (type-template) class nodes: diamond shape ──
+    node.filter(d => d.type === 'class' && !!d.virtual)
+      .append('path')
+      .attr('d', diamondPath(20))
+      .attr('fill', '#1c1408')
       .attr('stroke', d => {
-        if (searchTerm && d.label.toLowerCase().includes(searchTerm.toLowerCase())) {
-          return '#fbbf24';
-        }
-        return d.type === 'class' ? '#1e293b' : '#475569';
+        if (searchTerm && d.label.toLowerCase().includes(searchTerm.toLowerCase())) return '#fbbf24';
+        return '#f59e0b';
+      })
+      .attr('stroke-width', 2)
+      .attr('stroke-dasharray', '5,3')
+      .attr('opacity', 0.92);
+
+    // "T" label inside diamond
+    node.filter(d => d.type === 'class' && !!d.virtual)
+      .append('text')
+      .text('T')
+      .attr('dy', '0.35em')
+      .attr('text-anchor', 'middle')
+      .attr('font-size', 10)
+      .attr('font-weight', 700)
+      .attr('fill', '#fbbf24')
+      .style('pointer-events', 'none');
+
+    // ── Regular class nodes: circle ──
+    node.filter(d => d.type === 'class' && !d.virtual)
+      .append('circle')
+      .attr('r', 18)
+      .attr('fill', d => getGroupColor(d.group))
+      .attr('stroke', d => {
+        if (searchTerm && d.label.toLowerCase().includes(searchTerm.toLowerCase())) return '#fbbf24';
+        return '#1e293b';
       })
       .attr('stroke-width', d =>
         searchTerm && d.label.toLowerCase().includes(searchTerm.toLowerCase()) ? 3 : 2
       )
-      .attr('opacity', d => d.type === 'class' ? 0.9 : 0.7);
+      .attr('opacity', 0.9);
 
-    // Node labels
+    // ── DataProperty nodes: circle ──
+    node.filter(d => d.type === 'dataProperty')
+      .append('circle')
+      .attr('r', 10)
+      .attr('fill', '#334155')
+      .attr('stroke', '#475569')
+      .attr('stroke-width', 2)
+      .attr('opacity', 0.7);
+
+    // Node labels (below node)
     node.append('text')
       .text(d => d.label.length > 12 ? d.label.slice(0, 12) + '…' : d.label)
-      .attr('dy', d => d.type === 'class' ? 30 : 20)
+      .attr('dy', d => {
+        if (d.type === 'dataProperty') return 20;
+        if (d.virtual) return 32;
+        return 30;
+      })
       .attr('text-anchor', 'middle')
       .attr('font-size', d => d.type === 'class' ? 11 : 9)
-      .attr('fill', d => d.type === 'class' ? '#e2e8f0' : '#94a3b8')
+      .attr('fill', d => {
+        if (d.virtual) return '#fde68a';
+        if (d.type === 'class') return '#e2e8f0';
+        return '#94a3b8';
+      })
       .style('pointer-events', 'none');
 
     // Tick
@@ -420,6 +465,21 @@ export default function OntologyViewer() {
             />
             数据属性
           </label>
+          {/* Legend */}
+          <div style={styles.legendWrap}>
+            <span style={styles.legendItem}>
+              <svg width="14" height="14" style={{ marginRight: 4 }}>
+                <circle cx="7" cy="7" r="6" fill="#38bdf8" stroke="#1e293b" strokeWidth="1.5" />
+              </svg>
+              实体类
+            </span>
+            <span style={styles.legendItem}>
+              <svg width="14" height="14" style={{ marginRight: 4 }}>
+                <path d="M7,1 L13,7 L7,13 L1,7 Z" fill="#1c1408" stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="3,2" />
+              </svg>
+              类型模板
+            </span>
+          </div>
           <button style={styles.btnPrimary} onClick={() => setShowUploadModal(true)}>
             <Upload size={14} /> 上传 TTL
           </button>
@@ -478,9 +538,21 @@ export default function OntologyViewer() {
                 <div style={styles.detailRow}>
                   <span style={styles.detailLabel}>类型</span>
                   <span style={styles.detailValue}>
-                    {selectedNode.type === 'class' ? '本体类' : '数据属性'}
+                    {selectedNode.type === 'dataProperty'
+                      ? '数据属性'
+                      : selectedNode.virtual
+                        ? '类型模板（虚拟类）'
+                        : '本体类（实体）'}
                   </span>
                 </div>
+                {selectedNode.virtual && (
+                  <div style={styles.detailRow}>
+                    <span style={styles.detailLabel}>说明</span>
+                    <span style={{ ...styles.detailValue, color: '#fbbf24', fontSize: 11 }}>
+                      Type 层模板，定义操作规则/类型，无物理表。执行记录见对应的 *Record 实例类。
+                    </span>
+                  </div>
+                )}
                 {selectedNode.comment && (
                   <div style={styles.detailRow}>
                     <span style={styles.detailLabel}>描述</span>
@@ -782,6 +854,15 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex', flexDirection: 'column' as const, alignItems: 'center',
     gap: 8, padding: '32px 0', color: '#475569', fontSize: 13,
     textAlign: 'center' as const,
+  },
+  legendWrap: {
+    display: 'flex', alignItems: 'center', gap: 10,
+    padding: '3px 10px', background: '#0f172a', borderRadius: 6,
+    border: '1px solid #334155',
+  },
+  legendItem: {
+    display: 'flex', alignItems: 'center', fontSize: 11, color: '#94a3b8',
+    whiteSpace: 'nowrap' as const,
   },
 
   // Upload modal
