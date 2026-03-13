@@ -16,6 +16,7 @@ from app.agent.nodes.response_builder import response_builder_node
 from app.agent.nodes.memory_saver import memory_saver_node
 from app.agent.nodes.rag_chat import rag_chat_node     # Phase D 新增
 from app.agent.nodes.semantic_resolver import semantic_resolver_node  # Phase 3: 本体引擎
+from app.agent.nodes.action_executor import action_executor_node  # Phase E: 写操作执行
 
 __all__ = [
     "memory_loader_node",
@@ -31,4 +32,5 @@ __all__ = [
     "response_builder_node",
     "memory_saver_node",
     "rag_chat_node",
+    "action_executor_node",
 ]

@@ -48,6 +48,11 @@ class AgentState(TypedDict, total=False):
     response: Dict[str, Any]                     # 最终组装的完整响应
     error: str                                   # 全局错误信息
 
+    # ── 写操作执行 (Phase E: Action Executor) ──
+    action_intent: Dict[str, Any]                # 写操作意图数据 {eventType, lotId, waferList, ...}
+    action_result: Dict[str, Any]                # 执行结果 {success, newLotId, affectedWafers, record_id, ...}
+    action_error: str                            # 写操作错误（preCondition 失败 / API 回调失败 / 写入失败）
+
     # ── 对话记忆 (Phase C) ──
     memory_context: Dict[str, Any]               # 记忆模块注入的上下文
     is_followup: bool                            # 是否为追问/指代查询

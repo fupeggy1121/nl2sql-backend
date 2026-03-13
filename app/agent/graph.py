@@ -32,6 +32,7 @@ from app.agent.nodes import (
     response_builder_node,
     memory_saver_node,
     rag_chat_node,          # Phase D 新增
+    action_executor_node,   # Phase E 新增
 )
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,8 @@ def _route_by_intent(state: AgentState) -> str:
         return "semantic_resolver"   # Phase 3: 先经语义解析
     elif intent == "chat":
         return "rag_chat"        # Phase D: 路由到 RAG 问答节点
+    elif intent == "action":
+        return "action_executor"  # Phase E: 写操作执行节点
     elif intent == "alert":
         return "response_builder"  # Phase 后续
     elif intent == "schedule":
@@ -158,6 +161,7 @@ def build_agent_graph() -> StateGraph:
     graph.add_node("response_builder", response_builder_node)
     graph.add_node("memory_saver", memory_saver_node)         # Phase C
     graph.add_node("rag_chat", rag_chat_node)                 # Phase D 新增
+    graph.add_node("action_executor", action_executor_node)   # Phase E 新增
 
     # ── 入口: memory_loader ──
     graph.set_entry_point("memory_loader")
@@ -172,6 +176,7 @@ def build_agent_graph() -> StateGraph:
         {
             "semantic_resolver": "semantic_resolver",  # Phase 3: query → 语义解析
             "rag_chat": "rag_chat",                 # Phase D: chat → rag_chat
+            "action_executor": "action_executor",    # Phase E: write → action_executor
             "response_builder": "response_builder",
         },
     )
@@ -211,6 +216,9 @@ def build_agent_graph() -> StateGraph:
 
     # ── Phase D: rag_chat → memory_saver ──
     graph.add_edge("rag_chat", "memory_saver")
+
+    # ── Phase E: action_executor → response_builder → memory_saver ──
+    graph.add_edge("action_executor", "response_builder")
 
     # ── 终止 ──
     graph.add_edge("memory_saver", END)

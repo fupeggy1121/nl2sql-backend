@@ -123,7 +123,7 @@ semi:ProductionEvent a owl:Class ;
 
 semi:ProductionEventRecord a owl:Class ;
     rdfs:label "生产事件记录" ;
-    rdfs:comment "某次生产事件的实际执行记录，是ProductionEvent(事件类型)与ProductionLot(批次)的关联类。映射routerx_lot_log表；每条记录对应一次具体操作（如拆批、进站、出站等），记录操作人、时间戳、状态变更及输入/输出批次。" .
+    rdfs:comment "某次生产事件的实际执行记录，是ProductionEvent(事件类型)与ProductionLot(批次)的关联类。主映射表：matrix_routerx_operation_lot_batch_resume_log；关联从表：_detail（批次状态快照）和 _wafer_detail_log（逐片Wafer明细）。每条记录对应一次具体操作，记录操作人、时间戳、状态变更及输入/输出批次。" .
 
 ### ==========================================
 ### 2. 核心有机关联 (Object Properties)
@@ -307,12 +307,17 @@ semi:isInstanceOfEvent a owl:ObjectProperty ;
 semi:actsOnLot a owl:ObjectProperty ;
     rdfs:domain semi:ProductionEventRecord ; rdfs:range semi:ProductionLot ;
     rdfs:label "作用批次" ;
-    rdfs:comment "事件执行时的输入/主体批次（routerx_lot_log.lot_id）。对于进出站等单批次操作，actsOnLot与producesLot指向同一批次。" .
+    rdfs:comment "事件执行时的输入/主体批次（matrix_routerx_operation_lot_batch_resume_log.lot_code）。对于进出站等单批次操作，actsOnLot与producesLot指向同一批次。" .
 
 semi:producesLot a owl:ObjectProperty ;
     rdfs:domain semi:ProductionEventRecord ; rdfs:range semi:ProductionLot ;
     rdfs:label "产出批次" ;
-    rdfs:comment "事件执行后产生的输出批次（routerx_lot_log.output_lot_id）。对于拆批操作，产出批次与作用批次不同；对于状态变更操作，两者相同。" .
+    rdfs:comment "事件执行后产生的输出批次（matrix_routerx_operation_lot_batch_resume_log.output_lot_code）。对于拆批操作，产出批次与作用批次不同；对于状态变更操作，两者相同。" .
+
+semi:producesSublot a owl:ObjectProperty ;
+    rdfs:domain semi:ProductionEventRecord ; rdfs:range semi:Sublot ;
+    rdfs:label "产出子批次" ;
+    rdfs:comment "谱系变更事件（拆批/并批/返工）执行后，为产出批次同步创建的初始 Sublot 实例。与 producesLot 一一对应（新批次在拆批时只有一个初始子批次）。stateTransitionFunction 依赖此属性更新被迁移晶圆的 belongsToSublot 指针，保证 Wafer→belongsToSublot→atStation 路径在拆批后仍然连通。物理层对应 matrix_routerx_operation_lot 中与新批次绑定的初始记录行。" .
 
 semi:affectsWafer a owl:ObjectProperty ;
     rdfs:domain semi:ProductionEventRecord ; rdfs:range semi:Wafer ;
@@ -785,13 +790,13 @@ semi:hasEventType a owl:DatatypeProperty ;
     rdfs:domain semi:ProductionEventRecord ;
     rdfs:range xsd:string ;
     rdfs:label "谱系事件类型" ;
-    rdfs:comment "批次谱系变更事件类型：SPLIT(拆批)、MERGE(攒批/合批)、REWORK(返工)。对应 routerx_lot_log.operation_type。" .
+    rdfs:comment "批次谱系变更事件类型（整数枚举）：1=拆批、2=并批、12=返工、14=拆父批、16=攒批。对应 matrix_routerx_operation_lot_batch_resume_log.operation_type。完整23种类型枚举见 semi:LotOperationType。" .
 
 semi:hasEventStartTime a owl:DatatypeProperty ;
     rdfs:domain semi:ProductionEventRecord ;
     rdfs:range xsd:dateTime ;
     rdfs:label "事件开始时间" ;
-    rdfs:comment "生产事件的开始时间戳，对应 routerx_lot_log.gmt_create。" .
+    rdfs:comment "生产事件的开始时间戳，对应 matrix_routerx_operation_lot_batch_resume_log.gmt_create。" .
 
 semi:hasEventEndTime a owl:DatatypeProperty ;
     rdfs:domain semi:ProductionEventRecord ;
@@ -803,19 +808,19 @@ semi:hasOperatorId a owl:DatatypeProperty ;
     rdfs:domain semi:ProductionEventRecord ;
     rdfs:range xsd:string ;
     rdfs:label "操作人ID" ;
-    rdfs:comment "执行该生产事件的操作人标识，对应 routerx_lot_log.operator_id。" .
+    rdfs:comment "执行该生产事件的操作人标识，对应 matrix_routerx_operation_lot_batch_resume_log.operator_id。" .
 
 semi:hasLotStatusBefore a owl:DatatypeProperty ;
     rdfs:domain semi:ProductionEventRecord ;
     rdfs:range xsd:string ;
     rdfs:label "事件前批次状态" ;
-    rdfs:comment "事件执行前的批次状态快照，对应 routerx_lot_log.before_state。" .
+    rdfs:comment "事件执行前的批次状态快照，对应 matrix_routerx_operation_lot_batch_resume_log_detail.before_state。" .
 
 semi:hasLotStatusAfter a owl:DatatypeProperty ;
     rdfs:domain semi:ProductionEventRecord ;
     rdfs:range xsd:string ;
     rdfs:label "事件后批次状态" ;
-    rdfs:comment "事件执行后的批次状态快照，对应 routerx_lot_log.after_state。" .
+    rdfs:comment "事件执行后的批次状态快照，对应 matrix_routerx_operation_lot_batch_resume_log_detail.after_state。" .
 
 ### ==========================================
 ### 4. 事件逻辑规约注解属性 (Event Logic Annotation Properties)
@@ -879,17 +884,18 @@ semi:SplitEvent a owl:Class ;
     rdfs:label "拆批事件定义" ;
     rdfs:comment "定义拆批（Split）操作的规则/类型模板。将源批次中的指定晶圆析出，由 MES 系统自动生成新批次 ID。拆批不涉及物理设备加工，仅执行批次谱系切割与 Wafer 归属迁移。执行记录层见 semi:SplitEventRecord。" ;
     # 维度一：准入规则 — 源批次须处于待加工状态且晶圆数量可拆
-    semi:preCondition "ParentLot.status == 'WAIT' && ParentLot.waferCount > 1" ;
+    semi:preCondition "ParentLot.status == 0 && ParentLot.waferCount > 1" ;
+    # 注：status=0 对应 matrix_routerx_operation_lot.status=0（待加工/待进站），整数枚举。
     # 维度二：参数规约 — 仅需外部传入源批次ID与待拆晶圆列表；新批次ID由系统生成
     semi:inputSchema "{ parentLotId: string, splitWaferList: string[] }" ;
-    # 维度三：状态算子 — 调用 API 取得新批次ID，创建新批次、迁移Wafer归属、建立父子谱系
-    semi:transformationLogic "LET $newId = CALL apiBinding; CREATE semi:ProductionLot($newId); SET $newId.hasParentLot = ?parentLotId; UPDATE semi:Wafer SET belongsToLot = $newId WHERE id IN ?splitWaferList" ;
+    # 维度三：状态算子 — 调用 API 取得新批次ID，创建新批次+初始Sublot、迁移Wafer归属、建立父子谱系
+    semi:transformationLogic "LET $newId = CALL apiBinding; CREATE semi:ProductionLot($newId); LET $newSublotId = $newId.initialSublot; CREATE semi:Sublot($newSublotId); SET $newId.containsSublot = $newSublotId; SET $newId.hasParentLot = ?parentLotId; UPDATE semi:Wafer SET belongsToLot = $newId, belongsToSublot = $newSublotId WHERE id IN ?splitWaferList" ;
     # 维度四：服务绑定 — 调用 MES 核心服务拆批接口，接口返回值含系统生成的新批次ID
     semi:apiBinding "MES_CORE_SERVICE.executeSplitAction" ;
     # 维度五：约束后验 — 确认新批次已实例化，源批次数量已正确扣减
     semi:postCondition "checkExists($newId) && ParentLot.qty == (prevQty - splitCount)" ;
-    # 辅助：状态转换函数 — 被迁移晶圆的 belongsToLot 归属更新指令
-    semi:stateTransitionFunction "UPDATE Target(Wafer) SET belongsToLot = EventRecord.producesLot WHERE Wafer.id IN EventRecord.affectsWafer" .
+    # 辅助：状态转换函数 — 被迁移晶圆同时更新 Lot 和 Sublot 两个归属指针
+    semi:stateTransitionFunction "UPDATE Target(Wafer) SET belongsToLot = EventRecord.producesLot, belongsToSublot = EventRecord.producesSublot WHERE Wafer.id IN EventRecord.affectsWafer" .
 
 # 5.2 拆批执行记录 (SplitEventRecord)
 semi:SplitEventRecord a owl:Class ;
@@ -898,5 +904,45 @@ semi:SplitEventRecord a owl:Class ;
           owl:onProperty semi:isInstanceOfEvent ;
           owl:allValuesFrom semi:SplitEvent ] ;
     rdfs:label "拆批记录" ;
-    rdfs:comment "拆批操作的具体执行记录实例。核心关联：(1) isInstanceOfEvent → semi:SplitEvent，将记录锁定到拆批规则定义，引擎据此追溯 5 维规约生成物理执行序列；(2) actsOnLot → 源批次（被拆的父批次）；(3) producesLot → MES 系统自动生成的新批次（子批次），是拆批操作的核心产出，由 transformationLogic 中 LET $newId 捕获后写入；(4) affectsWafer → 被迁移的具体晶圆实例列表，支持逐片血缘追溯。物理层三联写入：routerx_lot_log（主事件记录）+ routerx_lot_log_detail（拆批前后批次状态快照）+ routerx_lot_log_wafer_detail（逐片Wafer迁移明细）。" .
+    rdfs:comment "拆批操作的具体执行记录实例。核心关联：(1) isInstanceOfEvent → semi:SplitEvent，将记录锁定到拆批规则定义，引擎据此追溯 5 维规约生成物理执行序列；(2) actsOnLot → 源批次（被拆的父批次）；(3) producesLot → MES 系统自动生成的新 ProductionLot（子批次），是拆批操作的核心产出；(4) producesSublot → 与 producesLot 同步创建的初始 Sublot，被迁移晶圆的 belongsToSublot 指向此 Sublot，保证 Wafer→Sublot→atStation 路径仍可导航；(5) affectsWafer → 被迁移的具体晶圆实例列表，支持逐片血缘追溯。物理层三联写入：matrix_routerx_operation_lot_batch_resume_log（主事件记录，operation_type=1）+ matrix_routerx_operation_lot_batch_resume_log_detail（拆批前后批次状态快照）+ matrix_routerx_operation_lot_batch_resume_wafer_detail_log（逐片Wafer迁移明细）。" .
+
+### ==========================================
+### 6. 操作类型枚举 (LotOperationType Enumeration)
+### ==========================================
+### 对应物理层 matrix_routerx_operation_lot_batch_resume_log.operation_type 字段整数枚举。
+### 完整枚举见 mapping_prod.json value_mappings.semi:LotOperationType。
+
+semi:hasState a owl:DatatypeProperty ;
+    rdfs:domain semi:LotOperationType ;
+    rdfs:range xsd:integer ;
+    rdfs:label "整数枚举值" ;
+    rdfs:comment "LotOperationType 实例对应的整数编码，与数据库 operation_type 字段值一一对应。" .
+
+semi:LotOperationType a owl:Class ;
+    rdfs:label "批次操作类型" ;
+    rdfs:comment "批次操作记录类型枚举（整数编码）。对应 matrix_routerx_operation_lot_batch_resume_log.operation_type 字段。取值范围 1-23，完整高分辨率映射见 mapping_prod.json semi:LotOperationType。谱系变更类（is_genealogy_event=true）：1=拆批、2=并批、12=返工、14=拆父批、16=攒批。过站动作类：8=进站、9=出站、10=退回、11=跳站、20=实验跳站。批次生命周期类：19=开批、22=取消开批、23=批次完结。" .
+
+semi:SplitOp          a semi:LotOperationType ; rdfs:label "1-拆批操作"          ; semi:hasState 1 .
+semi:MergeLotsOp      a semi:LotOperationType ; rdfs:label "2-并批操作"          ; semi:hasState 2 .
+semi:CarrierTransOp   a semi:LotOperationType ; rdfs:label "3-倒篮操作"          ; semi:hasState 3 .
+semi:HoldOp           a semi:LotOperationType ; rdfs:label "4-批次扣留"          ; semi:hasState 4 .
+semi:ReleaseOp        a semi:LotOperationType ; rdfs:label "5-批次释放"          ; semi:hasState 5 .
+semi:NGRecordOp       a semi:LotOperationType ; rdfs:label "6-不良录入"          ; semi:hasState 6 .
+semi:CancelNGOp       a semi:LotOperationType ; rdfs:label "7-取消不良"          ; semi:hasState 7 .
+semi:CheckInOp        a semi:LotOperationType ; rdfs:label "8-批次进站"          ; semi:hasState 8 .
+semi:CheckOutOp       a semi:LotOperationType ; rdfs:label "9-批次出站"          ; semi:hasState 9 .
+semi:ReturnOp         a semi:LotOperationType ; rdfs:label "10-批次退回"         ; semi:hasState 10 .
+semi:SkipOp           a semi:LotOperationType ; rdfs:label "11-批次跳站"         ; semi:hasState 11 .
+semi:ReworkOp         a semi:LotOperationType ; rdfs:label "12-返工操作"         ; semi:hasState 12 .
+semi:CancelReworkOp   a semi:LotOperationType ; rdfs:label "13-取消返工"         ; semi:hasState 13 .
+semi:SplitParentOp    a semi:LotOperationType ; rdfs:label "14-拆父批操作"       ; semi:hasState 14 .
+semi:SwitchSubRouteOp a semi:LotOperationType ; rdfs:label "15-切换子路径"       ; semi:hasState 15 .
+semi:AccumulateOp     a semi:LotOperationType ; rdfs:label "16-攒批操作"         ; semi:hasState 16 .
+semi:CarrierChangeOp  a semi:LotOperationType ; rdfs:label "17-片篮更换"         ; semi:hasState 17 .
+semi:CreateLocalLotOp a semi:LotOperationType ; rdfs:label "18-本地批次创建"     ; semi:hasState 18 .
+semi:OpenLotOp        a semi:LotOperationType ; rdfs:label "19-开批"             ; semi:hasState 19 .
+semi:ExpSkipOp        a semi:LotOperationType ; rdfs:label "20-实验跳站"         ; semi:hasState 20 .
+semi:CancelLocalLotOp a semi:LotOperationType ; rdfs:label "21-取消本地批次创建" ; semi:hasState 21 .
+semi:CancelOpenLotOp  a semi:LotOperationType ; rdfs:label "22-取消开批"         ; semi:hasState 22 .
+semi:CompleteLotOp    a semi:LotOperationType ; rdfs:label "23-批次完结"         ; semi:hasState 23 .
 

@@ -70,8 +70,26 @@ class IntentRecognizer:
                 'keywords': ['对比', '比较', '同比', '环比', '分析', '趋势'],
                 'entities': ['timeRange', 'metrics'],
                 'description': 'Comparative analysis'
+            },
+            'write_action': {
+                'keywords': ['拆批', '拆出', '进站', '出站', '合批', '攒批', '返工', '执行', '操作'],
+                'entities': ['eventType', 'lotId', 'waferList'],
+                'description': 'Write/mutation operation: split lot, merge lot, rework, checkin, checkout'
             }
         }
+
+        # 写操作意图：最高优先级检测（变更/执行类操作，走 action_executor 分支）
+        self._write_action_patterns = re.compile(
+            r'拆(批|出|分)'
+            r'|从.{0,30}(批次|Lot).{0,30}(拆|分出|析出)'
+            r'|生成新批次'
+            r'|新批次'
+            r'|(进站|入站)'
+            r'|(出站)'
+            r'|(合批|攒批|并批)'
+            r'|(返工)',
+            re.IGNORECASE
+        )
 
         # Greeting/chat patterns for top-priority rule match (regex)
         self._chat_patterns = re.compile(
@@ -109,8 +127,8 @@ class IntentRecognizer:
             # Step 2: Return if rule confidence is high
             # Note: even for high-confidence rule matches, query_type defaults to LIST;
             # for COUNT/AGGREGATE/TREND we still need LLM judgment.
-            if rule_result['confidence'] > 0.8 and rule_result.get('intent') == 'chat':
-                # chat 意图：规则已足够，不需要 LLM 判断 query_type
+            if rule_result['confidence'] > 0.8 and rule_result.get('intent') in ('chat', 'write_action'):
+                # chat / write_action 意图：规则已足够，不需要 LLM 判断 query_type
                 return {
                     'success': True,
                     'intent': rule_result['intent'],
@@ -175,6 +193,14 @@ class IntentRecognizer:
         """
         normalized_input = text.lower()
         scores = {}
+
+        # ── 优先级 0：写操作意图（变更类，走 action_executor 分支）──
+        if self._write_action_patterns.search(text):
+            return {
+                'intent': 'write_action',
+                'confidence': 0.92,
+                'entities': self._extract_write_entities(text),
+            }
 
         # ── 最高优先级：问候 / 闲聊 / 助手介绍 ──
         # 这些输入不含任何业务查询意图，必须在所有其他规则之前判断
@@ -334,7 +360,7 @@ A: intent=chat, query_type=LIST, target_class_hints=[], semantic_filters=[]
 ## 输出要求
 必须返回合法 JSON，不允许有注释或 markdown 代码块：
 {{
-    "intent": "direct_query|query_production|query_quality|query_equipment|generate_report|compare_analysis|chat|knowledge_qa|explain",
+    "intent": "direct_query|query_production|query_quality|query_equipment|generate_report|compare_analysis|chat|knowledge_qa|explain|write_action",
     "query_type": "LIST|COUNT|AGGREGATE|TREND",
     "target_class_hints": ["semi:Carrier"],
     "semantic_filters": [{{"attribute": "status", "semantic_value": "Available"}}],
@@ -395,6 +421,38 @@ A: intent=chat, query_type=LIST, target_class_hints=[], semantic_filters=[]
                 'reasoning': f'LLM error: {str(e)}'
             }
     
+    def _extract_write_entities(self, text: str) -> Dict[str, Any]:
+        """
+        从写操作指令中提取 eventType、lotId、waferList 实体。
+        示例: "从批次 LOT-001 中拆出晶圆 W001,W002,W003，生成新批次"
+        """
+        entities: Dict[str, Any] = {"eventType": None, "lotId": None, "waferList": []}
+
+        # 事件类型
+        if re.search(r'拆(批|出|分)|析出|生成新批次', text, re.IGNORECASE):
+            entities["eventType"] = "SPLIT"
+        elif re.search(r'(合批|攒批|并批)', text, re.IGNORECASE):
+            entities["eventType"] = "MERGE"
+        elif re.search(r'返工', text, re.IGNORECASE):
+            entities["eventType"] = "REWORK"
+        elif re.search(r'(进站|入站)', text, re.IGNORECASE):
+            entities["eventType"] = "CHECKIN"
+        elif re.search(r'出站', text, re.IGNORECASE):
+            entities["eventType"] = "CHECKOUT"
+
+        # 批次 ID
+        lot_match = re.search(r'(?:批次|Lot)[\s:：]*([A-Za-z0-9\-_]+)', text, re.IGNORECASE)
+        if lot_match:
+            entities["lotId"] = lot_match.group(1)
+
+        # 晶圆列表
+        wafer_match = re.search(r'晶圆[\s:：]*([A-Za-z0-9][A-Za-z0-9,，\s\-_]*)', text, re.IGNORECASE)
+        if wafer_match:
+            raw = wafer_match.group(1)
+            entities["waferList"] = [w.strip() for w in re.split(r'[,，\s]+', raw) if w.strip()]
+
+        return entities
+
     def _extract_entities(self, text: str, intent: str) -> Dict[str, Any]:
         """
         Extract entity information from user input.

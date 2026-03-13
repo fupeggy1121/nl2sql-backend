@@ -26,6 +26,7 @@ INTENT_ROUTE_MAP = {
     "chat": "chat",                    # Phase D: 路由到 rag_chat 节点
     "knowledge_qa": "chat",            # Phase D: 知识问答
     "explain": "chat",                 # Phase D: 解释说明类
+    "write_action": "action",          # Phase E: 写操作 → action_executor
 }
 
 
