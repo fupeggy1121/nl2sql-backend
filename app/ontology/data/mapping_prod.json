@@ -623,7 +623,7 @@
     },
     {
       "logic_class": "semi:Action",
-      "physical_table": "routerx_lot_log",
+      "physical_table": "matrix_routerx_operation_lot_batch_resume_log",
       "primary_key": "id",
       "label_cn": "生产动作/操作日志",
       "display_column": "operation_type",
@@ -836,6 +836,46 @@
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
       "note": "批次谱系变更事件主日志。operation_type 为整数枚举，filter_condition 仅保留谱系变更类：1=拆批、2=并批、12=返工、14=拆父批、16=攒批。完整枚举见 value_mappings.semi:LotOperationType。物理层三联写：本表（主记录）+ matrix_routerx_operation_lot_batch_resume_log_detail（批次状态快照）+ matrix_routerx_operation_lot_batch_resume_wafer_detail_log（逐片Wafer迁移明细）。"
+    },
+    {
+      "logic_class": "semi:SplitEvent",
+      "physical_table": null,
+      "label_cn": "拆批事件类型",
+      "virtual": true,
+      "note": "Type层定义，对应 LotOperationType operation_type=1（拆批）的规则/类型模板。作为 ProductionEvent 子类，通过 Named Individual 定义。拆批执行记录层见 semi:SplitEventRecord。"
+    },
+    {
+      "logic_class": "semi:SplitEventRecord",
+      "physical_table": "matrix_routerx_operation_lot_batch_resume_log",
+      "primary_key": "id",
+      "label_cn": "拆批操作执行记录",
+      "display_column": "lot_code",
+      "filter_condition": "operation_type = 1",
+      "virtual": false,
+      "properties": {
+        "semi:hasEventStartTime": "gmt_create",
+        "semi:hasOperatorId": "operator_id",
+        "semi:hasLotStatusBefore": "before_state",
+        "semi:hasLotStatusAfter": "after_state",
+        "semi:hasLotCode": "lot_code",
+        "semi:producesLot": "output_lot_code"
+      },
+      "key_columns": [
+        "id",
+        "lot_id",
+        "lot_code",
+        "output_lot_id",
+        "output_lot_code",
+        "operation_type",
+        "operator_id",
+        "before_state",
+        "after_state",
+        "station_id",
+        "equipment_id",
+        "gmt_create"
+      ],
+      "operation_type_ref": "value_mappings.semi:LotOperationType",
+      "note": "拆批操作执行记录，filter_condition = operation_type=1 隔离拆批行。物理层三联写：本表（主记录）+ matrix_routerx_operation_lot_batch_resume_log_detail（批次状态快照）+ matrix_routerx_operation_lot_batch_resume_wafer_detail_log（逐片Wafer迁移明细）。"
     }
   ],
   "relation_mappings": [
@@ -1203,7 +1243,7 @@
       "description": "Action(操作日志) 的输入 Lot",
       "strategy": "ForeignKey",
       "join_logic": {
-        "source_table": "routerx_lot_log",
+        "source_table": "matrix_routerx_operation_lot_batch_resume_log",
         "source_key": "lot_id",
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "id"
@@ -1219,9 +1259,9 @@
       "description": "Action(操作日志) 的输出结果 — 状态变迁记录",
       "strategy": "Denormalized",
       "join_logic": {
-        "source_table": "routerx_lot_log",
+        "source_table": "matrix_routerx_operation_lot_batch_resume_log",
         "output_field": "after_state",
-        "note": "routerx_lot_log.after_state 记录操作后批次的新状态；before_state 记录操作前状态。"
+        "note": "matrix_routerx_operation_lot_batch_resume_log.after_state 记录操作后批次的新状态；before_state 记录操作前状态。"
       },
       "domain_class": "semi:Action",
       "range_class": [
@@ -1234,11 +1274,11 @@
       "description": "Action(操作日志) 修改 Lot 状态向量",
       "strategy": "ForeignKey",
       "join_logic": {
-        "source_table": "routerx_lot_log",
+        "source_table": "matrix_routerx_operation_lot_batch_resume_log",
         "source_key": "lot_id",
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "id",
-        "note": "routerx_lot_log记录的每条操作行为都对应 matrix_routerx_operation_lot 的状态跳转（status变化）"
+        "note": "matrix_routerx_operation_lot_batch_resume_log记录的每条操作行为都对应 matrix_routerx_operation_lot 的状态跳转（status变化）"
       },
       "domain_class": "semi:Action",
       "range_class": null
@@ -1372,7 +1412,7 @@
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "parent_id",
         "filter_condition": "operation_type = 'SPLIT'",
-        "note": "拆批后新批次的 parent_id 指向源批次 id。可结合 routerx_lot_log(operation_type=SPLIT) 获取完整事件上下文。"
+        "note": "拆批后新批次的 parent_id 指向源批次 id。可结合 matrix_routerx_operation_lot_batch_resume_log(operation_type=SPLIT) 获取完整事件上下文。"
       },
       "domain_class": "semi:ProductionLot",
       "range_class": "semi:ProductionLot"
@@ -1382,11 +1422,11 @@
       "description": "批次攒批(Merge)：多个源批次合并为一个新批次，是传统链式追溯产生断点最常见的场景",
       "strategy": "EventLog",
       "join_logic": {
-        "event_table": "routerx_lot_log",
+        "event_table": "matrix_routerx_operation_lot_batch_resume_log",
         "event_type_column": "operation_type",
         "event_type_value": "MERGE",
         "lot_id_column": "lot_id",
-        "note": "攒批事件记录在 routerx_lot_log，通过 before_state/after_state 的 JSON 可还原输入批次集合与输出批次。需解析 JSON 字段构造 DAG 边。"
+        "note": "攒批事件记录在 matrix_routerx_operation_lot_batch_resume_log，通过 before_state/after_state 的 JSON 可还原输入批次集合与输出批次。需解析 JSON 字段构造 DAG 边。"
       },
       "domain_class": "semi:ProductionLot",
       "range_class": "semi:ProductionLot"
@@ -1396,11 +1436,11 @@
       "description": "批次返工(Rework)：Reject批次衍生出返工路径新批次，返工完成good后归并回主路径",
       "strategy": "EventLog",
       "join_logic": {
-        "event_table": "routerx_lot_log",
+        "event_table": "matrix_routerx_operation_lot_batch_resume_log",
         "event_type_column": "operation_type",
         "event_type_value": "REWORK",
         "lot_id_column": "lot_id",
-        "note": "返工事件使得批次标识可能变更（如加'-RW1'后缀），routerx_lot_log 记录了返工前后的 lot_code 关联，是还原多轮返工谱系路径的数据来源。"
+        "note": "返工事件使得批次标识可能变更（如加'-RW1'后缀），matrix_routerx_operation_lot_batch_resume_log 记录了返工前后的 lot_code 关联，是还原多轮返工谱系路径的数据来源。"
       },
       "domain_class": "semi:ProductionLot",
       "range_class": "semi:ProductionLot"
@@ -1410,7 +1450,7 @@
       "description": "事件记录对应的事件类型（ProductionEvent Named Individual），通过operation_type值查找",
       "strategy": "ValueLookup",
       "join_logic": {
-        "source_table": "routerx_lot_log",
+        "source_table": "matrix_routerx_operation_lot_batch_resume_log",
         "source_field": "operation_type",
         "note": "operation_type值（如'SPLIT'、'MERGE'、'REWORK'）映射到ProductionEvent Named Individual。"
       },
@@ -1422,11 +1462,11 @@
       "description": "事件执行时的输入/主体批次，通过lot_id关联ProductionLot",
       "strategy": "ForeignKey",
       "join_logic": {
-        "source_table": "routerx_lot_log",
+        "source_table": "matrix_routerx_operation_lot_batch_resume_log",
         "source_key": "lot_id",
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "id",
-        "note": "routerx_lot_log.lot_id → matrix_routerx_operation_lot.id，定位事件的主体批次。"
+        "note": "matrix_routerx_operation_lot_batch_resume_log.lot_id → matrix_routerx_operation_lot.id，定位事件的主体批次。"
       },
       "domain_class": "semi:ProductionEventRecord",
       "range_class": "semi:ProductionLot"
@@ -1436,14 +1476,29 @@
       "description": "事件执行后产生的输出批次，通过output_lot_id关联ProductionLot",
       "strategy": "ForeignKey",
       "join_logic": {
-        "source_table": "routerx_lot_log",
+        "source_table": "matrix_routerx_operation_lot_batch_resume_log",
         "source_key": "output_lot_id",
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "id",
-        "note": "routerx_lot_log.output_lot_id → matrix_routerx_operation_lot.id，拆批时产出批次与作用批次不同。"
+        "note": "matrix_routerx_operation_lot_batch_resume_log.output_lot_id → matrix_routerx_operation_lot.id，拆批时产出批次与作用批次不同。"
       },
       "domain_class": "semi:ProductionEventRecord",
       "range_class": "semi:ProductionLot"
+    },
+    {
+      "logic_relation": "semi:producesSublot",
+      "description": "拆批/谱系变更事件执行后，为产出批次同步创建的初始 Sublot 实例。与 producesLot 一一对应，维护 Wafer→belongsToSublot→Sublot→atStation 导航链",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_batch_resume_log",
+        "source_key": "output_lot_id",
+        "target_table": "matrix_routerx_operation_lot_wafer_batch",
+        "target_key": "lot_id",
+        "filter_condition": "operation_type = 1",
+        "note": "output_lot_id 关联到新批次的初始 Sublot；filter_condition 锁定拆批行。"
+      },
+      "domain_class": "semi:ProductionEventRecord",
+      "range_class": "semi:Sublot"
     }
   ],
   "value_mappings": {
@@ -1872,144 +1927,264 @@
     },
     "semi:LotOperationType": {
       "Split": {
-        "value": 1, "name": "拆批操作",
+        "value": 1,
+        "name": "拆批操作",
         "description": "将指定晶圆从源批次中析出，生成新批次（由MES自动分配新批次ID）",
         "is_genealogy_event": true,
         "maps_to_event_class": "semi:SplitEvent",
-        "nl_triggers": ["拆批", "拆分批次", "析出晶圆", "拆出"]
+        "nl_triggers": [
+          "拆批",
+          "拆分批次",
+          "析出晶圆",
+          "拆出"
+        ]
       },
       "Merge": {
-        "value": 2, "name": "并批操作",
+        "value": 2,
+        "name": "并批操作",
         "description": "将多个批次合并为一个批次（含同产品批次合并）",
         "is_genealogy_event": true,
-        "nl_triggers": ["并批", "合并批次", "批次合并"]
+        "nl_triggers": [
+          "并批",
+          "合并批次",
+          "批次合并"
+        ]
       },
       "CarrierTransfer": {
-        "value": 3, "name": "倒篮操作",
+        "value": 3,
+        "name": "倒篮操作",
         "description": "将晶圆从源载具（片篮）转移到另一个目标载具",
         "is_genealogy_event": false,
-        "nl_triggers": ["倒篮", "换篮", "载具转移", "片篮转移"]
+        "nl_triggers": [
+          "倒篮",
+          "换篮",
+          "载具转移",
+          "片篮转移"
+        ]
       },
       "Hold": {
-        "value": 4, "name": "批次扣留",
+        "value": 4,
+        "name": "批次扣留",
         "description": "将批次置为扣留状态，禁止进站加工",
         "is_genealogy_event": false,
-        "nl_triggers": ["扣留批次", "hold批次", "批次hold", "暂停批次"]
+        "nl_triggers": [
+          "扣留批次",
+          "hold批次",
+          "批次hold",
+          "暂停批次"
+        ]
       },
       "Release": {
-        "value": 5, "name": "批次释放",
+        "value": 5,
+        "name": "批次释放",
         "description": "解除批次扣留状态，恢复可进站加工",
         "is_genealogy_event": false,
-        "nl_triggers": ["释放批次", "解除扣留", "批次release", "解hold"]
+        "nl_triggers": [
+          "释放批次",
+          "解除扣留",
+          "批次release",
+          "解hold"
+        ]
       },
       "NGRecording": {
-        "value": 6, "name": "不良录入",
+        "value": 6,
+        "name": "不良录入",
         "description": "录入晶圆不良信息（NG码、不良类型）",
         "is_genealogy_event": false,
-        "nl_triggers": ["录入不良", "NG录入", "不良记录"]
+        "nl_triggers": [
+          "录入不良",
+          "NG录入",
+          "不良记录"
+        ]
       },
       "CancelNG": {
-        "value": 7, "name": "取消不良",
+        "value": 7,
+        "name": "取消不良",
         "description": "撤销已录入的晶圆不良记录",
         "is_genealogy_event": false,
-        "nl_triggers": ["取消不良", "撤销NG", "取消NG录入"]
+        "nl_triggers": [
+          "取消不良",
+          "撤销NG",
+          "取消NG录入"
+        ]
       },
       "CheckIn": {
-        "value": 8, "name": "批次进站",
+        "value": 8,
+        "name": "批次进站",
         "description": "批次进入工艺站点，开始加工前准备",
         "is_genealogy_event": false,
-        "nl_triggers": ["进站", "入站", "批次进站", "上机"]
+        "nl_triggers": [
+          "进站",
+          "入站",
+          "批次进站",
+          "上机"
+        ]
       },
       "CheckOut": {
-        "value": 9, "name": "批次出站",
+        "value": 9,
+        "name": "批次出站",
         "description": "批次完成工艺站点加工，离站转序",
         "is_genealogy_event": false,
-        "nl_triggers": ["出站", "离站", "批次出站", "下机", "完工出站"]
+        "nl_triggers": [
+          "出站",
+          "离站",
+          "批次出站",
+          "下机",
+          "完工出站"
+        ]
       },
       "Return": {
-        "value": 10, "name": "批次退回",
+        "value": 10,
+        "name": "批次退回",
         "description": "批次从已进入的站点退回，撤销进站操作",
         "is_genealogy_event": false,
-        "nl_triggers": ["退回", "批次退回", "撤销进站"]
+        "nl_triggers": [
+          "退回",
+          "批次退回",
+          "撤销进站"
+        ]
       },
       "Skip": {
-        "value": 11, "name": "批次跳站",
+        "value": 11,
+        "name": "批次跳站",
         "description": "批次跳过当前工艺站点，直接转到下一工序",
         "is_genealogy_event": false,
-        "nl_triggers": ["跳站", "跳过工序", "批次跳过"]
+        "nl_triggers": [
+          "跳站",
+          "跳过工序",
+          "批次跳过"
+        ]
       },
       "Rework": {
-        "value": 12, "name": "返工操作",
+        "value": 12,
+        "name": "返工操作",
         "description": "将批次送回前端工序重新加工（生成返工路径批次标识）",
         "is_genealogy_event": true,
         "maps_to_event_class": "semi:ReworkEvent",
-        "nl_triggers": ["返工", "重工", "返工操作", "批次返工"]
+        "nl_triggers": [
+          "返工",
+          "重工",
+          "返工操作",
+          "批次返工"
+        ]
       },
       "CancelRework": {
-        "value": 13, "name": "取消返工",
+        "value": 13,
+        "name": "取消返工",
         "description": "撤销返工操作，恢复批次原始状态",
         "is_genealogy_event": false,
-        "nl_triggers": ["取消返工", "撤销返工"]
+        "nl_triggers": [
+          "取消返工",
+          "撤销返工"
+        ]
       },
       "SplitParent": {
-        "value": 14, "name": "拆父批操作",
+        "value": 14,
+        "name": "拆父批操作",
         "description": "从父批次层面执行拆批，与普通拆批的区别在于操作对象层级",
         "is_genealogy_event": true,
-        "nl_triggers": ["拆父批", "父批拆分"]
+        "nl_triggers": [
+          "拆父批",
+          "父批拆分"
+        ]
       },
       "SwitchSubRoute": {
-        "value": 15, "name": "切换子路径",
+        "value": 15,
+        "name": "切换子路径",
         "description": "批次从当前工艺子路径切换到另一条子路径（FlexRoute场景）",
         "is_genealogy_event": false,
-        "nl_triggers": ["切换路径", "子路径切换", "换路线"]
+        "nl_triggers": [
+          "切换路径",
+          "子路径切换",
+          "换路线"
+        ]
       },
       "Accumulate": {
-        "value": 16, "name": "攒批操作",
+        "value": 16,
+        "name": "攒批操作",
         "description": "将多个小批次积累合并为一个满足加工数量要求的批次",
         "is_genealogy_event": true,
-        "nl_triggers": ["攒批", "积料", "攒料", "批次积累"]
+        "nl_triggers": [
+          "攒批",
+          "积料",
+          "攒料",
+          "批次积累"
+        ]
       },
       "CarrierChange": {
-        "value": 17, "name": "片篮更换",
+        "value": 17,
+        "name": "片篮更换",
         "description": "更换批次当前绑定的物理载具（片篮）",
         "is_genealogy_event": false,
-        "nl_triggers": ["更换片篮", "换片篮", "载具更换"]
+        "nl_triggers": [
+          "更换片篮",
+          "换片篮",
+          "载具更换"
+        ]
       },
       "CreateLocalLot": {
-        "value": 18, "name": "本地批次创建",
+        "value": 18,
+        "name": "本地批次创建",
         "description": "在MES中直接创建本地批次（不经过工单投料流程）",
         "is_genealogy_event": false,
-        "nl_triggers": ["创建本地批次", "本地批次", "直接创建批次"]
+        "nl_triggers": [
+          "创建本地批次",
+          "本地批次",
+          "直接创建批次"
+        ]
       },
       "OpenLot": {
-        "value": 19, "name": "开批",
+        "value": 19,
+        "name": "开批",
         "description": "正式开批，批次状态从待加工变为可进站加工",
         "is_genealogy_event": false,
-        "nl_triggers": ["开批", "批次开批", "启动批次"]
+        "nl_triggers": [
+          "开批",
+          "批次开批",
+          "启动批次"
+        ]
       },
       "ExperimentSkip": {
-        "value": 20, "name": "实验跳站",
+        "value": 20,
+        "name": "实验跳站",
         "description": "实验性跳站，用于研发或验证场景的工序跳过",
         "is_genealogy_event": false,
-        "nl_triggers": ["实验跳站", "实验性跳过"]
+        "nl_triggers": [
+          "实验跳站",
+          "实验性跳过"
+        ]
       },
       "CancelCreateLocalLot": {
-        "value": 21, "name": "取消本地批次创建",
+        "value": 21,
+        "name": "取消本地批次创建",
         "description": "撤销本地批次创建操作",
         "is_genealogy_event": false,
-        "nl_triggers": ["取消本地批次", "撤销本地批次创建"]
+        "nl_triggers": [
+          "取消本地批次",
+          "撤销本地批次创建"
+        ]
       },
       "CancelOpenLot": {
-        "value": 22, "name": "取消开批",
+        "value": 22,
+        "name": "取消开批",
         "description": "撤销开批操作，批次回到待加工状态",
         "is_genealogy_event": false,
-        "nl_triggers": ["取消开批", "撤销开批"]
+        "nl_triggers": [
+          "取消开批",
+          "撤销开批"
+        ]
       },
       "CompleteLot": {
-        "value": 23, "name": "批次完结",
+        "value": 23,
+        "name": "批次完结",
         "description": "批次完成全部工序加工，最终状态变更为完结",
         "is_genealogy_event": false,
-        "nl_triggers": ["批次完结", "完结批次", "批次完成", "加工完成"]
+        "nl_triggers": [
+          "批次完结",
+          "完结批次",
+          "批次完成",
+          "加工完成"
+        ]
       }
     }
   },
