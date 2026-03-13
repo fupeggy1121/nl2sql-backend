@@ -209,8 +209,12 @@ export default function OntologyViewer() {
       .selectAll('line')
       .data(links)
       .join('line')
-      .attr('stroke', d => d.type === 'objectProperty' ? '#475569' : '#334155')
-      .attr('stroke-width', d => d.type === 'objectProperty' ? 1.5 : 1)
+      .attr('stroke', d => {
+        if (d.type === 'subClassOf') return '#7c3aed';      // 紫色 — 继承关系
+        if (d.type === 'objectProperty') return '#475569';
+        return '#334155';
+      })
+      .attr('stroke-width', d => d.type === 'subClassOf' ? 1.5 : d.type === 'objectProperty' ? 1.5 : 1)
       .attr('stroke-dasharray', d => d.type === 'dataPropertyEdge' ? '4,3' : 'none')
       .attr('marker-end', 'url(#arrow)');
 

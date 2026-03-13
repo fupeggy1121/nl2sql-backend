@@ -492,17 +492,12 @@ async def get_value_domain(domain_raw: str):
 @router.put("/values/{domain}/{semantic_value}")
 async def upsert_value(domain: str, semantic_value: str, body: ValueEntryIn):
     data = _load_raw()
-    vm: Dict[str, List] = data.setdefault("value_mappings", {})
-    domain_list: List[Dict] = vm.setdefault(domain, [])
-    target = next((v for v in domain_list if v.get("semantic_value") == semantic_value), None)
-    before = dict(target) if target else None
+    vm: Dict = data.setdefault("value_mappings", {})
+    domain_dict: Dict = vm.setdefault(domain, {})
+    before = dict(domain_dict[semantic_value]) if semantic_value in domain_dict else None
     updates = {k: v for k, v in body.dict().items() if v is not None}
-    if target:
-        target.update(updates)
-        after = target
-    else:
-        after = {"semantic_value": semantic_value, **updates}
-        domain_list.append(after)
+    domain_dict[semantic_value] = {**(before or {}), **updates}
+    after = domain_dict[semantic_value]
     _save_raw(data)
     _append_changelog("update" if before else "create", "value_mapping",
                       f"{domain}/{semantic_value}", before, after)
@@ -513,14 +508,13 @@ async def upsert_value(domain: str, semantic_value: str, body: ValueEntryIn):
 @router.delete("/values/{domain}/{semantic_value}")
 async def delete_value(domain: str, semantic_value: str):
     data = _load_raw()
-    vm: Dict[str, List] = data.get("value_mappings", {})
-    domain_list: List[Dict] = vm.get(domain, [])
-    target = next((v for v in domain_list if v.get("semantic_value") == semantic_value), None)
-    if not target:
+    vm: Dict = data.get("value_mappings", {})
+    domain_dict: Dict = vm.get(domain, {})
+    if semantic_value not in domain_dict:
         raise HTTPException(status_code=404, detail=f"Not found: {domain}/{semantic_value}")
-    domain_list.remove(target)
+    before = domain_dict.pop(semantic_value)
     _save_raw(data)
-    _append_changelog("delete", "value_mapping", f"{domain}/{semantic_value}", target, None)
+    _append_changelog("delete", "value_mapping", f"{domain}/{semantic_value}", before, None)
     _reload_cache()
     return {"message": f"Deleted: {domain}/{semantic_value}"}
 

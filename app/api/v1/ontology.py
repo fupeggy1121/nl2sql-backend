@@ -330,6 +330,17 @@ async def get_graph_data() -> Dict[str, Any]:
         })
         node_ids.add(uri)
 
+    # ── subClassOf 继承边 ──
+    for uri, cls in ontology.classes.items():
+        if cls.parent_uri and cls.parent_uri in ontology.classes:
+            links.append({
+                "source": uri,
+                "target": cls.parent_uri,
+                "label": "subClassOf",
+                "uri": "rdfs:subClassOf",
+                "type": "subClassOf",
+            })
+
     # ── 对象属性 (关系) → links ──
     for uri, rel in ontology.relations.items():
         if rel.domain_uri and rel.range_uri:

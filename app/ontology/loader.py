@@ -93,10 +93,17 @@ def load_ontology(ttl_path: Optional[Path] = None, force_reload: bool = False) -
     # ── 1. 提取所有 owl:Class ──
     for s, _, _ in rdf.triples((None, RDF.type, OWL.Class)):
         if isinstance(s, URIRef):
+            # 提取直接父类 (rdfs:subClassOf)
+            parent_uri = ""
+            for _, _, parent in rdf.triples((s, RDFS.subClassOf, None)):
+                if isinstance(parent, URIRef):
+                    parent_uri = _short_uri(parent)
+                    break
             cls = OntologyClass(
                 uri=_short_uri(s),
                 label=_get_label(rdf, s),
                 comment=_get_comment(rdf, s),
+                parent_uri=parent_uri,
             )
             onto.add_class(cls)
 

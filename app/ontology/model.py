@@ -24,6 +24,7 @@ class OntologyClass:
     uri: str                          # e.g. "semi:Wafer"
     label: str = ""                   # rdfs:label, e.g. "晶圆(Wafer)"
     comment: str = ""                 # rdfs:comment
+    parent_uri: str = ""              # rdfs:subClassOf（直接父类）
 
 
 @dataclass
