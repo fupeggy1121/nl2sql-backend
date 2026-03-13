@@ -284,9 +284,9 @@ class SemanticContext:
 # --------------------------------------------------------------------- #
 
 def _build_class_synonyms_static() -> Dict[str, str]:
-    """从 ontology_synonyms.CLASS_SYNONYMS 展开成 word→URI 扁平字典。"""
+    """从 ontology_synonyms 展开成 word→URI 扁平字典（class + relation + data_property）。"""
     try:
-        from app.config.ontology_synonyms import CLASS_SYNONYMS as _CS, RELATION_SYNONYMS as _RS
+        from app.config.ontology_synonyms import CLASS_SYNONYMS as _CS, RELATION_SYNONYMS as _RS, PROPERTY_SYNONYMS as _PS
         flat: Dict[str, str] = {}
         for uri, info in _CS.items():
             for word in info.get("synonyms", []):
@@ -296,6 +296,11 @@ def _build_class_synonyms_static() -> Dict[str, str]:
         for uri, info in _RS.items():
             for word in info.get("synonyms", []):
                 flat[word] = uri
+        # 数据属性同义词纳入（用于 WHERE 过滤列识别）
+        for uri, info in _PS.items():
+            for word in info.get("synonyms", []):
+                flat[word] = uri
+                flat[word.lower()] = uri
         return flat
     except Exception as e:
         logger.warning(f"[context_builder] 从 ontology_synonyms.py 构建字典失败，使用内置兜底: {e}")

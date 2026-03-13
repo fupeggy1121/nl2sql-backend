@@ -337,6 +337,109 @@ RELATION_SYNONYMS: dict = {
 }
 
 
+# ─── 本体数据属性同义词 ─────────────────────────────────────────────────────────
+# DatatypeProperty：同义词命中后触发 WHERE 列过滤，而非 JOIN
+# 每条记录格式：URI → { label_cn, domain, physical_column, synonyms }
+
+PROPERTY_SYNONYMS: dict = {
+
+    # ── Wafer 数据属性 ──
+    "semi:hasNGCode": {
+        "label_cn": "不良代码",
+        "domain": "semi:Wafer",
+        "physical_column": "ng_code",
+        "synonyms": [
+            "不良代码", "不良原因", "ng_code", "NG码", "NG代码",
+            "不良类型", "缺陷代码", "缺陷原因", "缺陷类型",
+            "不良品原因", "ng原因", "不良分类", "不良定义",
+            "报废原因", "报废代码",
+        ],
+    },
+
+    "semi:hasWaferCode": {
+        "label_cn": "晶圆编号",
+        "domain": "semi:Wafer",
+        "physical_column": "wafer_code",
+        "synonyms": [
+            "晶圆编号", "wafer_code", "wafer编号", "晶圆号",
+            "晶圆码", "片号", "晶片编号",
+        ],
+    },
+
+    "semi:hasSlotNo": {
+        "label_cn": "槽位号",
+        "domain": "semi:Wafer",
+        "physical_column": "slot_no",
+        "synonyms": [
+            "槽位", "槽位号", "slot_no", "slot号", "slot",
+            "装载位置", "载具槽位",
+        ],
+    },
+
+    "semi:waferLevel": {
+        "label_cn": "晶圆质量等级",
+        "domain": "semi:Wafer",
+        "physical_column": "level",
+        "synonyms": [
+            "晶圆等级", "质量等级", "wafer等级", "wafer_level",
+            "品质等级", "晶圆级别", "ok片", "ng片",
+            "良品", "不良品", "loss片", "sample片",
+        ],
+    },
+
+    # ── 批次数据属性 ──
+    "semi:hasLotCode": {
+        "label_cn": "批次号",
+        "domain": "semi:ProductionLot",
+        "physical_column": "current_lot_code",
+        "synonyms": [
+            "批次号", "批号", "lot_code", "lot号", "批次编号",
+            "工单批次号", "生产批号",
+        ],
+    },
+
+    "semi:hasState": {
+        "label_cn": "状态",
+        "domain": "semi:ProductionLot",
+        "physical_column": "status",
+        "synonyms": [
+            "状态", "批次状态", "当前状态", "status",
+            "生产状态", "在制状态",
+        ],
+    },
+
+    "semi:hasProductCode": {
+        "label_cn": "产品型号",
+        "domain": "semi:ProductionLot",
+        "physical_column": "product_code",
+        "synonyms": [
+            "产品型号", "产品编码", "product_code", "型号",
+            "品种", "产品代码",
+        ],
+    },
+
+    "semi:hasRecipeCode": {
+        "label_cn": "配方号",
+        "domain": "semi:ProductionLot",
+        "physical_column": "recipe_code",
+        "synonyms": [
+            "配方号", "工艺配方号", "recipe_code", "配方编号",
+            "制程配方号",
+        ],
+    },
+
+    "semi:hasCarrierCode": {
+        "label_cn": "载具编号",
+        "domain": "semi:ProductionLot",
+        "physical_column": "carrier_code",
+        "synonyms": [
+            "载具编号", "片篮编号", "carrier_code", "载具号",
+            "石英舟编号", "载体编号",
+        ],
+    },
+}
+
+
 # ─── 辅助函数 ──────────────────────────────────────────────────────────────────
 
 _SYNONYM_TO_URI_CACHE: dict | None = None
@@ -353,36 +456,43 @@ def get_all_relation_uris() -> list[str]:
     return list(RELATION_SYNONYMS.keys())
 
 
+def get_all_property_uris() -> list[str]:
+    """返回所有已定义的数据属性 URI 列表"""
+    return list(PROPERTY_SYNONYMS.keys())
+
+
 def get_label_cn(uri: str) -> str:
     """根据 URI 获取中文标签"""
-    entry = CLASS_SYNONYMS.get(uri) or RELATION_SYNONYMS.get(uri)
+    entry = CLASS_SYNONYMS.get(uri) or RELATION_SYNONYMS.get(uri) or PROPERTY_SYNONYMS.get(uri)
     return entry["label_cn"] if entry else uri
 
 
 def get_target_type(uri: str) -> str:
-    """判断 URI 是类（class）还是关系（relation）"""
+    """判断 URI 是类（class）、关系（relation）还是数据属性（data_property）"""
     if uri in CLASS_SYNONYMS:
         return "class"
     if uri in RELATION_SYNONYMS:
         return "relation"
+    if uri in PROPERTY_SYNONYMS:
+        return "data_property"
     return "unknown"
 
 
 def get_synonym_to_uri_map() -> dict[str, str]:
     """
     返回 {同义词 → URI} 的完整反向索引（带缓存）。
-    同义词已转为小写。
+    覆盖 class / relation / data_property 三类。同义词已转为小写。
 
     Example:
         >>> get_synonym_to_uri_map()['设备']
         'semi:Equipment'
-        >>> get_synonym_to_uri_map()['lot']
-        'semi:ProductionLot'
+        >>> get_synonym_to_uri_map()['不良代码']
+        'semi:hasNGCode'
     """
     global _SYNONYM_TO_URI_CACHE
     if _SYNONYM_TO_URI_CACHE is None:
         _SYNONYM_TO_URI_CACHE = {}
-        for uri, info in {**CLASS_SYNONYMS, **RELATION_SYNONYMS}.items():
+        for uri, info in {**CLASS_SYNONYMS, **RELATION_SYNONYMS, **PROPERTY_SYNONYMS}.items():
             for syn in info.get("synonyms", []):
                 _SYNONYM_TO_URI_CACHE[syn.lower()] = uri
     return _SYNONYM_TO_URI_CACHE
@@ -427,6 +537,19 @@ def get_all_synonyms_flat() -> list[dict]:
                 "target_uri": uri,
                 "target_label_cn": info["label_cn"],
                 "target_type": "relation",
+                "synonym": syn,
+                "source": "builtin",
+                "is_active": True,
+                "created_at": None,
+                "created_by": "system",
+            })
+    for uri, info in PROPERTY_SYNONYMS.items():
+        for syn in info.get("synonyms", []):
+            results.append({
+                "id": None,
+                "target_uri": uri,
+                "target_label_cn": info["label_cn"],
+                "target_type": "data_property",
                 "synonym": syn,
                 "source": "builtin",
                 "is_active": True,
