@@ -16,4 +16,16 @@ from app.main import app  # noqa: F401
 if __name__ == '__main__':
     import uvicorn
     port = int(os.getenv('PORT', 8000))
-    uvicorn.run(app, host='0.0.0.0', port=port)
+    dev_mode = os.getenv('ENV', 'development') != 'production'
+    if dev_mode:
+        # 开发模式：监听 .py / .json / .ttl 文件变更，自动重启
+        uvicorn.run(
+            "app.main:app",
+            host='0.0.0.0',
+            port=port,
+            reload=True,
+            reload_dirs=["app"],
+            reload_includes=["*.py", "*.json", "*.ttl"],
+        )
+    else:
+        uvicorn.run(app, host='0.0.0.0', port=port)

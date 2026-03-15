@@ -138,9 +138,10 @@ semi:belongsToSublot a owl:ObjectProperty ;
     rdfs:domain semi:Wafer ; rdfs:range semi:Sublot ;
     rdfs:label "属于子批次" .
 
-semi:locatedInSlot a owl:ObjectProperty ;
+semi:isLoadedIn a owl:ObjectProperty ;
     rdfs:domain semi:Wafer ; rdfs:range semi:Carrier ;
-    rdfs:label "位于载具槽位" .
+    rdfs:label "装载于载具" ;
+    rdfs:comment "Wafer当前装载的载具实例。物理层：matrix_routerx_operation_lot_wafer.carrier_code → carrier_info.code（ForeignKey）。槽位号通过数据属性 semi:hasSlotNo（对应 slot_no 列）单独表达；两者共同构成'晶圆在载具中的坐标'：载具是独立实体（Object），槽位号是该承载关系下的位置坐标（Data）。" .
 
 semi:atStation a owl:ObjectProperty ;
     rdfs:domain semi:Sublot ; rdfs:range semi:ProcessStation ;
@@ -284,11 +285,6 @@ semi:processedByEquipment a owl:ObjectProperty ;
     rdfs:label "过站使用设备" ;
     rdfs:comment "执行本次加工或量测的具体设备实例。与Equipment的关联构成'Wafer-工序-设备'三元组，支持从设备维度反查'某台设备何时加工了哪些批次'。" .
 
-semi:splitInto a owl:ObjectProperty ;
-    rdfs:domain semi:ProductionLot ; rdfs:range semi:ProductionLot ;
-    rdfs:label "拆批为" ;
-    rdfs:comment "拆批(Split)操作：一个批次拆分为多个子批次，每个输出批次的 parent_id 指向源批次。此关系是 hasParentLot 的反向语义。在谱系DAG中表现为一对多的发散节点。" .
-
 semi:mergedFrom a owl:ObjectProperty ;
     rdfs:domain semi:ProductionLot ; rdfs:range semi:ProductionLot ;
     rdfs:label "攒批自" ;
@@ -396,7 +392,7 @@ semi:hasSlotNo a owl:DatatypeProperty ;
     rdfs:domain semi:Wafer ;
     rdfs:range xsd:integer ;
     rdfs:label "槽位号" ;
-    rdfs:comment "晶圆在载具中的物理位置，对应 slot_no。" .
+    rdfs:comment "晶圆在载具中的物理位置编号，对应 matrix_routerx_operation_lot_wafer.slot_no。与 semi:isLoadedIn（Wafer→Carrier）共同构成完整的'载具坐标'：isLoadedIn 表达'在哪个载具'，hasSlotNo 表达'在该载具的第几号槽位'。槽位号是数据属性（直接过滤：WHERE slot_no=N），载具是对象属性（需 JOIN carrier_info）。" .
 
 semi:hasNGCode a owl:DatatypeProperty ;
     rdfs:domain semi:Wafer ;
@@ -713,6 +709,18 @@ semi:hasUnit a owl:DatatypeProperty ;
     rdfs:range xsd:string ;
     rdfs:label "物料单位" .
 
+semi:hasBatchMgmt a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:Material semi:Product semi:RawMaterial semi:Auxiliary semi:SparePart) ] ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "启用批次管理" ;
+    rdfs:comment "物料模型是否开启批次号管理，对应 warehouse_material.batch（bit(1)）字段。true=该物料入库时须填写批次号（semi:MaterialBatch.hasBatchNo）；false=不区分批次，按数量管理。此配置决定 MaterialBatch.hasBatchNo 是否为必填。适用于 semi:Material 所有子类（Product/Auxiliary/SparePart/RawMaterial）。" .
+
+semi:hasUniqueCodeMgmt a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:Material semi:Product semi:RawMaterial semi:Auxiliary semi:SparePart) ] ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "启用逐件唯一码管理" ;
+    rdfs:comment "物料模型是否开启逐件唯一码管理，对应 warehouse_material.unique_code（bit(1)）字段。true=该物料每个实例具备唯一码（semi:MaterialBatch.hasBoxNo），可逐件扫码追踪（如产成品包装盒号、备件序列号）；false=仅以批次号+数量管理（如辅料/原料）。与 semi:hasBatchMgmt 均为物料模型层配置，决定 MaterialBatch 实例的管理规范。" .
+
 # 3.13 动作日志数据属性
 semi:hasOperationType a owl:DatatypeProperty ;
     rdfs:domain semi:Action ;
@@ -864,6 +872,15 @@ semi:stateTransitionFunction a owl:AnnotationProperty ;
     rdfs:label "状态转换函数" ;
     rdfs:comment "辅助维度：本体对象层面的状态更新指令模板（精简描述），供语义引擎转化为物理 UPDATE/INSERT。格式：UPDATE Target(类名) SET 属性 = EventRecord.属性 [WHERE 条件]。与 transformationLogic 互补，后者描述完整执行序列，本属性聚焦于本体图谱的状态向量变更。" .
 
+semi:tableFilter a owl:AnnotationProperty ;
+    rdfs:label "物理表行级过滤条件" ;
+    rdfs:comment "指定 XxxEventRecord 子类在映射物理表时所需的 WHERE 谓词。所有 semi:ProductionEventRecord 子类均存储于同一张表 matrix_routerx_operation_lot_batch_resume_log，通过 operation_type 整数字段区分子类型；语义引擎生成 SQL 时将本注解值直接拼入 WHERE 子句。格式：column_name = value。" .
+
+semi:operationTypeCode a owl:DatatypeProperty ;
+    rdfs:range xsd:integer ;
+    rdfs:label "操作类型编码" ;
+    rdfs:comment "批次操作类型命名个体（owl:NamedIndividual）对应的整数编码，与物理表 matrix_routerx_operation_lot_batch_resume_log.operation_type 字段值一一对应。" .
+
 ### ==========================================
 ### 5. 生产事件具体化类群 (Specific Production Event Classes)
 ### ==========================================
@@ -904,45 +921,303 @@ semi:SplitEventRecord a owl:Class ;
           owl:onProperty semi:isInstanceOfEvent ;
           owl:allValuesFrom semi:SplitEvent ] ;
     rdfs:label "拆批记录" ;
-    rdfs:comment "拆批操作的具体执行记录实例。核心关联：(1) isInstanceOfEvent → semi:SplitEvent，将记录锁定到拆批规则定义，引擎据此追溯 5 维规约生成物理执行序列；(2) actsOnLot → 源批次（被拆的父批次）；(3) producesLot → MES 系统自动生成的新 ProductionLot（子批次），是拆批操作的核心产出；(4) producesSublot → 与 producesLot 同步创建的初始 Sublot，被迁移晶圆的 belongsToSublot 指向此 Sublot，保证 Wafer→Sublot→atStation 路径仍可导航；(5) affectsWafer → 被迁移的具体晶圆实例列表，支持逐片血缘追溯。物理层三联写入：matrix_routerx_operation_lot_batch_resume_log（主事件记录，operation_type=1）+ matrix_routerx_operation_lot_batch_resume_log_detail（拆批前后批次状态快照）+ matrix_routerx_operation_lot_batch_resume_wafer_detail_log（逐片Wafer迁移明细）。" .
+    semi:tableFilter "operation_type = 1" ;
+    rdfs:comment "拆批操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 1（semi:tableFilter 注解值）。核心关联：(1) isInstanceOfEvent → semi:SplitEvent，将记录锁定到拆批规则定义，引擎据此追溯 5 维规约生成物理执行序列；(2) actsOnLot → 源批次（被拆的父批次）；(3) producesLot → MES 系统自动生成的新 ProductionLot（子批次），是拆批操作的核心产出；(4) producesSublot → 与 producesLot 同步创建的初始 Sublot，被迁移晶圆的 belongsToSublot 指向此 Sublot，保证 Wafer→Sublot→atStation 路径仍可导航；(5) affectsWafer → 被迁移的具体晶圆实例列表，支持逐片血缘追溯。物理层三联写入：主记录表（operation_type=1）+ _log_detail（拆批前后批次状态快照）+ _wafer_detail_log（逐片Wafer迁移明细）。" .
 
 ### ==========================================
-### 6. 操作类型枚举 (LotOperationType Enumeration)
+### 6. 操作类型枚举 (NamedIndividuals)
 ### ==========================================
-### 对应物理层 matrix_routerx_operation_lot_batch_resume_log.operation_type 字段整数枚举。
-### 完整枚举见 mapping_prod.json value_mappings.semi:LotOperationType。
+### 设计说明：
+###   semi:LotOperationType 不建模为 owl:Class。
+###   所有 semi:ProductionEventRecord 子类（XxxEventRecord）均存储于同一物理表
+###   matrix_routerx_operation_lot_batch_resume_log，通过 operation_type 整数字段区分
+###   事件子类型。XxxEventRecord 子类通过 semi:tableFilter 注解属性声明过滤条件，
+###   语义引擎生成 SQL 时自动附加 WHERE operation_type = N 谓词。
+###
+###   下列命名个体（owl:NamedIndividual）提供可引用的枚举标识，
+###   通过 semi:operationTypeCode 属性绑定对应物理整数编码。
+###   完整枚举值映射见 mapping_prod.json value_mappings 中的 operation_type 条目。
+### ==========================================
 
-semi:hasState a owl:DatatypeProperty ;
-    rdfs:domain semi:LotOperationType ;
+semi:SplitOp          a owl:NamedIndividual ; rdfs:label "1-拆批操作"          ; semi:operationTypeCode 1 .
+semi:MergeLotsOp      a owl:NamedIndividual ; rdfs:label "2-并批操作"          ; semi:operationTypeCode 2 .
+semi:CarrierTransOp   a owl:NamedIndividual ; rdfs:label "3-倒篮操作"          ; semi:operationTypeCode 3 .
+semi:HoldOp           a owl:NamedIndividual ; rdfs:label "4-批次扣留"          ; semi:operationTypeCode 4 .
+semi:ReleaseOp        a owl:NamedIndividual ; rdfs:label "5-批次释放"          ; semi:operationTypeCode 5 .
+semi:NGRecordOp       a owl:NamedIndividual ; rdfs:label "6-不良录入"          ; semi:operationTypeCode 6 .
+semi:CancelNGOp       a owl:NamedIndividual ; rdfs:label "7-取消不良"          ; semi:operationTypeCode 7 .
+semi:CheckInOp        a owl:NamedIndividual ; rdfs:label "8-批次进站"          ; semi:operationTypeCode 8 .
+semi:CheckOutOp       a owl:NamedIndividual ; rdfs:label "9-批次出站"          ; semi:operationTypeCode 9 .
+semi:ReturnOp         a owl:NamedIndividual ; rdfs:label "10-批次退回"         ; semi:operationTypeCode 10 .
+semi:SkipOp           a owl:NamedIndividual ; rdfs:label "11-批次跳站"         ; semi:operationTypeCode 11 .
+semi:ReworkOp         a owl:NamedIndividual ; rdfs:label "12-返工操作"         ; semi:operationTypeCode 12 .
+semi:CancelReworkOp   a owl:NamedIndividual ; rdfs:label "13-取消返工"         ; semi:operationTypeCode 13 .
+semi:SplitParentOp    a owl:NamedIndividual ; rdfs:label "14-拆父批操作"       ; semi:operationTypeCode 14 .
+semi:SwitchSubRouteOp a owl:NamedIndividual ; rdfs:label "15-切换子路径"       ; semi:operationTypeCode 15 .
+semi:AccumulateOp     a owl:NamedIndividual ; rdfs:label "16-攒批操作"         ; semi:operationTypeCode 16 .
+semi:CarrierChangeOp  a owl:NamedIndividual ; rdfs:label "17-片篮更换"         ; semi:operationTypeCode 17 .
+semi:CreateLocalLotOp a owl:NamedIndividual ; rdfs:label "18-本地批次创建"     ; semi:operationTypeCode 18 .
+semi:OpenLotOp        a owl:NamedIndividual ; rdfs:label "19-开批"             ; semi:operationTypeCode 19 .
+semi:ExpSkipOp        a owl:NamedIndividual ; rdfs:label "20-实验跳站"         ; semi:operationTypeCode 20 .
+semi:CancelLocalLotOp a owl:NamedIndividual ; rdfs:label "21-取消本地批次创建" ; semi:operationTypeCode 21 .
+semi:CancelOpenLotOp  a owl:NamedIndividual ; rdfs:label "22-取消开批"         ; semi:operationTypeCode 22 .
+semi:CompleteLotOp    a owl:NamedIndividual ; rdfs:label "23-批次完结"         ; semi:operationTypeCode 23 .
+
+### ==========================================
+### 7. 仓库与库存类群 (Warehouse & Inventory Classes)
+### ==========================================
+### 适用范围：线边仓（产线本地仓）管理
+### 对应物理表：warehouse_location, warehouse_inventory,
+###            warehouse_approval_record, warehouse_input_bill_detail, warehouse_output_bill_detail
+### ==========================================
+
+# 7.1 库位 (WarehouseLocation) — warehouse_location
+semi:WarehouseLocation a owl:Class ;
+    rdfs:label "库位" ;
+    rdfs:comment "线边仓物理存储空间的最小管理单元（当前业务按1层使用，库位为叶节点）。对应 warehouse_location 表（支持多层级，通过 parent_id/level_code/path 维护层次结构）；每条记录代表一个独立的物理存储位（货架/料架/暂存区格位）。注：equipment_warehouse 表是设备旁的暂存缓冲区（绑定到设备），与 warehouse_location 是两个不同的存储概念。通过 semi:hasInventory 关联当前库存明细集合。" .
+
+# 7.2 物料批次/物料实例 (MaterialBatch)
+semi:MaterialBatch a owl:Class ;
+    rdfs:label "物料批次（物料实例）" ;
+    rdfs:comment "某种物料（semi:Material 子类）的一次实例化记录，是仓库管理中物料流转的基本单元。统一以 hasBatchNo（批次号，必填）标识批次身份；是否额外具备 hasBoxNo（逐件唯一码）取决于物料模型的配置（semi:hasUniqueCodeMgmt=true 时填写唯一码，如产成品盒号、备件序列号）；是否以批次整体管理由 semi:hasBatchMgmt 配置（底层为 warehouse_material.batch 和 warehouse_material.unique_code 字段）。产成品批次在结批(CompleteLotOp)后创建，通过 derivedFromLot 关联源 ProductionLot；辅料/备件/原料批次通过 hasBatchNo 记录供应商批次号。" .
+
+# 7.3 库存明细 (Inventory) — warehouse_inventory
+semi:Inventory a owl:Class ;
+    rdfs:label "库存明细" ;
+    rdfs:comment "某库位中某种物料批次的当前库存量快照。追踪粒度：(库位 × 物料类型 × 批次) → 在库数量。每条记录是三元组 (WarehouseLocation, Material, MaterialBatch) 对应的当前在库数量，随入/出库事件动态更新。物理映射：warehouse_inventory 表。" .
+
+# 7.4 库存管理事件定义（抽象父类）(WarehouseEvent)
+semi:WarehouseEvent a owl:Class ;
+    rdfs:subClassOf semi:Action ;
+    rdfs:label "库存管理事件定义（抽象父类）" ;
+    rdfs:comment "定义库存管理操作类型的抽象模板（入库/出库/审批等）。作为 semi:Action 的子类，与 semi:ProductionEvent 平行，专用于线边仓物料管理域；作用对象为物料批次（semi:MaterialBatch）和库位（semi:WarehouseLocation），区别于生产事件（作用于 semi:ProductionLot 和 semi:ProcessStation）。具体操作类型子类：semi:InboundApprovalEvent、semi:InboundEvent、semi:OutboundEvent。" .
+
+# 7.5 库存管理事件记录（抽象父类）(WarehouseEventRecord)
+semi:WarehouseEventRecord a owl:Class ;
+    rdfs:label "库存管理事件记录（抽象父类）" ;
+    rdfs:comment "库存管理操作的执行记录抽象基类，与 semi:ProductionEventRecord 平行，专用于仓库管理域。作用对象：semi:MaterialBatch（物料批次实例）× semi:WarehouseLocation（库位）；通过 semi:isInstanceOfWarehouseEvent 关联对应的事件类型定义。具体子类：semi:InboundApprovalRecord、semi:InboundEventRecord、semi:OutboundEventRecord。" .
+
+# 7.6 入库审批事件定义 (InboundApprovalEvent)
+semi:InboundApprovalEvent a owl:Class ;
+    rdfs:subClassOf semi:WarehouseEvent ;
+    rdfs:label "入库审批事件定义" ;
+    rdfs:comment "定义线边仓入库审批操作的规则/类型模板。产成品在包装完成后、入库前须经质检审批，审批通过(status=1)后方可触发入库操作。其他物料的入库视业务流程决定是否需要审批。执行记录层见 semi:InboundApprovalRecord。" ;
+    semi:preCondition "InboundApprovalRecord.hasApprovalStatus == 0" ;
+    semi:inputSchema "{ approvalRecordId: string, approvalResult: integer, approvalRemark: string }" ;
+    semi:transformationLogic "UPDATE semi:InboundApprovalRecord(id=?approvalRecordId) SET hasApprovalStatus = ?approvalResult, hasApprovalResult = ?approvalRemark; IF ?approvalResult == 1 THEN TRIGGER semi:InboundEvent FOR EACH batch in approvalRecord.approvalForMaterial" ;
+    semi:apiBinding "WMS_SERVICE.executeApproval" ;
+    semi:postCondition "InboundApprovalRecord(id=?approvalRecordId).hasApprovalStatus != 0" .
+
+# 7.7 入库审批记录 (InboundApprovalRecord) — warehouse_approval_record
+semi:InboundApprovalRecord a owl:Class ;
+    rdfs:subClassOf semi:WarehouseEventRecord ,
+        [ a owl:Restriction ;
+          owl:onProperty semi:isInstanceOfWarehouseEvent ;
+          owl:allValuesFrom semi:InboundApprovalEvent ] ;
+    rdfs:label "入库审批记录" ;
+    rdfs:comment "入库审批操作的具体执行记录。物理映射：warehouse_approval_record 表（独立表，全部行均为审批记录，无行级类型区分符）。核心关联：approvalForMaterial → semi:Material（待审批入库的物料类型）；审批通过后由 triggersInbound 指向对应的 InboundEventRecord，建立审批→入库因果链。hasApprovalStatus 对应 audit_state 字段（字符串类型），支持多阶段审批流（如 '1,2,3' 表示多个节点已完成），具体枚举见 value_mappings。" .
+
+# 7.8 入库事件定义 (InboundEvent)
+semi:InboundEvent a owl:Class ;
+    rdfs:subClassOf semi:WarehouseEvent ;
+    rdfs:label "入库事件定义" ;
+    rdfs:comment "定义线边仓入库操作的规则/类型模板。将物料批次（MaterialBatch）移入指定库位，执行后更新库存快照（Inventory.hasStockQty += billQty）。产成品入库通常需先完成 InboundApprovalEvent；其他物料可直接入库。执行记录层见 semi:InboundEventRecord。" ;
+    semi:preCondition "WarehouseLocation.hasLocationStatus == 1 && MaterialBatch.batchOfMaterial != null" ;
+    semi:inputSchema "{ materialBatchId: string, locationId: string, billQty: decimal, billTime: dateTime }" ;
+    semi:transformationLogic "LET $inv = FIND semi:Inventory WHERE stockOfBatch=?materialBatchId AND hasInventory.location=?locationId; IF $inv EXISTS THEN UPDATE $inv SET hasStockQty += ?billQty ELSE CREATE semi:Inventory(stockOfBatch=?materialBatchId, stockOfMaterial=batch.batchOfMaterial, hasStockQty=?billQty)" ;
+    semi:apiBinding "WMS_SERVICE.executeInbound" ;
+    semi:postCondition "Inventory(batch=?materialBatchId, location=?locationId).hasStockQty > 0" .
+
+# 7.9 入库执行记录 (InboundEventRecord) — warehouse_input_bill_detail
+semi:InboundEventRecord a owl:Class ;
+    rdfs:subClassOf semi:WarehouseEventRecord ,
+        [ a owl:Restriction ;
+          owl:onProperty semi:isInstanceOfWarehouseEvent ;
+          owl:allValuesFrom semi:InboundEvent ] ;
+    rdfs:label "入库记录" ;
+    rdfs:comment "入库操作的具体执行记录。物理映射：warehouse_input_bill_detail 表（与入库单头表 warehouse_input_bill 通过 input_bill_id 关联，一单多行，每行对应一个物料批次实例）。核心关联：(1) inboundBatch → semi:MaterialBatch，入库的物料批次实例（unique_code=唯一码，Material.hasUniqueCodeMgmt=true 时填写）；(2) inboundToLocation → semi:WarehouseLocation，目标库位（warehouse_id 外键）；(3) hasBillNo（input_bill_no）、hasBillQty（count）、hasBillTime（create_time）。执行后触发 warehouse_inventory 对应行更新（在库数量增加）。" .
+
+# 7.10 出库事件定义 (OutboundEvent)
+semi:OutboundEvent a owl:Class ;
+    rdfs:subClassOf semi:WarehouseEvent ;
+    rdfs:label "出库事件定义" ;
+    rdfs:comment "定义线边仓出库操作的规则/类型模板。将物料批次从指定库位移出（用于生产线领料或调拨），执行后更新库存快照（Inventory.hasStockQty -= billQty）。执行记录层见 semi:OutboundEventRecord。" ;
+    semi:preCondition "Inventory(batch=?materialBatchId, location=?locationId).hasStockQty >= ?billQty" ;
+    semi:inputSchema "{ materialBatchId: string, locationId: string, billQty: decimal, billTime: dateTime }" ;
+    semi:transformationLogic "UPDATE semi:Inventory SET hasStockQty -= ?billQty WHERE stockOfBatch=?materialBatchId AND atLocation=?locationId" ;
+    semi:apiBinding "WMS_SERVICE.executeOutbound" ;
+    semi:postCondition "Inventory(batch=?materialBatchId, location=?locationId).hasStockQty >= 0" .
+
+# 7.11 出库执行记录 (OutboundEventRecord) — warehouse_output_bill_detail
+semi:OutboundEventRecord a owl:Class ;
+    rdfs:subClassOf semi:WarehouseEventRecord ,
+        [ a owl:Restriction ;
+          owl:onProperty semi:isInstanceOfWarehouseEvent ;
+          owl:allValuesFrom semi:OutboundEvent ] ;
+    rdfs:label "出库记录" ;
+    rdfs:comment "出库操作的具体执行记录。物理映射：warehouse_output_bill_detail 表（与出库单头表 warehouse_output_bill 通过 output_bill_id 关联，一单多行，每行对应一个物料批次实例）。核心关联：(1) outboundBatch → semi:MaterialBatch，出库的物料批次实例（unique_code=唯一码，Material.hasUniqueCodeMgmt=true 时填写）；(2) outboundFromLocation → semi:WarehouseLocation，源库位（warehouse_id 外键）；(3) hasBillNo（output_bill_no）、hasBillQty（output_count）、hasBillTime（create_time）；destination 记录出库目标（生产线/部门）。执行后触发 warehouse_inventory 对应行更新（在库数量减少）。" .
+
+### ==========================================
+### 8. WMS 对象属性 (WMS Object Properties)
+### ==========================================
+
+# 8.1 库存管理事件记录关联属性 (WarehouseEventRecord)
+semi:isInstanceOfWarehouseEvent a owl:ObjectProperty ;
+    rdfs:domain semi:WarehouseEventRecord ; rdfs:range semi:WarehouseEvent ;
+    rdfs:label "库存管理事件类型" ;
+    rdfs:comment "该库存管理执行记录（WarehouseEventRecord 子类实例）对应的事件类型定义（WarehouseEvent 子类），关联记录到事件规约。与 semi:isInstanceOfEvent（ProductionEventRecord→ProductionEvent）平行，两者共同构成生产域与仓库域的事件类型溯源机制。" .
+
+# 8.2 MaterialBatch 关联属性
+semi:batchOfMaterial a owl:ObjectProperty ;
+    rdfs:domain semi:MaterialBatch ; rdfs:range semi:Material ;
+    rdfs:label "批次所属物料类型" ;
+    rdfs:comment "物料批次实例对应的物料类型（semi:Material 子类），必填。建立批次→物料模型的归属关系，支持'某种物料有哪些批次在库'的反向查询。" .
+
+semi:derivedFromLot a owl:ObjectProperty ;
+    rdfs:domain semi:MaterialBatch ; rdfs:range semi:ProductionLot ;
+    rdfs:label "源生产批次（结批溯源）" ;
+    rdfs:comment "产成品批次结批时关联的源 ProductionLot（在制品批次）。仅 semi:Product 类型的 MaterialBatch 填写此属性（derivedFromLot 的 batchOfMaterial → semi:Product）；辅料/备件/原料的 MaterialBatch 此属性为空。支持从产成品批次反向追溯到生产线上的原始在制批次。" .
+
+# 8.2 WarehouseLocation 关联属性
+semi:hasInventory a owl:ObjectProperty ;
+    rdfs:domain semi:WarehouseLocation ; rdfs:range semi:Inventory ;
+    rdfs:label "当前库存明细" ;
+    rdfs:comment "库位持有的库存明细记录集合，一个库位可关联多条 Inventory 记录（每种物料批次对应一条）。" .
+
+# 8.3 Inventory 关联属性
+semi:stockOfMaterial a owl:ObjectProperty ;
+    rdfs:domain semi:Inventory ; rdfs:range semi:Material ;
+    rdfs:label "库存物料类型" ;
+    rdfs:comment "该库存明细记录对应的物料类型（反规范化冗余字段，便于按物料类型直接过滤库存，无需经由 MaterialBatch 跳转）。" .
+
+semi:stockOfBatch a owl:ObjectProperty ;
+    rdfs:domain semi:Inventory ; rdfs:range semi:MaterialBatch ;
+    rdfs:label "库存批次" ;
+    rdfs:comment "该库存明细对应的物料批次实例，是库存追踪的精确粒度锚点（批次粒度）。" .
+
+# 8.4 入库记录关联属性
+semi:inboundBatch a owl:ObjectProperty ;
+    rdfs:domain semi:InboundEventRecord ; rdfs:range semi:MaterialBatch ;
+    rdfs:label "入库物料批次" ;
+    rdfs:comment "本次入库操作涉及的物料批次实例（含 hasBatchNo；单件追踪型含 hasBoxNo）。" .
+
+semi:inboundToLocation a owl:ObjectProperty ;
+    rdfs:domain semi:InboundEventRecord ; rdfs:range semi:WarehouseLocation ;
+    rdfs:label "入库目标库位" ;
+    rdfs:comment "本次入库操作的目标存储库位。" .
+
+# 8.5 出库记录关联属性
+semi:outboundBatch a owl:ObjectProperty ;
+    rdfs:domain semi:OutboundEventRecord ; rdfs:range semi:MaterialBatch ;
+    rdfs:label "出库物料批次" ;
+    rdfs:comment "本次出库操作涉及的物料批次实例。" .
+
+semi:outboundFromLocation a owl:ObjectProperty ;
+    rdfs:domain semi:OutboundEventRecord ; rdfs:range semi:WarehouseLocation ;
+    rdfs:label "出库源库位" ;
+    rdfs:comment "本次出库操作的源存储库位。" .
+
+# 8.6 审批记录关联属性
+semi:approvalForMaterial a owl:ObjectProperty ;
+    rdfs:domain semi:InboundApprovalRecord ; rdfs:range semi:Material ;
+    rdfs:label "审批物料类型" ;
+    rdfs:comment "本次入库审批对应的物料类型，便于按物料维度查询历史审批记录。" .
+
+semi:triggersInbound a owl:ObjectProperty ;
+    rdfs:domain semi:InboundApprovalRecord ; rdfs:range semi:InboundEventRecord ;
+    rdfs:label "审批通过触发入库" ;
+    rdfs:comment "审批通过(hasApprovalStatus=1)后关联触发的入库执行记录，建立'审批→入库'的操作因果链（对应 warehouse_approval_record → warehouse_input_bill 的外键关联）。" .
+
+### ==========================================
+### 9. WMS 数据属性 (WMS Data Properties)
+### ==========================================
+
+# 9.1 WarehouseLocation 数据属性
+semi:hasLocationCode a owl:DatatypeProperty ;
+    rdfs:domain semi:WarehouseLocation ;
+    rdfs:range xsd:string ;
+    rdfs:label "库位编码" ;
+    rdfs:comment "库位唯一业务标识码，对应 warehouse_location.location_code。" .
+
+semi:hasLocationName a owl:DatatypeProperty ;
+    rdfs:domain semi:WarehouseLocation ;
+    rdfs:range xsd:string ;
+    rdfs:label "库位名称" ;
+    rdfs:comment "库位显示名称，对应 warehouse_location.location_name。" .
+
+semi:hasStorageType a owl:DatatypeProperty ;
+    rdfs:domain semi:WarehouseLocation ;
+    rdfs:range xsd:string ;
+    rdfs:label "存储类型" ;
+    rdfs:comment "库位存储分类，对应 warehouse_location.location_type（如货架/料架/暂存区格位）。" .
+
+semi:hasLocationStatus a owl:DatatypeProperty ;
+    rdfs:domain semi:WarehouseLocation ;
     rdfs:range xsd:integer ;
-    rdfs:label "整数枚举值" ;
-    rdfs:comment "LotOperationType 实例对应的整数编码，与数据库 operation_type 字段值一一对应。" .
+    rdfs:label "库位状态" ;
+    rdfs:comment "库位当前使用状态，对应 warehouse_location.status 字段。" .
 
-semi:LotOperationType a owl:Class ;
-    rdfs:label "批次操作类型" ;
-    rdfs:comment "批次操作记录类型枚举（整数编码）。对应 matrix_routerx_operation_lot_batch_resume_log.operation_type 字段。取值范围 1-23，完整高分辨率映射见 mapping_prod.json semi:LotOperationType。谱系变更类（is_genealogy_event=true）：1=拆批、2=并批、12=返工、14=拆父批、16=攒批。过站动作类：8=进站、9=出站、10=退回、11=跳站、20=实验跳站。批次生命周期类：19=开批、22=取消开批、23=批次完结。" .
+# 9.2 MaterialBatch 数据属性
+semi:hasBatchNo a owl:DatatypeProperty ;
+    rdfs:domain semi:MaterialBatch ;
+    rdfs:range xsd:string ;
+    rdfs:label "批次号" ;
+    rdfs:comment "物料批次的业务标识号。产成品：值等于源 ProductionLot 的批次编号（结批时由系统继承填入）；辅料/备件/原料：值为供应商批次号（进货时录入）。所有 MaterialBatch 实例必填。" .
 
-semi:SplitOp          a semi:LotOperationType ; rdfs:label "1-拆批操作"          ; semi:hasState 1 .
-semi:MergeLotsOp      a semi:LotOperationType ; rdfs:label "2-并批操作"          ; semi:hasState 2 .
-semi:CarrierTransOp   a semi:LotOperationType ; rdfs:label "3-倒篮操作"          ; semi:hasState 3 .
-semi:HoldOp           a semi:LotOperationType ; rdfs:label "4-批次扣留"          ; semi:hasState 4 .
-semi:ReleaseOp        a semi:LotOperationType ; rdfs:label "5-批次释放"          ; semi:hasState 5 .
-semi:NGRecordOp       a semi:LotOperationType ; rdfs:label "6-不良录入"          ; semi:hasState 6 .
-semi:CancelNGOp       a semi:LotOperationType ; rdfs:label "7-取消不良"          ; semi:hasState 7 .
-semi:CheckInOp        a semi:LotOperationType ; rdfs:label "8-批次进站"          ; semi:hasState 8 .
-semi:CheckOutOp       a semi:LotOperationType ; rdfs:label "9-批次出站"          ; semi:hasState 9 .
-semi:ReturnOp         a semi:LotOperationType ; rdfs:label "10-批次退回"         ; semi:hasState 10 .
-semi:SkipOp           a semi:LotOperationType ; rdfs:label "11-批次跳站"         ; semi:hasState 11 .
-semi:ReworkOp         a semi:LotOperationType ; rdfs:label "12-返工操作"         ; semi:hasState 12 .
-semi:CancelReworkOp   a semi:LotOperationType ; rdfs:label "13-取消返工"         ; semi:hasState 13 .
-semi:SplitParentOp    a semi:LotOperationType ; rdfs:label "14-拆父批操作"       ; semi:hasState 14 .
-semi:SwitchSubRouteOp a semi:LotOperationType ; rdfs:label "15-切换子路径"       ; semi:hasState 15 .
-semi:AccumulateOp     a semi:LotOperationType ; rdfs:label "16-攒批操作"         ; semi:hasState 16 .
-semi:CarrierChangeOp  a semi:LotOperationType ; rdfs:label "17-片篮更换"         ; semi:hasState 17 .
-semi:CreateLocalLotOp a semi:LotOperationType ; rdfs:label "18-本地批次创建"     ; semi:hasState 18 .
-semi:OpenLotOp        a semi:LotOperationType ; rdfs:label "19-开批"             ; semi:hasState 19 .
-semi:ExpSkipOp        a semi:LotOperationType ; rdfs:label "20-实验跳站"         ; semi:hasState 20 .
-semi:CancelLocalLotOp a semi:LotOperationType ; rdfs:label "21-取消本地批次创建" ; semi:hasState 21 .
-semi:CancelOpenLotOp  a semi:LotOperationType ; rdfs:label "22-取消开批"         ; semi:hasState 22 .
-semi:CompleteLotOp    a semi:LotOperationType ; rdfs:label "23-批次完结"         ; semi:hasState 23 .
+semi:hasBoxNo a owl:DatatypeProperty ;
+    rdfs:domain semi:MaterialBatch ;
+    rdfs:range xsd:string ;
+    rdfs:label "唯一码" ;
+    rdfs:comment "物料实例的物理唯一标识码，对应 warehouse_inventory.unique_code 及 bill_detail.unique_code。适用于物料模型开启了逐件唯一码管理（semi:hasUniqueCodeMgmt=true）的物料批次：产成品对应包装盒号（每箱唯一），备件对应设备序列号，等。物料模型未开启唯一码管理（如辅料/原料）时此属性为空。" .
+
+semi:hasBatchQty a owl:DatatypeProperty ;
+    rdfs:domain semi:MaterialBatch ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "批次数量" ;
+    rdfs:comment "该物料批次的总数量（通常为入库时的初始批次量）。" .
+
+# 9.3 Inventory 数据属性
+semi:hasStockQty a owl:DatatypeProperty ;
+    rdfs:domain semi:Inventory ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "在库数量" ;
+    rdfs:comment "该库存明细记录的当前在库数量（实时快照，随入/出库操作动态更新），对应 warehouse_inventory.qty 或 stock_qty 字段。" .
+
+semi:hasStockUnit a owl:DatatypeProperty ;
+    rdfs:domain semi:Inventory ;
+    rdfs:range xsd:string ;
+    rdfs:label "库存单位" ;
+    rdfs:comment "在库数量的计量单位（如片/箱/kg/个），对应 warehouse_inventory.unit 字段。" .
+
+# 9.4 InboundApprovalRecord 数据属性
+semi:hasApprovalStatus a owl:DatatypeProperty ;
+    rdfs:domain semi:InboundApprovalRecord ;
+    rdfs:range xsd:string ;
+    rdfs:label "审批状态" ;
+    rdfs:comment "入库审批当前状态，对应 warehouse_approval_record.audit_state 字段（字符串类型）。语义枚举：单值表示当前阶段（如 '1'/'2'/'3'），逗号分隔多值（如 '1,2,3'）表示多阶段审批流的已完成节点列表。具体语义枚举见 value_mappings。" .
+
+semi:hasApprovalResult a owl:DatatypeProperty ;
+    rdfs:domain semi:InboundApprovalRecord ;
+    rdfs:range xsd:string ;
+    rdfs:label "审批结论/备注" ;
+    rdfs:comment "审批人填写的审批结论或驳回原因文本，对应 warehouse_approval_record.remark 或 result 字段。" .
+
+# 9.5 入出库单据公共数据属性
+semi:hasBillNo a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:InboundEventRecord semi:OutboundEventRecord) ] ;
+    rdfs:range xsd:string ;
+    rdfs:label "单据编号" ;
+    rdfs:comment "入库单/出库单的唯一单据号，对应 warehouse_input_bill.bill_no 或 warehouse_output_bill.bill_no。" .
+
+semi:hasBillQty a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:InboundEventRecord semi:OutboundEventRecord) ] ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "单据数量" ;
+    rdfs:comment "本次入库或出库操作的实际执行数量。" .
+
+semi:hasBillTime a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:InboundEventRecord semi:OutboundEventRecord) ] ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "单据时间" ;
+    rdfs:comment "入库或出库操作的执行时间戳，对应 bill_time 或 create_time 字段。" .
 

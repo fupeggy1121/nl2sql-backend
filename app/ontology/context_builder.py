@@ -219,6 +219,7 @@ class SemanticContext:
                         for c in j.conditions
                     ],
                     "bridge_table": j.bridge_table,
+                    **({"note": j.note} if j.note else {}),
                 }
                 for j in self.joins
             ],

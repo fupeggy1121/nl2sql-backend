@@ -105,7 +105,10 @@ def sql_generator_node(state: AgentState) -> dict:
     # 但 semantic_ctx 已精确知道真实物理表名，故在此做确定性后处理。
     if sql and semantic_ctx:
         sql = _enforce_physical_table_names(sql, semantic_ctx)
-
+    # ── 4.6 确定性 EmbeddedJSON 语法修正──
+    # 如果 LLM 仍然生成了 CROSS JOIN <表名>(...) 而不是 CROSS JOIN JSON_TABLE(...)，在此兴正
+    if sql:
+        sql = _fix_embedded_json_syntax(sql, semantic_ctx)
     # 读取本次 LLM 调用的 token 用量
     from app.services.llm_provider import get_last_llm_usage
     llm_usage = get_last_llm_usage()
@@ -269,6 +272,60 @@ def _enforce_physical_table_names(sql: str, semantic_ctx: dict) -> str:
         )
 
     return corrected
+
+
+def _fix_embedded_json_syntax(sql: str, semantic_ctx: dict) -> str:
+    """
+    确定性修正：LLM 有时把 JSON_TABLE() 误写成 CROSS JOIN <物理表名>(...)。
+    检测到「CROSS JOIN <已知物理表>(」或「JOIN <已知物理表>(」时，
+    将 <物理表名> 替换为 JSON_TABLE，保留括号内的参数不变。
+    """
+    if not sql:
+        return sql
+
+    import re
+
+    # 加载本次查询的物理表名集合（及全局合法表名）
+    try:
+        from app.ontology.mapping import get_mapping
+        all_valid_tables = {
+            t.table_name.lower()
+            for t in get_mapping().list_physical_tables()
+            if t.table_name
+        }
+    except Exception:
+        all_valid_tables = set()
+
+    # 补充 semantic_ctx 中的物理表
+    if semantic_ctx:
+        for c in semantic_ctx.get("matched_classes", []):
+            if c.get("physical_table"):
+                all_valid_tables.add(c["physical_table"].lower())
+
+    if not all_valid_tables:
+        return sql
+
+    # 匹配: CROSS JOIN <tablename>( 或 JOIN <tablename>(
+    # 其中 <tablename> 是已知物理表名（而非 JSON_TABLE 自身）
+    pattern = re.compile(
+        r'\b(CROSS\s+JOIN|JOIN)\s+([\w_]+)\s*\(',
+        re.IGNORECASE,
+    )
+
+    def replacer(m: re.Match) -> str:
+        join_kw = m.group(1)
+        tbl = m.group(2)
+        if tbl.lower() == 'json_table':
+            return m.group(0)  # 已经正确，不替换
+        if tbl.lower() in all_valid_tables:
+            logger.warning(
+                f"[sql_generator] EmbeddedJSON语法修正: "
+                f"CROSS JOIN {tbl}( → CROSS JOIN JSON_TABLE("
+            )
+            return f"CROSS JOIN JSON_TABLE("
+        return m.group(0)
+
+    return pattern.sub(replacer, sql)
 
 
 def _build_optimized_query(
@@ -587,8 +644,39 @@ def _format_semantic_context(semantic_ctx: dict) -> str:
     if joins:
         lines.append("关联路径:")
         for j in joins:
+            strategy = j.get("strategy", "")
             for c in j.get("conditions", []):
-                lines.append(f"  {c['from']} = {c['to']}")
+                if strategy == "EmbeddedJSON":
+                    # 不输出 表名.JSON列->>key 格式，避免 LLM 把表名当函数名
+                    # 正: 'src_table.json_col' 中抽取表名和列名，key 单独列出
+                    from_parts = c["from"].split(".")
+                    src_table = from_parts[0] if from_parts else c["from"]
+                    json_col_key = from_parts[1] if len(from_parts) > 1 else ""
+                    to_parts = c["to"].split(".")
+                    tgt_table = to_parts[0] if to_parts else c["to"]
+                    tgt_col = to_parts[1] if len(to_parts) > 1 else "id"
+                    # json_col_key 格式: processes->>id，分离列和key
+                    if "->>'" in json_col_key:
+                        json_col, json_key = json_col_key.split("->>'", 1)
+                        json_key = json_key.rstrip("'")
+                    elif "->>" in json_col_key:
+                        json_col, json_key = json_col_key.split("->>")
+                    else:
+                        json_col, json_key = json_col_key, "id"
+                    lines.append(
+                        f"  [EmbeddedJSON展开] 源表={src_table}, JSON列={json_col}, "
+                        f"数组元素键={json_key}, 关联目标={tgt_table}.{tgt_col}"
+                    )
+                    lines.append(
+                        f"  ⚠ 展开该 JSON 数组必须用 MySQL 内置函数 JSON_TABLE（不是表名）："
+                        f"CROSS JOIN JSON_TABLE({src_table}别名.{json_col}, '$[*]' "
+                        f"COLUMNS (seq FOR ORDINALITY, {json_key} INT PATH '$.{json_key}')) AS jt "
+                        f"INNER JOIN {tgt_table} ON {tgt_table}.{tgt_col} = jt.{json_key} ORDER BY jt.seq"
+                    )
+                else:
+                    lines.append(f"  {c['from']} = {c['to']}")
+            if not j.get("conditions") and j.get("note"):
+                lines.append(f"  [{strategy}提示] {j['note']}")
 
     # 过滤条件
     filters = semantic_ctx.get("filters", [])

@@ -182,11 +182,12 @@ const textareaCls = `${inputCls} min-h-[80px] resize-y font-mono`;
 // ══════════════════════════════════════════════════════════════════
 
 const STRATEGY_COLORS: Record<string, string> = {
-  ForeignKey:   'bg-blue-100 text-blue-700',
-  JoinTable:    'bg-purple-100 text-purple-700',
-  Indirect:     'bg-orange-100 text-orange-700',
-  Recursive:    'bg-green-100 text-green-700',
-  Denormalized: 'bg-gray-100 text-gray-600',
+  ForeignKey:    'bg-blue-100 text-blue-700',
+  JoinTable:     'bg-purple-100 text-purple-700',
+  Indirect:      'bg-orange-100 text-orange-700',
+  Recursive:     'bg-green-100 text-green-700',
+  Denormalized:  'bg-gray-100 text-gray-600',
+  EmbeddedJSON:  'bg-teal-100 text-teal-700',
 };
 
 const ACTION_COLORS: Record<string, string> = {
@@ -751,7 +752,7 @@ function ObjectMappingsTab() {
 // Tab 2: Relation Mappings
 // ══════════════════════════════════════════════════════════════════
 
-const STRATEGIES = ['ForeignKey', 'JoinTable', 'Indirect', 'Recursive', 'Denormalized'];
+const STRATEGIES = ['ForeignKey', 'JoinTable', 'Indirect', 'Recursive', 'Denormalized', 'EmbeddedJSON'];
 
 function RelationMappingsTab() {
   const [items, setItems] = useState<RelationMapping[]>([]);
@@ -858,6 +859,19 @@ function RelationMappingsTab() {
             <Field label="self_key"><input value={jl.self_key || 'id'} onChange={e => setJl('self_key', e.target.value)} className={inputCls} placeholder="id" /></Field>
             <Field label="parent_key"><input value={jl.parent_key || ''} onChange={e => setJl('parent_key', e.target.value)} className={inputCls} placeholder="parent_batch_id" /></Field>
             <Field label="max_depth（默认 20）"><input type="number" value={jl.max_depth || 20} onChange={e => setJl('max_depth', parseInt(e.target.value))} className={inputCls} /></Field>
+          </div>
+        );
+      case 'EmbeddedJSON':
+        return (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="source_table"><input value={jl.source_table || ''} onChange={e => setJl('source_table', e.target.value)} className={inputCls} placeholder="matrix_routerx_config_route" /></Field>
+            <Field label="jsonb_column（JSON 列名）"><input value={jl.jsonb_column || ''} onChange={e => setJl('jsonb_column', e.target.value)} className={inputCls} placeholder="processes" /></Field>
+            <Field label="inner_key（数组元素关联键）"><input value={jl.inner_key || ''} onChange={e => setJl('inner_key', e.target.value)} className={inputCls} placeholder="id" /></Field>
+            <Field label="target_table"><input value={jl.target_table || ''} onChange={e => setJl('target_table', e.target.value)} className={inputCls} placeholder="matrix_routerx_config_process" /></Field>
+            <Field label="target_key"><input value={jl.target_key || 'id'} onChange={e => setJl('target_key', e.target.value)} className={inputCls} placeholder="id" /></Field>
+            <Field label="note（SQL 提示，可选）" hint="给 LLM 的 JSON_TABLE 用法说明">
+              <textarea value={jl.note || ''} onChange={e => setJl('note', e.target.value)} className={textareaCls} rows={3} />
+            </Field>
           </div>
         );
       default:

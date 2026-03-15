@@ -305,7 +305,7 @@
     },
     {
       "logic_class": "semi:Route",
-      "physical_table": "routerx_router_config",
+      "physical_table": "matrix_routerx_config_route",
       "primary_key": "id",
       "label_cn": "工艺路径",
       "display_column": "name",
@@ -445,19 +445,34 @@
         "semi:hasMaterialType": "material_type",
         "semi:hasMaterialSpec": "spec",
         "semi:hasUnit": "unit",
-        "semi:hasState": "status"
+        "semi:hasState": "status",
+        "semi:hasBatchMgmt": "extra->>'$.warehouseBatch'",
+        "semi:hasUniqueCodeMgmt": "extra->>'$.warehouseUniqueCode'"
       },
       "key_columns": [
         "id",
-        "name",
-        "code",
+        "material_no",
         "material_type",
-        "material_type_id",
-        "spec",
+        "type",
+        "material_version",
+        "material_name",
+        "material_spec",
         "unit",
+        "check_lot_no",
+        "description",
         "classify_id",
+        "classify_name",
         "status",
-        "gmt_create"
+        "extra",
+        "create_user_id",
+        "create_user",
+        "gmt_create",
+        "update_user_id",
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "trace_id",
+        "category_code"
       ],
       "note": "通用物料主数据表，通过 material_type 区分子类（原料/辅料/备件等）。"
     },
@@ -473,7 +488,9 @@
         "semi:hasMaterialName": "material_name",
         "semi:hasMaterialSpec": "material_spec",
         "semi:hasUnit": "unit",
-        "semi:hasState": "status"
+        "semi:hasState": "status",
+        "semi:hasBatchMgmt": "extra->>'$.warehouseBatch'",
+        "semi:hasUniqueCodeMgmt": "extra->>'$.warehouseUniqueCode'"
       },
       "key_columns": [
         "id",
@@ -513,7 +530,9 @@
         "semi:hasMaterialName": "material_name",
         "semi:hasMaterialSpec": "material_spec",
         "semi:hasUnit": "unit",
-        "semi:hasState": "status"
+        "semi:hasState": "status",
+        "semi:hasBatchMgmt": "extra->>'$.warehouseBatch'",
+        "semi:hasUniqueCodeMgmt": "extra->>'$.warehouseUniqueCode'"
       },
       "key_columns": [
         "id",
@@ -549,22 +568,41 @@
       "primary_key": "id",
       "label_cn": "备件",
       "display_column": "name",
-      "filter_condition": "material_type IN ('spare_part', 'spare', '备件')",
+      "filter_condition": "type = spare_part",
       "properties": {
-        "semi:hasMaterialCode": "code",
-        "semi:hasMaterialName": "name",
+        "semi:hasMaterialCode": "material_no",
+        "semi:hasMaterialName": "material_name",
         "semi:hasMaterialType": "material_type",
-        "semi:hasState": "status"
+        "semi:hasMaterialSpec": "material_spec",
+        "semi:hasUnit": "unit",
+        "semi:hasState": "status",
+        "semi:hasBatchMgmt": "extra->>'$.warehouseBatch'",
+        "semi:hasUniqueCodeMgmt": "extra->>'$.warehouseUniqueCode'"
       },
       "key_columns": [
         "id",
-        "name",
-        "code",
+        "material_no",
         "material_type",
-        "spec",
+        "type",
+        "material_version",
+        "material_name",
+        "material_spec",
         "unit",
+        "check_lot_no",
+        "description",
         "classify_id",
-        "status"
+        "classify_name",
+        "status",
+        "extra",
+        "create_user_id",
+        "create_user",
+        "gmt_create",
+        "update_user_id",
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "trace_id",
+        "category_code"
       ],
       "note": "使用 material 表，通过 material_type 筛选备件类型行。如存在独立备件表则优先使用。"
     },
@@ -591,7 +629,9 @@
         "semi:hasMaterialType": "material_type",
         "semi:hasMaterialSpec": "material_spec",
         "semi:hasUnit": "unit",
-        "semi:hasState": "status"
+        "semi:hasState": "status",
+        "semi:hasBatchMgmt": "extra->>'$.warehouseBatch'",
+        "semi:hasUniqueCodeMgmt": "extra->>'$.warehouseUniqueCode'"
       },
       "key_columns": [
         "id",
@@ -623,30 +663,11 @@
     },
     {
       "logic_class": "semi:Action",
-      "physical_table": "matrix_routerx_operation_lot_batch_resume_log",
-      "primary_key": "id",
-      "label_cn": "生产动作/操作日志",
-      "display_column": "operation_type",
-      "properties": {
-        "semi:hasLotCode": "lot_code",
-        "semi:hasOperationType": "operation_type",
-        "semi:hasBeforeState": "before_state",
-        "semi:hasAfterState": "after_state"
-      },
-      "key_columns": [
-        "id",
-        "lot_id",
-        "lot_code",
-        "operation_type",
-        "station_id",
-        "equipment_id",
-        "product_id",
-        "operator_id",
-        "before_state",
-        "after_state",
-        "gmt_create"
-      ],
-      "note": "批次流水表，记录批次进站/出站/拆批/并批/Hold/Release等所有操作历史。追加写入不可变。"
+      "physical_table": null,
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "label_cn": "生产动作/操作（抽象父类）",
+      "note": "抽象父类，不直接映射物理表。子类：ProductionEvent（事件类型模板）。具体操作执行记录见 semi:ProductionEventRecord。"
     },
     {
       "logic_class": "semi:CarrierModel",
@@ -800,6 +821,8 @@
     {
       "logic_class": "semi:ProductionEvent",
       "physical_table": null,
+      "virtual": true,
+      "virtual_kind": "action_event",
       "label_cn": "生产事件类型",
       "note": "Type层定义，对应生产事件类型枚举（SPLIT/MERGE/REWORK/进站/出站等）。作为Action子类，通过Named Individuals或配置表定义，不直接映射物理表。"
     },
@@ -842,6 +865,7 @@
       "physical_table": null,
       "label_cn": "拆批事件类型",
       "virtual": true,
+      "virtual_kind": "action_event",
       "note": "Type层定义，对应 LotOperationType operation_type=1（拆批）的规则/类型模板。作为 ProductionEvent 子类，通过 Named Individual 定义。拆批执行记录层见 semi:SplitEventRecord。"
     },
     {
@@ -876,6 +900,175 @@
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
       "note": "拆批操作执行记录，filter_condition = operation_type=1 隔离拆批行。物理层三联写：本表（主记录）+ matrix_routerx_operation_lot_batch_resume_log_detail（批次状态快照）+ matrix_routerx_operation_lot_batch_resume_wafer_detail_log（逐片Wafer迁移明细）。"
+    },
+    {
+      "logic_class": "semi:WarehouseLocation",
+      "physical_table": "warehouse_location",
+      "primary_key": "id",
+      "label_cn": "库位",
+      "display_column": "location_name",
+      "properties": {
+        "semi:hasLocationCode": "location_code",
+        "semi:hasLocationName": "location_name",
+        "semi:hasStorageType": "location_type",
+        "semi:hasLocationStatus": "status"
+      },
+      "key_columns": [
+        "id",
+        "location_code",
+        "location_name",
+        "location_type",
+        "level_code",
+        "parent_id",
+        "status",
+        "path",
+        "volume"
+      ],
+      "note": "线边仓库位管理表，支持多层级（当前业务1层使用，库位为叶节点）。warehouse_id外键出现在warehouse_inventory和bill_detail表中引用本表id。区别于equipment_warehouse（机台旁暂存缓冲区，绑定到设备）。"
+    },
+    {
+      "logic_class": "semi:MaterialBatch",
+      "physical_table": "warehouse_inventory",
+      "primary_key": "id",
+      "label_cn": "物料批次（物料实例）",
+      "display_column": "batch_no",
+      "properties": {
+        "semi:hasBatchNo": "batch_no",
+        "semi:hasBoxNo": "unique_code",
+        "semi:hasBatchQty": "quantity"
+      },
+      "key_columns": [
+        "id",
+        "material_model_id",
+        "material_model_code",
+        "material_model_name",
+        "material_type_name",
+        "unique_code",
+        "batch_no",
+        "supplier",
+        "quantity",
+        "unit_name",
+        "warehouse_id",
+        "warehouse_name",
+        "receive_time"
+      ],
+      "note": "物料批次实例无独立表，批次字段（batch_no/unique_code）嵌入在warehouse_inventory、warehouse_input_bill_detail、warehouse_output_bill_detail中。此处主映射到warehouse_inventory（完整批次在库快照）。单件追踪型填充unique_code（盒号），批量计数型仅有batch_no；由warehouse_material.batch/unique_code字段配置物料管理模式。"
+    },
+    {
+      "logic_class": "semi:Inventory",
+      "physical_table": "warehouse_inventory",
+      "primary_key": "id",
+      "label_cn": "库存明细",
+      "display_column": "material_model_name",
+      "properties": {
+        "semi:hasStockQty": "quantity",
+        "semi:hasStockUnit": "unit_name"
+      },
+      "key_columns": [
+        "id",
+        "material_model_id",
+        "material_model_code",
+        "material_model_name",
+        "material_type_name",
+        "unique_code",
+        "batch_no",
+        "quantity",
+        "lock_quantity",
+        "unit_name",
+        "warehouse_id",
+        "warehouse_name",
+        "receive_time"
+      ],
+      "note": "库存明细快照表，一行=(库位×物料×批次)->在库数量。与semi:MaterialBatch共享warehouse_inventory表；quantity＝当前在库量，lock_quantity＝锁定量，可用量＝quantity-lock_quantity。"
+    },
+    {
+      "logic_class": "semi:InboundApprovalRecord",
+      "physical_table": "warehouse_approval_record",
+      "primary_key": "id",
+      "label_cn": "入库审批记录",
+      "display_column": "lot_code",
+      "properties": {
+        "semi:hasApprovalStatus": "audit_state",
+        "semi:hasApprovalResult": "audit_type"
+      },
+      "key_columns": [
+        "id",
+        "lot_id",
+        "lot_code",
+        "product_id",
+        "product_code",
+        "packing_num",
+        "product_num",
+        "unqualified_num",
+        "unqualified_rate",
+        "audit_type",
+        "audit_state",
+        "gmt_create"
+      ],
+      "note": "产成品入库审批记录。audit_state为字符串类型，支持多阶段审批流（如单值'1'或逗号分隔'1,2,3'表示多个审批节点已完成）。lot_id/lot_code关联源ProductionLot；packing_num为包装盒数，对应产成品MaterialBatch实例数。"
+    },
+    {
+      "logic_class": "semi:InboundEventRecord",
+      "physical_table": "warehouse_input_bill_detail",
+      "primary_key": "id",
+      "label_cn": "入库记录",
+      "display_column": "material_model_name",
+      "properties": {
+        "semi:hasBillNo": "input_bill_no",
+        "semi:hasBillQty": "count",
+        "semi:hasBillTime": "create_time"
+      },
+      "key_columns": [
+        "id",
+        "input_bill_id",
+        "input_bill_no",
+        "material_model_id",
+        "material_model_code",
+        "material_model_name",
+        "material_type_name",
+        "unique_code",
+        "batch_no",
+        "count",
+        "unit_name",
+        "warehouse_id",
+        "warehouse_name",
+        "create_time",
+        "status",
+        "type"
+      ],
+      "note": "入库单明细表（一单多行，每行=一个物料批次实例的入库记录）。与入库单头表warehouse_input_bill通过input_bill_id关联。unique_code为盒号（单件追踪型）；warehouse_id外键引用warehouse_location.id。"
+    },
+    {
+      "logic_class": "semi:OutboundEventRecord",
+      "physical_table": "warehouse_output_bill_detail",
+      "primary_key": "id",
+      "label_cn": "出库记录",
+      "display_column": "material_model_name",
+      "properties": {
+        "semi:hasBillNo": "output_bill_no",
+        "semi:hasBillQty": "output_count",
+        "semi:hasBillTime": "create_time"
+      },
+      "key_columns": [
+        "id",
+        "output_bill_id",
+        "output_bill_no",
+        "material_model_id",
+        "material_model_code",
+        "material_model_name",
+        "material_type_name",
+        "unique_code",
+        "batch_no",
+        "output_count",
+        "unit_name",
+        "warehouse_id",
+        "warehouse_name",
+        "create_time",
+        "status",
+        "destination",
+        "require_count"
+      ],
+      "note": "出库单明细表（一单多行，每行=一个物料批次实例的出库记录）。与出库单头表warehouse_output_bill通过output_bill_id关联。destination记录出库目标（生产线/部门）；require_count为申领量，output_count为实际出库量。"
     }
   ],
   "relation_mappings": [
@@ -907,11 +1100,15 @@
       "range_class": "semi:Sublot"
     },
     {
-      "logic_relation": "semi:locatedInSlot",
-      "description": "Wafer 位于哪个 Carrier 槽位 — 虚拟关系",
-      "strategy": "Virtual",
+      "logic_relation": "semi:isLoadedIn",
+      "description": "Wafer 当前装载于哪个载具（槽位坐标另由 slot_no 列/hasSlotNo 属性表达）",
+      "strategy": "ForeignKey",
       "join_logic": {
-        "note": "Wafer在MySQL生产执行层为虚拟类。Carrier与批次关联：carrier.lot_code = routerx_lot.lot_code（批次整体粒度）。"
+        "source_table": "matrix_routerx_operation_lot_wafer",
+        "source_key": "carrier_code",
+        "target_table": "carrier_info",
+        "target_key": "code",
+        "note": "carrier_code 是载具编码外键，JOIN 后可查载具详情（类型/状态/载具组等）。槽位号 slot_no 是 Wafer 行上的数据属性，可直接 WHERE w.slot_no=N 过滤，无需额外 JOIN。"
       },
       "domain_class": "semi:Wafer",
       "range_class": "semi:Carrier"
@@ -1049,12 +1246,12 @@
       "description": "Route 包含哪些 ProcessStation(工序)，有序嵌入JSON",
       "strategy": "EmbeddedJSON",
       "join_logic": {
-        "source_table": "routerx_router_config",
+        "source_table": "matrix_routerx_config_route",
         "jsonb_column": "processes",
-        "inner_key": "process_id",
+        "inner_key": "id",
         "target_table": "matrix_routerx_config_process",
         "target_key": "id",
-        "note": "routerx_router_config.processes 是jsonb数组，每项含 process_id 引用 matrix_routerx_config_process.id，顺序即工序序列。"
+        "note": "processes 是JSON数组，每个元素含 id、code、name 等属性，id 对应 matrix_routerx_config_process.id，数组顺序即工序先后顺序，查询结果必须 ORDER BY jt.seq"
       },
       "domain_class": "semi:Route",
       "range_class": "semi:ProcessStation"
@@ -1081,7 +1278,7 @@
         "jsonb_column": "equipments",
         "target_table": "equipment",
         "target_key": "id",
-        "note": "equipment_group.equipments 为 JSON 数组，存储 equipment.id 列表；多对多关系，一个设备可归属多个设备组。"
+        "note": "equipment_group.equipments 为 JSON 数组，存储 equipment.id 列表；多对多关系。MySQL 8.0 正确JOIN写法：JOIN JSON_TABLE(eg.equipments, '$[*]' COLUMNS (equip_id BIGINT PATH '$')) jt ON TRUE JOIN equipment e ON e.id = jt.equip_id"
       },
       "domain_class": "semi:EquipmentGroup",
       "range_class": "semi:Equipment"
@@ -1109,7 +1306,7 @@
         "jsonb_column": "equipment_list",
         "target_table": "equipment",
         "target_key": "id",
-        "note": "反向：recipe_manage.equipment_list jsonb数组记录可运行该配方的设备ID。正向：equipment→recipe关联需通过 matrix_routerx_config_process.recipe_group_id 或 product_model.recipe_id 间接推导。"
+        "note": "反向：recipe_manage.equipment_list JSON数组记录可运行该配方的设备ID。MySQL 8.0 正确JOIN写法：JOIN JSON_TABLE(rm.equipment_list, '$[*]' COLUMNS (equip_id BIGINT PATH '$')) jt ON TRUE JOIN equipment e ON e.id = jt.equip_id"
       },
       "domain_class": "semi:Equipment",
       "range_class": "semi:Recipe"
@@ -1401,21 +1598,6 @@
       },
       "domain_class": "semi:StationPassRecord",
       "range_class": "semi:Equipment"
-    },
-    {
-      "logic_relation": "semi:splitInto",
-      "description": "批次拆批(Split)：一个批次拆分为多个子批次，在谱系DAG中为一对多发散节点",
-      "strategy": "ForeignKey",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot",
-        "source_key": "id",
-        "target_table": "matrix_routerx_operation_lot",
-        "target_key": "parent_id",
-        "filter_condition": "operation_type = 'SPLIT'",
-        "note": "拆批后新批次的 parent_id 指向源批次 id。可结合 matrix_routerx_operation_lot_batch_resume_log(operation_type=SPLIT) 获取完整事件上下文。"
-      },
-      "domain_class": "semi:ProductionLot",
-      "range_class": "semi:ProductionLot"
     },
     {
       "logic_relation": "semi:mergedFrom",

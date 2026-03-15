@@ -70,6 +70,7 @@ export default function SynonymManager() {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTable, setFilterTable] = useState('');
+  const [filterType, setFilterType] = useState('');
 
   // Add modal state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -95,12 +96,13 @@ export default function SynonymManager() {
   const filteredSynonyms = useMemo(() => {
     return synonyms.filter(s => {
       if (filterTable && s.target_uri !== filterTable) return false;
+      if (filterType && (s.target_type || 'class') !== filterType) return false;
       if (searchTerm && !s.synonym.toLowerCase().includes(searchTerm.toLowerCase())
         && !s.target_uri.toLowerCase().includes(searchTerm.toLowerCase())
         && !(s.target_label_cn || '').toLowerCase().includes(searchTerm.toLowerCase())) return false;
       return true;
     });
-  }, [synonyms, filterTable, searchTerm]);
+  }, [synonyms, filterTable, filterType, searchTerm]);
 
   // ─── Data loading ─────────────────────────
   const loadStats = useCallback(async () => {
@@ -223,6 +225,16 @@ export default function SynonymManager() {
     input: { width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14, outline: 'none' },
   };
 
+  const typeTag = (type?: string) => {
+    const map: Record<string, [string, string, string]> = {
+      class:         ['#dbeafe', '#1d4ed8', '实体类'],
+      relation:      ['#f3e8ff', '#7c3aed', '关系'],
+      data_property: ['#ccfbf1', '#0f766e', '数据属性'],
+    };
+    const [bg, c, label] = map[type || 'class'] || ['#f3f4f6', '#6b7280', type || '?'];
+    return <span style={styles.tag(bg, c)}>{label}</span>;
+  };
+
   const sourceTag = (source: string) => {
     const map: Record<string, [string, string]> = { builtin: ['#dbeafe', '#1d4ed8'], manual: ['#fae8ff', '#a21caf'], auto: ['#d1fae5', '#065f46'] };
     const [bg, c] = map[source] || ['#f3f4f6', '#6b7280'];
@@ -263,8 +275,14 @@ export default function SynonymManager() {
             <div style={styles.cardHeader}>
               <b>同义词列表 ({filteredSynonyms.length})</b>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ ...styles.input, width: 120 } as any}>
+                  <option value="">全部类型</option>
+                  <option value="class">实体类</option>
+                  <option value="relation">关系</option>
+                  <option value="data_property">数据属性</option>
+                </select>
                 <select value={filterTable} onChange={e => setFilterTable(e.target.value)} style={styles.input as any}>
-                  <option value="">全部本体类</option>
+                  <option value="">全部 URI</option>
                   {tableNames.map(t => <option key={t} value={t}>{classLabel(t)}</option>)}
                 </select>
                 <input placeholder="搜索..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
@@ -277,11 +295,12 @@ export default function SynonymManager() {
             <div style={{ overflowX: 'auto' }}>
               <table style={styles.table}>
                 <thead>
-                  <tr>{['本体类', '同义词', '来源', '状态', '操作'].map(h => <th key={h} style={styles.th}>{h}</th>)}</tr>
+                  <tr>{['类型', '本体 URI', '同义词', '来源', '状态', '操作'].map(h => <th key={h} style={styles.th}>{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {filteredSynonyms.map((s, i) => (
                     <tr key={`${s.target_uri}-${s.synonym}-${i}`}>
+                      <td style={styles.td}>{typeTag(s.target_type)}</td>
                       <td style={styles.td}>
                         <span style={{ fontWeight: 600, color: '#374151', fontSize: 13 }}>{s.target_label_cn || s.target_uri}</span>
                         <br/>
@@ -307,7 +326,7 @@ export default function SynonymManager() {
                     </tr>
                   ))}
                   {filteredSynonyms.length === 0 && (
-                    <tr><td colSpan={5} style={{ padding: 32, textAlign: 'center', color: '#9ca3af' }}>暂无数据</td></tr>
+                    <tr><td colSpan={6} style={{ padding: 32, textAlign: 'center', color: '#9ca3af' }}>暂无数据</td></tr>
                   )}
                 </tbody>
               </table>

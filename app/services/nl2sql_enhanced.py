@@ -214,6 +214,13 @@ class EnhancedNL2SQLConverter:
    - 字符串拼接：使用 `CONCAT()`，不用 `||`
    - 禁止 `FILTER (WHERE ...)` 语法
    - 禁止 `::` 类型转换，用 `CAST(x AS TYPE)` 代替
+   - **JSON数组遍历**：当需要展开 JSON 列中的数组并 JOIN 时，必须使用 MySQL 内置函数 `JSON_TABLE()`（注意：JSON_TABLE 是函数名，不是表名），并用 `FOR ORDINALITY` 保留数组原始顺序，标准写法：
+     `CROSS JOIN JSON_TABLE(<json列>, '$[*]' COLUMNS (seq FOR ORDINALITY, id INT PATH '$.id')) AS jt`
+     `INNER JOIN <目标表> t ON t.id = jt.id`
+     `ORDER BY jt.seq`
+     关键键字段名从语义注释获取（`$.id` 或 `$.process_id` 等）；
+     禁止用 `JSON_CONTAINS()` / `JSON_EXTRACT()` 与整体数组做比较；
+     禁止把物理表名当作函数名（如 `CROSS JOIN matrix_routerx_config_route(...)` 是错误写法）
 6. SQL 末尾不要添加分号 (;)
 7. WHERE 条件用 name/description 列做中文匹配，不猜测 code 列的英文值
 8. **语义引擎优先原则**（当用户查询包含[语义引擎分析结果]时必须严格遵守）：
@@ -374,7 +381,12 @@ class EnhancedNL2SQLConverter:
         
         if cte_aliases:
             logger.info(f"CTE aliases detected (skipping validation): {cte_aliases}")
-        
+
+        # MySQL 内置表函数 / 关键字，出现在 JOIN 后面但不是真实表名，跳过验证
+        builtin_table_functions = {
+            'json_table', 'lateral', 'dual',
+        }
+
         # 提取SQL中的表名
         from_pattern = r'FROM\s+([\w_]+)(?:\s|$|;)'
         join_pattern = r'JOIN\s+([\w_]+)(?:\s|$|;)'
@@ -384,8 +396,8 @@ class EnhancedNL2SQLConverter:
         # 检查FROM子句中的表名
         for match in re.finditer(from_pattern, sql, re.IGNORECASE):
             table_name = match.group(1)
-            # 跳过 CTE 别名
-            if table_name.lower() in cte_aliases:
+            # 跳过 CTE 别名 和 MySQL 内置表函数
+            if table_name.lower() in cte_aliases or table_name.lower() in builtin_table_functions:
                 continue
             if table_name.lower() not in [t.lower() for t in valid_table_names]:
                 # 表名不存在，这是一个可能的错误
@@ -405,8 +417,8 @@ class EnhancedNL2SQLConverter:
         # 检查JOIN子句中的表名
         for match in re.finditer(join_pattern, sql, re.IGNORECASE):
             table_name = match.group(1)
-            # 跳过 CTE 别名
-            if table_name.lower() in cte_aliases:
+            # 跳过 CTE 别名 和 MySQL 内置表函数
+            if table_name.lower() in cte_aliases or table_name.lower() in builtin_table_functions:
                 continue
             if table_name.lower() not in [t.lower() for t in valid_table_names]:
                 logger.warning(f"Table '{table_name}' in JOIN not found in schema")

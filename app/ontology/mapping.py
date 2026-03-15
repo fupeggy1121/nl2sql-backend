@@ -33,6 +33,7 @@ class PhysicalTable:
     key_columns: List[str] = field(default_factory=list)
     properties: Dict[str, Optional[str]] = field(default_factory=dict)
     virtual: bool = False
+    virtual_kind: Optional[str] = None
     embedded_in: Optional[str] = None
     filter_condition: Optional[str] = None  # 同表多类区分条件，e.g. "parent_id != 0"
     note: Optional[str] = None
@@ -285,6 +286,7 @@ class MappingDictionary:
                 key_columns=item.get("key_columns", []),
                 properties=item.get("properties", {}),
                 virtual=item.get("virtual", False),
+                virtual_kind=item.get("virtual_kind"),
                 embedded_in=item.get("embedded_in"),
                 filter_condition=item.get("filter_condition"),
                 note=item.get("note"),
@@ -353,6 +355,23 @@ class MappingDictionary:
                         note=jl.get("note"),
                     )
                     self._recursive_map[rec.logic_relation] = rec
+            elif strategy == "EmbeddedJSON":
+                # JSONB 数组展开 JOIN：构造一个语义提示性的 JoinCondition
+                # 用于给 LLM 提供 JOIN 路径方向，真实 SQL 由 note 中的模板指导
+                src_tbl = jl.get("source_table", "")
+                tgt_tbl = jl.get("target_table", "")
+                jsonb_col = jl.get("jsonb_column", "")
+                inner_key = jl.get("inner_key", "")
+                tgt_key = jl.get("target_key", "id")
+                if src_tbl and tgt_tbl and jsonb_col:
+                    # from_key 编码为 "jsonb_col[*].inner_key" 供 LLM 理解方向
+                    fk_hint = f"{jsonb_col}->>{inner_key}" if inner_key else jsonb_col
+                    conditions.append(JoinCondition(
+                        from_table=src_tbl,
+                        from_key=fk_hint,
+                        to_table=tgt_tbl,
+                        to_key=tgt_key,
+                    ))
 
             rm = RelationMapping(
                 logic_relation=item["logic_relation"],

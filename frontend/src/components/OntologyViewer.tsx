@@ -35,6 +35,12 @@ interface GraphNode extends d3.SimulationNodeDatum {
   group: string;
   rangeType?: string;
   virtual?: boolean;
+  virtual_kind?: string;
+  // physical mapping
+  physical_table?: string;
+  primary_key?: string;
+  key_columns?: string[];
+  properties?: Record<string, string>;
 }
 
 interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
@@ -250,12 +256,19 @@ export default function OntologyViewer() {
       )
       .on('click', (_event, d) => setSelectedNode(d));
 
-    // diamond path helper (for virtual/type-template classes)
+    // diamond path helper (for virtual type-template classes)
     const diamondPath = (r: number) =>
       `M0,${-r} L${r},0 L0,${r} L${-r},0 Z`;
 
-    // ── Virtual (type-template) class nodes: diamond shape ──
-    node.filter(d => d.type === 'class' && !!d.virtual)
+    // hexagon path helper (for virtual action/event classes)
+    const hexPath = (r: number) => {
+      const h = +(r * 0.866).toFixed(2);
+      const h2 = +(r * 0.5).toFixed(2);
+      return `M0,${-r} L${h},${-h2} L${h},${h2} L0,${r} L${-h},${h2} L${-h},${-h2} Z`;
+    };
+
+    // ── Virtual type-template class nodes: diamond shape ──
+    node.filter(d => d.type === 'class' && !!d.virtual && d.virtual_kind !== 'action_event')
       .append('path')
       .attr('d', diamondPath(20))
       .attr('fill', '#1c1408')
@@ -268,7 +281,7 @@ export default function OntologyViewer() {
       .attr('opacity', 0.92);
 
     // "T" label inside diamond
-    node.filter(d => d.type === 'class' && !!d.virtual)
+    node.filter(d => d.type === 'class' && !!d.virtual && d.virtual_kind !== 'action_event')
       .append('text')
       .text('T')
       .attr('dy', '0.35em')
@@ -276,6 +289,30 @@ export default function OntologyViewer() {
       .attr('font-size', 10)
       .attr('font-weight', 700)
       .attr('fill', '#fbbf24')
+      .style('pointer-events', 'none');
+
+    // ── Virtual action/event class nodes: hexagon shape ──
+    node.filter(d => d.type === 'class' && !!d.virtual && d.virtual_kind === 'action_event')
+      .append('path')
+      .attr('d', hexPath(20))
+      .attr('fill', '#120c1e')
+      .attr('stroke', d => {
+        if (searchTerm && d.label.toLowerCase().includes(searchTerm.toLowerCase())) return '#c4b5fd';
+        return '#8b5cf6';
+      })
+      .attr('stroke-width', 2)
+      .attr('stroke-dasharray', '5,3')
+      .attr('opacity', 0.92);
+
+    // "A" label inside hexagon
+    node.filter(d => d.type === 'class' && !!d.virtual && d.virtual_kind === 'action_event')
+      .append('text')
+      .text('A')
+      .attr('dy', '0.35em')
+      .attr('text-anchor', 'middle')
+      .attr('font-size', 10)
+      .attr('font-weight', 700)
+      .attr('fill', '#c4b5fd')
       .style('pointer-events', 'none');
 
     // ── Regular class nodes: circle ──
@@ -312,6 +349,7 @@ export default function OntologyViewer() {
       .attr('text-anchor', 'middle')
       .attr('font-size', d => d.type === 'class' ? 11 : 9)
       .attr('fill', d => {
+        if (d.virtual && d.virtual_kind === 'action_event') return '#c4b5fd';
         if (d.virtual) return '#fde68a';
         if (d.type === 'class') return '#e2e8f0';
         return '#94a3b8';
@@ -479,6 +517,12 @@ export default function OntologyViewer() {
               </svg>
               类型模板
             </span>
+            <span style={styles.legendItem}>
+              <svg width="14" height="14" style={{ marginRight: 4 }}>
+                <path d="M7,1 L12.2,4 L12.2,10 L7,13 L1.8,10 L1.8,4 Z" fill="#120c1e" stroke="#8b5cf6" strokeWidth="1.5" strokeDasharray="3,2" />
+              </svg>
+              操作/事件类
+            </span>
           </div>
           <button style={styles.btnPrimary} onClick={() => setShowUploadModal(true)}>
             <Upload size={14} /> 上传 TTL
@@ -522,61 +566,197 @@ export default function OntologyViewer() {
           <svg ref={svgRef} style={styles.svg} />
 
           {/* Node detail panel */}
-          {selectedNode && (
-            <div style={styles.detailPanel}>
-              <div style={styles.detailHeader}>
-                <span style={styles.detailTitle}>{selectedNode.label}</span>
-                <button style={styles.closeBtn} onClick={() => setSelectedNode(null)}>
-                  <X size={14} />
-                </button>
-              </div>
-              <div style={styles.detailBody}>
-                <div style={styles.detailRow}>
-                  <span style={styles.detailLabel}>URI</span>
-                  <span style={styles.detailValue}>{selectedNode.id}</span>
+          {selectedNode && (() => {
+            // Compute connected links for this node
+            const allLinks = filteredData?.links ?? [];
+            const allNodes = filteredData?.nodes ?? [];
+            const nodeById = Object.fromEntries(allNodes.map(n => [n.id, n]));
+
+            // Object properties: outgoing (this node as domain)
+            const outObjectProps = allLinks.filter(
+              l => l.type === 'objectProperty' && (l.source as GraphNode).id === selectedNode.id
+            );
+            // Object properties: incoming (this node as range)
+            const inObjectProps = allLinks.filter(
+              l => l.type === 'objectProperty' && (l.target as GraphNode).id === selectedNode.id
+            );
+            // Data properties attached to this node
+            const dataProps = allLinks.filter(
+              l => l.type === 'dataPropertyEdge' && (l.source as GraphNode).id === selectedNode.id
+            );
+
+            return (
+              <div style={styles.detailPanel}>
+                <div style={styles.detailHeader}>
+                  <span style={styles.detailTitle}>{selectedNode.label}</span>
+                  <button style={styles.closeBtn} onClick={() => setSelectedNode(null)}>
+                    <X size={14} />
+                  </button>
                 </div>
-                <div style={styles.detailRow}>
-                  <span style={styles.detailLabel}>类型</span>
-                  <span style={styles.detailValue}>
-                    {selectedNode.type === 'dataProperty'
-                      ? '数据属性'
-                      : selectedNode.virtual
-                        ? '类型模板（虚拟类）'
-                        : '本体类（实体）'}
-                  </span>
-                </div>
-                {selectedNode.virtual && (
+                <div style={styles.detailBody}>
+                  {/* URI */}
                   <div style={styles.detailRow}>
-                    <span style={styles.detailLabel}>说明</span>
-                    <span style={{ ...styles.detailValue, color: '#fbbf24', fontSize: 11 }}>
-                      Type 层模板，定义操作规则/类型，无物理表。执行记录见对应的 *Record 实例类。
+                    <span style={styles.detailLabel}>URI</span>
+                    <span style={{ ...styles.detailValue, fontFamily: 'monospace', fontSize: 11 }}>{selectedNode.id}</span>
+                  </div>
+
+                  {/* 类型 */}
+                  <div style={styles.detailRow}>
+                    <span style={styles.detailLabel}>类型</span>
+                    <span style={styles.detailValue}>
+                      {selectedNode.type === 'dataProperty'
+                        ? '数据属性'
+                        : selectedNode.virtual && selectedNode.virtual_kind === 'action_event'
+                          ? '操作/事件类（抽象）'
+                          : selectedNode.virtual
+                            ? '类型模板（虚拟类）'
+                            : '本体类（实体）'}
                     </span>
                   </div>
-                )}
-                {selectedNode.comment && (
+
+                  {/* 虚拟类说明 */}
+                  {selectedNode.virtual && (
+                    <div style={styles.detailRow}>
+                      <span style={{ ...styles.detailValue, color: selectedNode.virtual_kind === 'action_event' ? '#c4b5fd' : '#fbbf24', fontSize: 11 }}>
+                        {selectedNode.virtual_kind === 'action_event'
+                          ? '抽象操作/事件类，定义操作行为规则，无物理表。'
+                          : 'Type 层模板，无物理表。执行记录见对应 *Record 实例类。'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* 描述 */}
+                  {selectedNode.comment && (
+                    <div style={styles.detailRow}>
+                      <span style={styles.detailLabel}>描述</span>
+                      <span style={{ ...styles.detailValue, fontSize: 12, color: '#cbd5e1' }}>{selectedNode.comment}</span>
+                    </div>
+                  )}
+
+                  {/* 数据属性值类型（dataProperty节点本身） */}
+                  {selectedNode.rangeType && (
+                    <div style={styles.detailRow}>
+                      <span style={styles.detailLabel}>值类型</span>
+                      <span style={{ ...styles.detailValue, fontFamily: 'monospace', fontSize: 11 }}>{selectedNode.rangeType}</span>
+                    </div>
+                  )}
+
+                  {/* 分组 */}
                   <div style={styles.detailRow}>
-                    <span style={styles.detailLabel}>描述</span>
-                    <span style={styles.detailValue}>{selectedNode.comment}</span>
+                    <span style={styles.detailLabel}>分组</span>
+                    <span style={{ ...styles.detailValue, color: getGroupColor(selectedNode.group) }}>{selectedNode.group}</span>
                   </div>
-                )}
-                {selectedNode.rangeType && (
-                  <div style={styles.detailRow}>
-                    <span style={styles.detailLabel}>值类型</span>
-                    <span style={styles.detailValue}>{selectedNode.rangeType}</span>
-                  </div>
-                )}
-                <div style={styles.detailRow}>
-                  <span style={styles.detailLabel}>分组</span>
-                  <span style={{
-                    ...styles.detailValue,
-                    color: getGroupColor(selectedNode.group)
-                  }}>
-                    {selectedNode.group}
-                  </span>
+
+                  {/* ── 物理映射（仅class节点） ── */}
+                  {selectedNode.type === 'class' && selectedNode.physical_table && (
+                    <>
+                      <div style={styles.sectionDivider} />
+                      <div style={styles.sectionTitle}>物理映射</div>
+                      <div style={styles.detailRow}>
+                        <span style={styles.detailLabel}>物理表</span>
+                        <span style={{ ...styles.detailValue, fontFamily: 'monospace', color: '#38bdf8' }}>{selectedNode.physical_table}</span>
+                      </div>
+                      {selectedNode.primary_key && (
+                        <div style={styles.detailRow}>
+                          <span style={styles.detailLabel}>主键</span>
+                          <span style={{ ...styles.detailValue, fontFamily: 'monospace', fontSize: 11 }}>{selectedNode.primary_key}</span>
+                        </div>
+                      )}
+                      {selectedNode.key_columns && selectedNode.key_columns.length > 0 && (
+                        <div style={styles.detailRow}>
+                          <span style={styles.detailLabel}>关键列</span>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+                            {selectedNode.key_columns.map(col => (
+                              <span key={col} style={styles.colBadge}>{col}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {selectedNode.properties && Object.keys(selectedNode.properties).length > 0 && (
+                        <div style={styles.detailRow}>
+                          <span style={styles.detailLabel}>语义属性 → 列映射</span>
+                          <div style={{ marginTop: 4 }}>
+                            {Object.entries(selectedNode.properties).map(([sem, col]) => (
+                              <div key={sem} style={styles.propRow}>
+                                <span style={styles.propSem}>{sem.replace('semi:', '')}</span>
+                                <span style={styles.propArrow}>→</span>
+                                <span style={styles.propCol}>{String(col)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* ── 对象属性（仅class节点） ── */}
+                  {selectedNode.type === 'class' && (outObjectProps.length > 0 || inObjectProps.length > 0) && (
+                    <>
+                      <div style={styles.sectionDivider} />
+                      <div style={styles.sectionTitle}>对象属性</div>
+                      {outObjectProps.length > 0 && (
+                        <div style={styles.detailRow}>
+                          <span style={styles.detailLabel}>出边（此类 → 目标）</span>
+                          {outObjectProps.map(l => {
+                            const tgt = nodeById[(l.target as GraphNode).id];
+                            return (
+                              <div key={l.uri || l.label} style={styles.relRow}>
+                                <span style={styles.relProp}>{l.label}</span>
+                                <span style={styles.relArrow}>→</span>
+                                <span
+                                  style={{ ...styles.relTarget, cursor: 'pointer' }}
+                                  onClick={() => tgt && setSelectedNode(tgt)}
+                                >{tgt?.label || (l.target as GraphNode).id}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {inObjectProps.length > 0 && (
+                        <div style={styles.detailRow}>
+                          <span style={styles.detailLabel}>入边（来源 → 此类）</span>
+                          {inObjectProps.map(l => {
+                            const src = nodeById[(l.source as GraphNode).id];
+                            return (
+                              <div key={(l.uri || l.label) + '_in'} style={styles.relRow}>
+                                <span
+                                  style={{ ...styles.relTarget, cursor: 'pointer' }}
+                                  onClick={() => src && setSelectedNode(src)}
+                                >{src?.label || (l.source as GraphNode).id}</span>
+                                <span style={styles.relArrow}>→</span>
+                                <span style={styles.relProp}>{l.label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* ── 数据属性（仅class节点） ── */}
+                  {selectedNode.type === 'class' && dataProps.length > 0 && (
+                    <>
+                      <div style={styles.sectionDivider} />
+                      <div style={styles.sectionTitle}>数据属性</div>
+                      <div style={styles.detailRow}>
+                        {dataProps.map(l => {
+                          const dpNode = nodeById[(l.target as GraphNode).id];
+                          return (
+                            <div key={l.uri || l.label} style={styles.dpRow}>
+                              <span style={styles.dpName}>{l.label}</span>
+                              {dpNode?.rangeType && (
+                                <span style={styles.dpType}>{dpNode.rangeType.replace('xsd:', '')}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* Version panel */}
@@ -792,7 +972,7 @@ const styles: Record<string, React.CSSProperties> = {
   detailPanel: {
     position: 'absolute' as const, bottom: 16, left: 16,
     background: '#1e293b', border: '1px solid #334155', borderRadius: 10,
-    padding: 0, width: 280, zIndex: 20, overflow: 'hidden',
+    padding: 0, width: 340, maxWidth: 'calc(100vw - 32px)', zIndex: 20, overflow: 'hidden',
     boxShadow: '0 8px 24px rgba(0,0,0,.4)',
   },
   detailHeader: {
@@ -800,10 +980,24 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '10px 14px', borderBottom: '1px solid #334155',
   },
   detailTitle: { fontSize: 14, fontWeight: 600, color: '#38bdf8' },
-  detailBody: { padding: '8px 14px 12px' },
-  detailRow: { marginBottom: 6 },
-  detailLabel: { fontSize: 11, color: '#64748b', display: 'block', marginBottom: 2 },
+  detailBody: { padding: '8px 14px 12px', maxHeight: 420, overflowY: 'auto' as const },
+  detailRow: { marginBottom: 8 },
+  detailLabel: { fontSize: 11, color: '#64748b', display: 'block', marginBottom: 3 },
   detailValue: { fontSize: 13, color: '#e2e8f0', wordBreak: 'break-all' as const },
+  sectionDivider: { height: 1, background: '#334155', margin: '8px 0' },
+  sectionTitle: { fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 6 },
+  colBadge: { fontSize: 10, padding: '1px 6px', background: '#0f172a', border: '1px solid #334155', borderRadius: 4, color: '#94a3b8', fontFamily: 'monospace' },
+  propRow: { display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 },
+  propSem: { fontSize: 11, color: '#a5b4fc', fontFamily: 'monospace', minWidth: 0, flex: '1 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  propArrow: { fontSize: 11, color: '#475569', flexShrink: 0 },
+  propCol: { fontSize: 11, color: '#38bdf8', fontFamily: 'monospace', minWidth: 0, flex: '1 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
+  relRow: { display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, flexWrap: 'wrap' as const },
+  relProp: { fontSize: 11, color: '#fbbf24', fontFamily: 'monospace' },
+  relArrow: { fontSize: 11, color: '#475569' },
+  relTarget: { fontSize: 11, color: '#7dd3fc', textDecoration: 'underline' },
+  dpRow: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 },
+  dpName: { fontSize: 12, color: '#c4b5fd' },
+  dpType: { fontSize: 10, padding: '1px 5px', background: '#1e1b4b', border: '1px solid #4338ca', borderRadius: 4, color: '#a5b4fc' },
 
   // Version panel
   versionPanel: {

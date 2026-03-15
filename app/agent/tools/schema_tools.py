@@ -317,9 +317,13 @@ def validate_sql(sql: str) -> dict:
     except Exception:
         pass
     # FROM table, JOIN table
+    # MySQL 内置表函数（出现在 JOIN 后面但不是真实表名）
+    MYSQL_BUILTIN_TABLE_FUNCS = {'json_table', 'lateral', 'dual'}
     from_pattern = r'(?:FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_]*)'
     found = re.findall(from_pattern, sql, re.IGNORECASE)
     for table in found:
+        if table.lower() in MYSQL_BUILTIN_TABLE_FUNCS:
+            continue  # JSON_TABLE 等是 MySQL 内置函数，不是表名
         if table.lower() in valid_tables:
             tables_found.append(table)
         else:

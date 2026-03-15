@@ -325,6 +325,7 @@ async def get_graph_data() -> Dict[str, Any]:
         # 检查是否为虚拟类（type 层模板，无物理表）
         pt = mapping.get_physical_table(uri)
         is_virtual = pt.virtual if pt is not None else True  # 未在 mapping 中出现的也视为虚拟
+        virtual_kind = pt.virtual_kind if pt is not None else None
         nodes.append({
             "id": uri,
             "label": cls.label or short,
@@ -332,6 +333,12 @@ async def get_graph_data() -> Dict[str, Any]:
             "type": "class",
             "group": group,
             "virtual": is_virtual,
+            "virtual_kind": virtual_kind,
+            # 物理表信息（供详情面板展示）
+            "physical_table": pt.table_name if pt is not None else None,
+            "primary_key": pt.primary_key if pt is not None else None,
+            "key_columns": pt.key_columns if pt is not None else [],
+            "properties": dict(pt.properties) if pt is not None and pt.properties else {},
         })
         node_ids.add(uri)
 
