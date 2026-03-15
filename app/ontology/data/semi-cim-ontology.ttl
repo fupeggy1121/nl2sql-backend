@@ -971,10 +971,10 @@ semi:CompleteLotOp    a owl:NamedIndividual ; rdfs:label "23-批次完结"      
 ###            warehouse_approval_record, warehouse_input_bill_detail, warehouse_output_bill_detail
 ### ==========================================
 
-# 7.1 库位 (WarehouseLocation) — warehouse_location
+# 7.1 库位 (WarehouseLocation) — warehouse_model
 semi:WarehouseLocation a owl:Class ;
     rdfs:label "库位" ;
-    rdfs:comment "线边仓物理存储空间的最小管理单元（当前业务按1层使用，库位为叶节点）。对应 warehouse_location 表（支持多层级，通过 parent_id/level_code/path 维护层次结构）；每条记录代表一个独立的物理存储位（货架/料架/暂存区格位）。注：equipment_warehouse 表是设备旁的暂存缓冲区（绑定到设备），与 warehouse_location 是两个不同的存储概念。通过 semi:hasInventory 关联当前库存明细集合。" .
+    rdfs:comment "线边仓物理存储空间的最小管理单元。对应 warehouse_model 表（支持多层级，通过 parent_id/parent_name 维护层次结构）；每条记录代表一个独立的库位节点，通过 code/name 标识，type 区分存储类型，warehouse_id/area_id/factory_id 表示所属仓库/区域/工厂。注：equipment_warehouse 表是设备旁的暂存缓冲区（绑定到设备），与 warehouse_model 是两个不同的存储概念。通过 semi:hasInventory 关联当前库存明细集合。" .
 
 # 7.2 物料批次/物料实例 (MaterialBatch)
 semi:MaterialBatch a owl:Class ;
@@ -1084,6 +1084,11 @@ semi:hasInventory a owl:ObjectProperty ;
     rdfs:label "当前库存明细" ;
     rdfs:comment "库位持有的库存明细记录集合，一个库位可关联多条 Inventory 记录（每种物料批次对应一条）。" .
 
+semi:hasParentLocation a owl:ObjectProperty ;
+    rdfs:domain semi:WarehouseLocation ; rdfs:range semi:WarehouseLocation ;
+    rdfs:label "上级库位/仓库节点" ;
+    rdfs:comment "通过 warehouse_model.parent_id 表达的行政或逻辑归属层级关系（自引用外键）。顶层仓库节点 parent_id=0，叶节点库位指向其所属的上级区域或仓库节点。支持任意深度的树状层级查询（如：库位 → 区域 → 仓库 → 工厂）。" .
+
 # 8.3 Inventory 关联属性
 semi:stockOfMaterial a owl:ObjectProperty ;
     rdfs:domain semi:Inventory ; rdfs:range semi:Material ;
@@ -1133,29 +1138,29 @@ semi:triggersInbound a owl:ObjectProperty ;
 ### ==========================================
 
 # 9.1 WarehouseLocation 数据属性
-semi:hasLocationCode a owl:DatatypeProperty ;
+semi:hasWarehouseCode a owl:DatatypeProperty ;
     rdfs:domain semi:WarehouseLocation ;
     rdfs:range xsd:string ;
-    rdfs:label "库位编码" ;
-    rdfs:comment "库位唯一业务标识码，对应 warehouse_location.location_code。" .
+    rdfs:label "仓库编码" ;
+    rdfs:comment "仓库唯一业务标识码，对应 warehouse_model.code。" .
 
-semi:hasLocationName a owl:DatatypeProperty ;
+semi:hasWarehouseName a owl:DatatypeProperty ;
     rdfs:domain semi:WarehouseLocation ;
     rdfs:range xsd:string ;
-    rdfs:label "库位名称" ;
-    rdfs:comment "库位显示名称，对应 warehouse_location.location_name。" .
+    rdfs:label "仓库名称" ;
+    rdfs:comment "仓库显示名称，对应 warehouse_model.name。" .
 
 semi:hasStorageType a owl:DatatypeProperty ;
     rdfs:domain semi:WarehouseLocation ;
     rdfs:range xsd:string ;
     rdfs:label "存储类型" ;
-    rdfs:comment "库位存储分类，对应 warehouse_location.location_type（如货架/料架/暂存区格位）。" .
+    rdfs:comment "库位的物理环境约束分类，如：常温、冷藏、氮气柜、避光等。当前系统尚未在数据库中建立存储类型管理字段，暂无物理列映射。" .
 
-semi:hasLocationStatus a owl:DatatypeProperty ;
+semi:hasGeoLocation a owl:DatatypeProperty ;
     rdfs:domain semi:WarehouseLocation ;
-    rdfs:range xsd:integer ;
-    rdfs:label "库位状态" ;
-    rdfs:comment "库位当前使用状态，对应 warehouse_location.status 字段。" .
+    rdfs:range xsd:string ;
+    rdfs:label "地理位置" ;
+    rdfs:comment "库位在厂区或车间的物理坐标描述（如：A栋2楼东侧货架区）。当前系统无对应数据库字段，暂无物理列映射。" .
 
 # 9.2 MaterialBatch 数据属性
 semi:hasBatchNo a owl:DatatypeProperty ;
