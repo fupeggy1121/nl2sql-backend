@@ -608,14 +608,32 @@
     },
     {
       "logic_class": "semi:ProcessConstraint",
-      "physical_table": null,
-      "primary_key": null,
-      "label_cn": "工艺约束",
-      "display_column": null,
-      "virtual": true,
-      "properties": {},
-      "note": "中间类。在MySQL中约束信息分散：product_model 中的 recipe_id（工序默认配方），matrix_routerx_config_process 中的 equipment_group_list/recipe_group_id。无单独工艺约束表。",
-      "key_columns": []
+      "physical_table": "product_model",
+      "storage_strategy": "EmbeddedJSON",
+      "json_column": "main_route",
+      "json_path": "$.processes[*]",
+      "primary_key": "$.processes[*].id",
+      "label_cn": "工艺约束（工艺导航节点）",
+      "display_column": "$.processes[*].name",
+      "virtual": false,
+      "properties": {
+        "semi:hasProcessStepCode": "$.processes[*].code",
+        "semi:hasProcessStepName": "$.processes[*].name",
+        "semi:appliesAtStation": "$.processes[*].code → matrix_routerx_config_process.code",
+        "semi:specifiesRecipe": "$.processes[*].recipe.id → recipe_manage.id",
+        "semi:hasControlLimit": "$.processes[*].processParamList + $.processes[*].measurementParamList"
+      },
+      "note": "product_model.main_route JSON字段的 $.processes 数组，每个元素对应一个工序站点的工艺管控节点（ProcessConstraint 实例）。节点含：code（工序码，关联 ProcessStation）、recipe（配方绑定，部分工序为空对象）、processParamList（工艺参数管控，含 paramModelId→property_model/target/maxValue/minValue/tolerance/unit）、measurementParamList（量测参数合格边界，同结构，含 shipmentDecision 出货判定标志）、remarkList（文字技术要求，theme/value 键值对）、productEqpGroupList（设备组绑定）。",
+      "key_columns": [
+        "id",
+        "product_code",
+        "main_route",
+        "main_route->>'$.processes[*].id'",
+        "main_route->>'$.processes[*].code'",
+        "main_route->>'$.processes[*].name'",
+        "main_route->>'$.processes[*].recipe.id'",
+        "main_route->>'$.processes[*].recipe.code'"
+      ]
     },
     {
       "logic_class": "semi:Product",
@@ -1075,6 +1093,81 @@
         "require_count"
       ],
       "note": "出库单明细表（一单多行，每行=一个物料批次实例的出库记录）。与出库单头表warehouse_output_bill通过output_bill_id关联。destination记录出库目标（生产线/部门）；require_count为申领量，output_count为实际出库量。"
+    },
+    {
+      "logic_class": "semi:MaterialParameterSpec",
+      "physical_table": "property_model",
+      "primary_key": "id",
+      "label_cn": "物料参数规格模型",
+      "display_column": "name",
+      "properties": {
+        "semi:hasParameterCode": "code",
+        "semi:hasParameterName": "name",
+        "semi:hasParameterUnit": "unit",
+        "semi:hasParameterValueType": "value_type",
+        "semi:hasParameterCategory": "group_name",
+        "semi:hasTargetValue": "value_spec->>'$.target'",
+        "semi:hasUpperLimit": "value_spec->>'$.max'",
+        "semi:hasLowerLimit": "value_spec->>'$.min'",
+        "semi:hasTolerance": "value_spec->>'$.tolerance'",
+        "semi:hasParameterSpec": "rel_id"
+      },
+      "key_columns": [
+        "id",
+        "code",
+        "type",
+        "rel_id",
+        "rel_name",
+        "group_id",
+        "group_name",
+        "name",
+        "value_type",
+        "value_spec",
+        "default_value",
+        "unit",
+        "required",
+        "enable",
+        "create_user_id",
+        "create_user",
+        "gmt_create",
+        "update_user_id",
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "extra"
+      ],
+      "note": "物料参数规格模型表，将参数定义（元数据）与规格约束合为一体。每行同时表达：(1)参数元数据（code/name/unit/value_type/group_name）；(2)物料绑定（rel_id=物料ID，rel_name=物料名称冗余）；(3)规格约束（value_spec JSON: {max,min,target,tolerance,decimalPlaces}，通过->>提取子字段）。rel_id为text类型软关联到material.id，join时需CAST或字符串匹配。"
+    },
+    {
+      "logic_class": "semi:ParameterRecord",
+      "physical_table": "warehouse_batch_property_value",
+      "primary_key": "id",
+      "label_cn": "批次参数观测记录",
+      "display_column": "property_value",
+      "properties": {
+        "semi:hasActualValue": "property_value",
+        "semi:hasRecordSerialNo": "serial_no",
+        "semi:observesParameter": "property_id",
+        "semi:hasParameterRecord": "inventory_id"
+      },
+      "key_columns": [
+        "id",
+        "property_id",
+        "inventory_id",
+        "batch_no",
+        "serial_no",
+        "material_id",
+        "property_value",
+        "create_user_id",
+        "create_user",
+        "gmt_create",
+        "update_user_id",
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "extra"
+      ],
+      "note": "物料批次实例的实际参数测量值记录表（第三层）。每行断言：批次B（由inventory_id/batch_no关联到warehouse_inventory）的参数P的实测值是V。serial_no在逐件唯一码管理模式下精确到单件；batch_no为软关联冗余字段。"
     }
   ],
   "relation_mappings": [
@@ -1378,38 +1471,43 @@
     },
     {
       "logic_relation": "semi:hasConstraint",
-      "description": "ProductModel 注入 ProcessConstraint — 通过 product_model 配置字段",
-      "strategy": "Virtual",
+      "description": "ProductModel 包含若干工艺约束节点（ProcessConstraint），所有节点内聚于 product_model.main_route JSON 字段的 $.processes 数组中",
+      "strategy": "EmbeddedJSON",
       "join_logic": {
-        "note": "MySQL中工艺约束嵌入在 product_model（含route_id/recipe_id）和 matrix_routerx_config_process（含equipment_group_list/recipe_group_id）中。ProcessConstraint是虚拟中间类，无独立表。"
+        "source_table": "product_model",
+        "json_column": "main_route",
+        "json_path": "$.processes[*]",
+        "note": "product_model.main_route JSON字段的 $.processes 数组，每个元素即为一个 ProcessConstraint 实例，无需跨表 JOIN。"
       },
       "domain_class": "semi:ProductModel",
       "range_class": "semi:ProcessConstraint"
     },
     {
       "logic_relation": "semi:appliesAtStation",
-      "description": "ProcessConstraint 应用于哪个 ProcessStation",
-      "strategy": "ForeignKey",
+      "description": "ProcessConstraint 应用于哪个 ProcessStation，通过 main_route JSON 内嵌的工序码关联",
+      "strategy": "EmbeddedJSON_FK",
       "join_logic": {
-        "source_table": "matrix_routerx_config_process",
-        "source_key": "id",
+        "source_table": "product_model",
+        "source_json_column": "main_route",
+        "source_json_path": "$.processes[*].code",
         "target_table": "matrix_routerx_config_process",
-        "target_key": "id",
-        "note": "ProcessConstraint在MySQL中直接体现为 matrix_routerx_config_process 行本身，无需跨表JOIN。"
+        "target_key": "code",
+        "note": "JSON_EXTRACT(product_model.main_route, '$.processes[*].code') 与 matrix_routerx_config_process.code 关联，标识该工艺约束节点对应的具体工序站点实例。"
       },
       "domain_class": "semi:ProcessConstraint",
       "range_class": "semi:ProcessStation"
     },
     {
       "logic_relation": "semi:specifiesRecipe",
-      "description": "ProcessConstraint 在该工序指定 Recipe",
-      "strategy": "ForeignKey",
+      "description": "ProcessConstraint 在该工序指定 Recipe，通过 main_route JSON 内嵌的 recipe.id 关联",
+      "strategy": "EmbeddedJSON_FK",
       "join_logic": {
-        "source_table": "matrix_routerx_config_process",
-        "source_key": "recipe_group_id",
+        "source_table": "product_model",
+        "source_json_column": "main_route",
+        "source_json_path": "$.processes[*].recipe.id",
         "target_table": "recipe_manage",
         "target_key": "id",
-        "note": "matrix_routerx_config_process.recipe_group_id → recipe_manage.id，指定此工序使用的配方组。"
+        "note": "JSON_EXTRACT(product_model.main_route, '$.processes[*].recipe.id') → recipe_manage.id，指定该工序节点使用的配方。注：部分工序节点的 recipe 字段为空配方对象（仅含 extra:{}），无配方绑定，JOIN 时需过滤 recipe.id IS NOT NULL。"
       },
       "domain_class": "semi:ProcessConstraint",
       "range_class": "semi:Recipe"

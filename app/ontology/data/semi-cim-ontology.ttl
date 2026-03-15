@@ -54,8 +54,8 @@ semi:ProcessStation a owl:Class ;
     rdfs:comment "最小生产控制单元，物料状态转换的场所。" .
 
 semi:ProcessConstraint a owl:Class ;
-    rdfs:label "工艺约束" ;
-    rdfs:comment "中间类：用于注入产品模型在特定工序下的具体执行规范。" .
+    rdfs:label "工艺约束（工艺导航节点）" ;
+    rdfs:comment "某产品模型在特定工序下的完整工艺管控规格节点。物理存储：EmbeddedJSON，嵌入 product_model.main_route 字段，路径 $.processes[*]（每个数组元素对应一个工序站点的管控配置）。主要字段：code（工序站点码，关联 semi:ProcessStation）、name（工序名）、recipe（配方绑定 id/code/name，关联 semi:Recipe；部分工序无配方时为空对象）、processParamList（工艺参数管控列表，含 paramName/paramModelId/target/maxValue/minValue/tolerance/unit）、measurementParamList（量测参数合格界限列表，同结构）、remarkList（文字技术要求，主题-内容键值对）、productEqpGroupList（适用设备组配置）。无独立数据库表，所有管控信息以树状 JSON 内聚于 product_model 行的 main_route 字段中。" .
 
 semi:ProductionOrder a owl:Class ; 
     rdfs:label "生产工单" ;
@@ -373,7 +373,7 @@ semi:hasControlLimit a owl:DatatypeProperty ;
     rdfs:domain semi:ProcessConstraint ;
     rdfs:range xsd:string ;
     rdfs:label "制程卡控界限" ;
-    rdfs:comment "工艺参数的上下控制边界，ProcessConstraint 为虚拟中间类（无独立表），物理层嵌入 matrix_routerx_config_process 配置字段中。" .
+    rdfs:comment "工艺参数或量测参数的上下控制边界（target/maxValue/minValue/tolerance），物理层以 JSON 数组嵌入 product_model.main_route 的 $.processes[*].processParamList 和 $.processes[*].measurementParamList 字段中，每个参数对象含 paramModelId（→ property_model.id）、paramName、unit 及管控边界值，无单独数据列。" .
 
 semi:hasVersion a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf (semi:ProcessStation semi:Route semi:ProductModel semi:BOM semi:Recipe) ] ;
@@ -1225,4 +1225,123 @@ semi:hasBillTime a owl:DatatypeProperty ;
     rdfs:range xsd:dateTime ;
     rdfs:label "单据时间" ;
     rdfs:comment "入库或出库操作的执行时间戳，对应 bill_time 或 create_time 字段。" .
+
+### ==========================================
+### Section 10  物料质量参数体系（规格-观测模式）
+### ==========================================
+# 设计模式：两层结构
+#   第一层  semi:MaterialParameterSpec — 物料参数规格模型（参数元数据 + 物料绑定 + 规格约束合一）
+#   第二层  semi:ParameterRecord       — 参数观测记录（物料批次实例 × 参数规格 → 实测值）
+#
+# 说明：参数定义（Parameter Definition）与规格约束（Spec Constraint）在产品设计中共用同一张表
+# property_model，不存在独立的参数定义主表。每行 property_model 同时承载：
+#   ① 参数元数据（code/name/unit/value_type/group_name）
+#   ② 物料关联（rel_id → material.id）
+#   ③ 规格约束（value_spec JSON: {max, min, target, tolerance, decimalPlaces}）
+#
+# 物理映射：
+#   MaterialParameterSpec → property_model
+#   ParameterRecord       → warehouse_batch_property_value
+### ==========================================
+
+# 10.1 物料参数规格模型 (MaterialParameterSpec)
+semi:MaterialParameterSpec a owl:Class ;
+    rdfs:label "物料参数规格模型" ;
+    rdfs:comment "将参数定义与物料规格约束合并为一个内聚对象。每条记录同时表达三层语义：(1) 参数元数据：该参数叫什么（name）、编码（code）、单位（unit）、值类型（value_type）、所属分组（group_name）；(2) 物料绑定：该参数属于哪个（些）物料模型（rel_id → material.id, rel_name 为物料名称冗余）；(3) 规格约束：对于绑定物料，该参数的合格范围（value_spec JSON: {max, min, target, tolerance, decimalPlaces}）。通过 semi:hasParameterSpec 对象属性从 semi:Material 导航到其参数规格集合；通过 semi:observesParameter 从 semi:ParameterRecord 反向引用。物理映射：property_model 表。" .
+
+# 10.2 参数观测记录 (ParameterRecord)
+semi:ParameterRecord a owl:Class ;
+    rdfs:label "参数观测记录" ;
+    rdfs:comment "具体物料批次实例（semi:MaterialBatch）在入库或来料检验采集流程中产生的实际参数测量记录。每条记录是独立的测量事实断言：'批次 B 针对参数规格 S 的实测值是 V_actual'。通过 semi:observesParameter 关联到 semi:MaterialParameterSpec（property_id FK），可直接获取该参数的规格约束（max/min/target）用于自动合格判定。当物料启用了逐件唯一码管理（hasUniqueCodeMgmt=true）时，serial_no 精确到单件，否则粒度为批次整体。物理映射：warehouse_batch_property_value（property_id × inventory_id × batch_no × serial_no × property_value）。" .
+
+### ==========================================
+# 10.3 参数体系对象属性
+### ==========================================
+
+semi:hasParameterSpec a owl:ObjectProperty ;
+    rdfs:domain semi:Material ; rdfs:range semi:MaterialParameterSpec ;
+    rdfs:label "物料参数规格集" ;
+    rdfs:comment "物料模型拥有的参数规格模型集合（1:N）。physical join: material.id = property_model.rel_id（rel_id 为 text 类型，存储物料 ID）。" .
+
+semi:hasParameterRecord a owl:ObjectProperty ;
+    rdfs:domain semi:MaterialBatch ; rdfs:range semi:ParameterRecord ;
+    rdfs:label "批次参数观测记录集" ;
+    rdfs:comment "物料批次实例拥有的实测参数记录集合（1:N）。physical: warehouse_batch_property_value.inventory_id → warehouse_inventory.id（MaterialBatch）。" .
+
+semi:observesParameter a owl:ObjectProperty ;
+    rdfs:domain semi:ParameterRecord ; rdfs:range semi:MaterialParameterSpec ;
+    rdfs:label "关联的参数规格模型" ;
+    rdfs:comment "该条实测记录所对应的参数规格模型，同时携带参数元数据和该物料的规格约束（合格上下限）。physical: warehouse_batch_property_value.property_id → property_model.id。" .
+
+### ==========================================
+# 10.4 参数体系数据属性
+### ==========================================
+
+# MaterialParameterSpec 数据属性（参数元数据 + 规格约束）
+semi:hasParameterCode a owl:DatatypeProperty ;
+    rdfs:domain semi:MaterialParameterSpec ;
+    rdfs:range xsd:string ;
+    rdfs:label "参数编码" ;
+    rdfs:comment "参数的唯一业务标识码。物理：property_model.code。" .
+
+semi:hasParameterName a owl:DatatypeProperty ;
+    rdfs:domain semi:MaterialParameterSpec ;
+    rdfs:range xsd:string ;
+    rdfs:label "参数名称" ;
+    rdfs:comment "参数的业务显示名称（如：电阻率、直径、TTV、线径）。物理：property_model.name。" .
+
+semi:hasParameterUnit a owl:DatatypeProperty ;
+    rdfs:domain semi:MaterialParameterSpec ;
+    rdfs:range xsd:string ;
+    rdfs:label "参数单位" ;
+    rdfs:comment "参数的物理量纲单位（如：Ω·cm、mm、μm）。物理：property_model.unit。" .
+
+semi:hasParameterValueType a owl:DatatypeProperty ;
+    rdfs:domain semi:MaterialParameterSpec ;
+    rdfs:range xsd:string ;
+    rdfs:label "参数值类型" ;
+    rdfs:comment "参数的数据类型（varchar/float/int/timestamp 等），用于指导前端采集控件和值合法性校验。物理：property_model.value_type。" .
+
+semi:hasParameterCategory a owl:DatatypeProperty ;
+    rdfs:domain semi:MaterialParameterSpec ;
+    rdfs:range xsd:string ;
+    rdfs:label "参数分组" ;
+    rdfs:comment "参数所属的业务分组名称，用于前端按组展示和按类过滤检索。物理：property_model.group_name。" .
+
+semi:hasTargetValue a owl:DatatypeProperty ;
+    rdfs:domain semi:MaterialParameterSpec ;
+    rdfs:range xsd:string ;
+    rdfs:label "规格目标值" ;
+    rdfs:comment "该参数的标准目标值（nominal value）。物理：property_model.value_spec->>'$.target'。" .
+
+semi:hasUpperLimit a owl:DatatypeProperty ;
+    rdfs:domain semi:MaterialParameterSpec ;
+    rdfs:range xsd:string ;
+    rdfs:label "规格上限" ;
+    rdfs:comment "该参数合格判定的上限阈值（USL）。物理：property_model.value_spec->>'$.max'。" .
+
+semi:hasLowerLimit a owl:DatatypeProperty ;
+    rdfs:domain semi:MaterialParameterSpec ;
+    rdfs:range xsd:string ;
+    rdfs:label "规格下限" ;
+    rdfs:comment "该参数合格判定的下限阈值（LSL）。物理：property_model.value_spec->>'$.min'。" .
+
+semi:hasTolerance a owl:DatatypeProperty ;
+    rdfs:domain semi:MaterialParameterSpec ;
+    rdfs:range xsd:string ;
+    rdfs:label "允差" ;
+    rdfs:comment "以目标值为基准的对称允差范围（target ± tolerance）。物理：property_model.value_spec->>'$.tolerance'。" .
+
+# ParameterRecord 数据属性
+semi:hasActualValue a owl:DatatypeProperty ;
+    rdfs:domain semi:ParameterRecord ;
+    rdfs:range xsd:string ;
+    rdfs:label "实测值" ;
+    rdfs:comment "采集到的实际参数测量值（以 xsd:string 兼容数值和文本枚举两种值类型）。物理：warehouse_batch_property_value.property_value。" .
+
+semi:hasRecordSerialNo a owl:DatatypeProperty ;
+    rdfs:domain semi:ParameterRecord ;
+    rdfs:range xsd:string ;
+    rdfs:label "记录件号" ;
+    rdfs:comment "逐件测量时关联到的单件唯一码（对应 MaterialBatch.hasBoxNo）。当物料启用了 hasUniqueCodeMgmt=true 时填写，表示该测量值属于批次中的某一具体单件；批次整体测量时为空。物理：warehouse_batch_property_value.serial_no。" .
 
