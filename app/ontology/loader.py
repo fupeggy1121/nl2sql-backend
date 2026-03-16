@@ -107,6 +107,32 @@ def load_ontology(ttl_path: Optional[Path] = None, force_reload: bool = False) -
             )
             onto.add_class(cls)
 
+    # ── 1b. 解析子类 owl:Restriction 中的 allValuesFrom 约束 ──
+    # 例: SplitEventRecord rdfs:subClassOf [ owl:Restriction; owl:onProperty isInstanceOfEvent;
+    #            owl:allValuesFrom SplitEvent ]
+    for cls_uri, _, sub_node in rdf.triples((None, RDFS.subClassOf, None)):
+        if not isinstance(cls_uri, URIRef):
+            continue
+        if isinstance(sub_node, URIRef):
+            continue  # 直接父类 URI，不是 restriction
+        # blank node — 检查是否为 owl:Restriction
+        if not any(True for _ in rdf.triples((sub_node, RDF.type, OWL.Restriction))):
+            continue
+        prop_node = None
+        all_values_node = None
+        for _, _, pv in rdf.triples((sub_node, OWL.onProperty, None)):
+            prop_node = pv
+        for _, _, av in rdf.triples((sub_node, OWL.allValuesFrom, None)):
+            all_values_node = av
+        if (prop_node and all_values_node
+                and isinstance(prop_node, URIRef)
+                and isinstance(all_values_node, URIRef)):
+            onto.add_class_restriction(
+                _short_uri(cls_uri),
+                _short_uri(prop_node),
+                _short_uri(all_values_node),
+            )
+
     # ── 2. 提取所有 owl:ObjectProperty → OntologyRelation ──
     for s, _, _ in rdf.triples((None, RDF.type, OWL.ObjectProperty)):
         if not isinstance(s, URIRef):

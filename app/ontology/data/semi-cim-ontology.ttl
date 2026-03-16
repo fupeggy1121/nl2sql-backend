@@ -298,27 +298,35 @@ semi:reworkedAs a owl:ObjectProperty ;
     rdfs:comment "返工(Rework)操作：被判定为Reject的批次重新投入加工，衍生出运行于返工工艺路径的新批次标识。返工完成若判定Good则在谱系图中归并回主路径。多次返工形成循环切出-回归的有向路径。" .
 
 semi:isInstanceOfEvent a owl:ObjectProperty ;
-    rdfs:domain semi:ProductionEventRecord ; rdfs:range semi:ProductionEvent ;
-    rdfs:label "事件类型" ;
-    rdfs:comment "该执行记录对应的事件类型（如SPLIT、MERGE、REWORK等ProductionEvent实例），关联record到event类型定义。" .
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (semi:SplitEventRecord semi:HoldEventRecord semi:ReleaseEventRecord)
+    ] ;
+    rdfs:range semi:ProductionEvent ;
+    rdfs:label "事件实例记录" ;
+    rdfs:comment "该执行记录对应的事件类型（如SPLIT、MERGE、REWORK等ProductionEvent实例），关联record到event类型定义。各子类通过 owl:allValuesFrom 约束将 range 精化为对应 XxxEvent 子类：SplitEventRecord→SplitEvent / HoldEventRecord→HoldEvent / ReleaseEventRecord→ReleaseEvent。" .
 
 semi:actsOnLot a owl:ObjectProperty ;
-    rdfs:domain semi:ProductionEventRecord ; rdfs:range semi:ProductionLot ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (semi:SplitEventRecord semi:HoldEventRecord semi:ReleaseEventRecord)
+    ] ;
+    rdfs:range semi:ProductionLot ;
     rdfs:label "作用批次" ;
-    rdfs:comment "事件执行时的输入/主体批次（matrix_routerx_operation_lot_batch_resume_log.lot_code）。对于进出站等单批次操作，actsOnLot与producesLot指向同一批次。" .
+    rdfs:comment "事件执行时的输入/主体批次（matrix_routerx_operation_lot_batch_resume_log.lot_code）。SplitEventRecord：actsOnLot 为源批次（被拆的父批次）；HoldEventRecord：actsOnLot 为被扣留批次；ReleaseEventRecord：actsOnLot 为被释放批次。" .
 
 semi:producesLot a owl:ObjectProperty ;
-    rdfs:domain semi:ProductionEventRecord ; rdfs:range semi:ProductionLot ;
+    rdfs:domain semi:SplitEventRecord ; rdfs:range semi:ProductionLot ;
     rdfs:label "产出批次" ;
-    rdfs:comment "事件执行后产生的输出批次（matrix_routerx_operation_lot_batch_resume_log.output_lot_code）。对于拆批操作，产出批次与作用批次不同；对于状态变更操作，两者相同。" .
+    rdfs:comment "拆批操作产生的新批次（MES 自动生成的 ProductionLot ID），对应 output_lot_code 字段。仅适用于 SplitEventRecord：拆批后 actsOnLot（源批次）→ producesLot（新析出批次）构成谱系创建关系。HoldEventRecord / ReleaseEventRecord 不产生新批次，不适用本属性。" .
 
 semi:producesSublot a owl:ObjectProperty ;
-    rdfs:domain semi:ProductionEventRecord ; rdfs:range semi:Sublot ;
+    rdfs:domain semi:SplitEventRecord ; rdfs:range semi:Sublot ;
     rdfs:label "产出子批次" ;
     rdfs:comment "谱系变更事件（拆批/并批/返工）执行后，为产出批次同步创建的初始 Sublot 实例。与 producesLot 一一对应（新批次在拆批时只有一个初始子批次）。stateTransitionFunction 依赖此属性更新被迁移晶圆的 belongsToSublot 指针，保证 Wafer→belongsToSublot→atStation 路径在拆批后仍然连通。物理层对应 matrix_routerx_operation_lot 中与新批次绑定的初始记录行。" .
 
 semi:affectsWafer a owl:ObjectProperty ;
-    rdfs:domain semi:ProductionEventRecord ; rdfs:range semi:Wafer ;
+    rdfs:domain semi:SplitEventRecord ; rdfs:range semi:Wafer ;
     rdfs:label "操作涉及的Wafer" ;
     rdfs:comment "事件执行时涉及的具体晶圆实例。在拆批场景中记录被从源批次迁移到新批次的晶圆；在量测场景中记录抽检晶圆；在返工场景中记录受返工影响的晶圆。支持从事件维度反查 Wafer 粒度的生产履历，实现逐片血缘闭环。物理层对应三联日志表中的 wafer_detail_log 明细行。" .
 
@@ -1142,7 +1150,7 @@ semi:OutboundEventRecord a owl:Class ;
 # 8.1 库存管理事件记录关联属性 (WarehouseEventRecord)
 semi:isInstanceOfWarehouseEvent a owl:ObjectProperty ;
     rdfs:domain semi:WarehouseEventRecord ; rdfs:range semi:WarehouseEvent ;
-    rdfs:label "库存管理事件类型" ;
+    rdfs:label "库存管理事件执行记录" ;
     rdfs:comment "该库存管理执行记录（WarehouseEventRecord 子类实例）对应的事件类型定义（WarehouseEvent 子类），关联记录到事件规约。与 semi:isInstanceOfEvent（ProductionEventRecord→ProductionEvent）平行，两者共同构成生产域与仓库域的事件类型溯源机制。" .
 
 # 8.2 MaterialBatch 关联属性

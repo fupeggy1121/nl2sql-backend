@@ -354,13 +354,39 @@ async def get_graph_data() -> Dict[str, Any]:
             })
 
     # ── 对象属性 (关系) → links ──
-    for uri, rel in ontology.relations.items():
-        if rel.domain_uri and rel.range_uri:
+    # 优先级：子类级 owl:allValuesFrom 约束边 > relation_edges 展开边
+    seen_links: set = set()
+    # 记录已有 per-subclass 约束的 (class_uri, prop_uri) 对，屏蔽同属性的下沉边
+    restriction_covered: set = set()
+
+    for class_uri, prop_uri, range_uri in ontology.class_restrictions:
+        key = (class_uri, range_uri, prop_uri)
+        if key not in seen_links:
+            seen_links.add(key)
+            restriction_covered.add((class_uri, prop_uri))
+            rel = ontology.relations.get(prop_uri)
+            links.append({
+                "source": class_uri,
+                "target": range_uri,
+                "label": rel.label if rel else prop_uri.replace("semi:", ""),
+                "uri": prop_uri,
+                "type": "objectProperty",
+            })
+
+    for rel in ontology.relation_edges:
+        if not rel.domain_uri or not rel.range_uri:
+            continue
+        # 跳过已被 per-subclass 约束覆盖的 (domain, prop) 组合
+        if (rel.domain_uri, rel.uri) in restriction_covered:
+            continue
+        key = (rel.domain_uri, rel.range_uri, rel.uri)
+        if key not in seen_links:
+            seen_links.add(key)
             links.append({
                 "source": rel.domain_uri,
                 "target": rel.range_uri,
-                "label": rel.label or uri.replace("semi:", ""),
-                "uri": uri,
+                "label": rel.label or rel.uri.replace("semi:", ""),
+                "uri": rel.uri,
                 "type": "objectProperty",
             })
 

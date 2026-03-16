@@ -60,8 +60,14 @@ class OntologyGraph:
     def __init__(self):
         # URI → 对象
         self.classes: Dict[str, OntologyClass] = {}
-        self.relations: Dict[str, OntologyRelation] = {}
+        self.relations: Dict[str, OntologyRelation] = {}  # last-write wins (by URI)
         self.data_properties: Dict[str, OntologyProperty] = {}
+
+        # 全量展开边（owl:unionOf domain 展开后每条边单独一个 entry，供可视化使用）
+        self.relation_edges: List[OntologyRelation] = []
+        # 子类级 owl:allValuesFrom 约束：[(class_uri, prop_uri, range_uri)]
+        # 来自每个 XxxEventRecord 内 [ owl:Restriction; owl:onProperty P; owl:allValuesFrom R ]
+        self.class_restrictions: List[Tuple[str, str, str]] = []
 
         # 邻接表: class_uri → [(relation_uri, target_class_uri)]
         self._adj: Dict[str, List[Tuple[str, str]]] = defaultdict(list)
@@ -79,10 +85,15 @@ class OntologyGraph:
 
     def add_relation(self, rel: OntologyRelation) -> None:
         self.relations[rel.uri] = rel
+        self.relation_edges.append(rel)  # 保留所有展开边（包括 unionOf 多域）
         if rel.domain_uri and rel.range_uri:
             self._adj[rel.domain_uri].append((rel.uri, rel.range_uri))
             self._adj_rev[rel.range_uri].append((rel.uri, rel.domain_uri))
         self._index_label(rel.uri, rel.label)
+
+    def add_class_restriction(self, class_uri: str, prop_uri: str, range_uri: str) -> None:
+        """记录 owl:allValuesFrom 约束，供可视化生成子类精确边。"""
+        self.class_restrictions.append((class_uri, prop_uri, range_uri))
 
     def add_data_property(self, prop: OntologyProperty) -> None:
         self.data_properties[prop.uri] = prop
