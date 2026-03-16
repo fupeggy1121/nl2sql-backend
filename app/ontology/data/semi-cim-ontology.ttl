@@ -122,8 +122,9 @@ semi:ProductionEvent a owl:Class ;
     rdfs:comment "定义某类批次操作的规则/类型模板，如拆批(Split)、攒批(Merge)、返工(Rework)、进站、出站等。作为 semi:Action 的子类，表示系统 API 接口层面的操作类型定义；可通过 Named Individuals 枚举具体事件类型，不直接映射物理表。对应的执行记录见 semi:ProductionEventRecord。" .
 
 semi:ProductionEventRecord a owl:Class ;
-    rdfs:label "生产事件记录" ;
-    rdfs:comment "某次生产事件的实际执行记录，是ProductionEvent(事件类型)与ProductionLot(批次)的关联类。主映射表：matrix_routerx_operation_lot_batch_resume_log；关联从表：_detail（批次状态快照）和 _wafer_detail_log（逐片Wafer明细）。每条记录对应一次具体操作，记录操作人、时间戳、状态变更及输入/输出批次。" .
+    rdfs:label "生产事件记录（抽象父类）" ;
+    semi:isAbstract "true"^^xsd:boolean ;
+    rdfs:comment "【抽象父类，不直接实例化】生产事件执行记录的抽象父类，类比 semi:WarehouseEventRecord（库存管理事件记录抽象父类）的角色。是 ProductionEvent（事件类型）与 ProductionLot（批次）的关联中间类。主映射表：matrix_routerx_operation_lot_batch_resume_log；关联从表：_detail（批次状态快照）和 _wafer_detail_log（逐片Wafer明细）。每条记录对应一次具体操作，记录操作人、时间戳、状态变更及输入/输出批次。具体子类：SplitEventRecord（拆批）/ HoldEventRecord（扣留）/ ReleaseEventRecord（释放）等，各子类与 ProductionLot 的关联语义不同，详见子类 rdfs:comment。" .
 
 ### ==========================================
 ### 2. 核心有机关联 (Object Properties)
@@ -415,6 +416,24 @@ semi:hasProcessStatus a owl:DatatypeProperty ;
     rdfs:range xsd:integer ;
     rdfs:label "站点加工状态" ;
     rdfs:comment "批次在当前工序的站点级加工阶段（≠批次整体状态 hasState.status）：0=待进站、50=已进站待执行、100=执行中、150=待出站、200=已出站，对应 process_status。" .
+
+# 在制状态（WIP三态）：推导型状态类
+# 不对应批次表中的单一字段，由 process_status 字段值与扣留历史共同推导
+# 三态：Run / IDLE / Hold（Hold优先级最高，覆盖其他状态）
+#
+# ⚠ 重要区分：
+#   status=80 (BatchStatus.Staged/暂存) ≠ 激活扣留
+#   前者是批次整体状态字段，后者由扣留事件记录推导；两者独立，不可互换。
+#
+# 物理实现（_h = HoldEventRecord, _r = ReleaseEventRecord）：
+#   激活扣留 = EXISTS (_h: operation_type=4, deleted=0, 且无晚于 _h 的 _r: operation_type=5)
+#
+#   Run  → process_status IN (50,100,150) AND NOT EXISTS(激活扣留)
+#   IDLE → process_status IN (0,200)      AND NOT EXISTS(激活扣留)
+#   Hold → EXISTS(激活扣留)，不论 process_status 取值
+semi:LotWIPStatus a owl:Class ;
+    rdfs:label "在制状态（WIP三态）" ;
+    rdfs:comment "批次在制管理状态的三态枚举，属于推导型状态（derived status），不直接对应批次表中的单一字段。由两个维度逻辑组合计算：(1) semi:LotProcessStatus（process_status字段）中的站点级加工阶段；(2) 批次是否存在激活扣留记录（HoldEventRecord 无对应 ReleaseEventRecord）。三态：Run（运行）/ IDLE（闲置）/ Hold（扣留，优先级最高）。值映射及 SQL 条件见 value_mappings['semi:LotWIPStatus']。" .
 
 semi:hasLotType a owl:DatatypeProperty ;
     rdfs:domain semi:ProductionLot ;
@@ -873,6 +892,10 @@ semi:tableFilter a owl:AnnotationProperty ;
     rdfs:label "物理表行级过滤条件" ;
     rdfs:comment "指定 XxxEventRecord 子类在映射物理表时所需的 WHERE 谓词。所有 semi:ProductionEventRecord 子类均存储于同一张表 matrix_routerx_operation_lot_batch_resume_log，通过 operation_type 整数字段区分子类型；语义引擎生成 SQL 时将本注解值直接拼入 WHERE 子句。格式：column_name = value。" .
 
+semi:isAbstract a owl:AnnotationProperty ;
+    rdfs:label "是否为抽象类" ;
+    rdfs:comment "标注该 OWL 类为抽象父类（不应直接实例化为数据行，只作为子类的父类层级使用）。取值 \"true\"^^xsd:boolean。" .
+
 semi:operationTypeCode a owl:DatatypeProperty ;
     rdfs:range xsd:integer ;
     rdfs:label "操作类型编码" ;
@@ -920,6 +943,62 @@ semi:SplitEventRecord a owl:Class ;
     rdfs:label "拆批记录" ;
     semi:tableFilter "operation_type = 1" ;
     rdfs:comment "拆批操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 1（semi:tableFilter 注解值）。核心关联：(1) isInstanceOfEvent → semi:SplitEvent，将记录锁定到拆批规则定义，引擎据此追溯 5 维规约生成物理执行序列；(2) actsOnLot → 源批次（被拆的父批次）；(3) producesLot → MES 系统自动生成的新 ProductionLot（子批次），是拆批操作的核心产出；(4) producesSublot → 与 producesLot 同步创建的初始 Sublot，被迁移晶圆的 belongsToSublot 指向此 Sublot，保证 Wafer→Sublot→atStation 路径仍可导航；(5) affectsWafer → 被迁移的具体晶圆实例列表，支持逐片血缘追溯。物理层三联写入：主记录表（operation_type=1）+ _log_detail（拆批前后批次状态快照）+ _wafer_detail_log（逐片Wafer迁移明细）。" .
+
+# 5.3 批次扣留事件 (HoldEvent)
+semi:HoldEvent a owl:Class ;
+    rdfs:subClassOf semi:ProductionEvent ;
+    rdfs:label "批次扣留事件类型" ;
+    rdfs:comment "定义批次扣留（Hold）操作的规则/类型模板。对应 operation_type=4。执行后目标批次 WIPStatus 从 Run/IDLE 转为 Hold（激活扣留记录：HoldEventRecord 无对应晚于它的 ReleaseEventRecord）。⚠ 不产生新批次（无 producesLot），actsOnLot 指向被扣留的批次本身。支持预扣留：可在扣留时指定未来某工序站点，批次流转到该工序时自动触发扣留，extra 字段存储 preHoldProcessId/preHoldProcessCode。执行记录层见 semi:HoldEventRecord。" ;
+    # 维度一：准入规则 — 目标批次须在制（未被其他激活扣留且批次状态正常）
+    semi:preCondition "TargetLot.status IN (50) && WIPStatus(lotId) != Hold" ;
+    # 维度二：参数规约 — 批次ID必须；预扣留工序可选
+    semi:inputSchema "{ lotId: string, preHoldProcessId?: string, preHoldProcessCode?: string }" ;
+    # 维度三：状态算子 — 将目标批次状态设为 80（Staged/暂存），记录扣留事件
+    semi:transformationLogic "UPDATE ProductionLot SET status = 80 WHERE id = ?lotId; INSERT HoldEventRecord(lot_id=?lotId, operation_type=4, extra={preHoldProcessId:?preHoldProcessId})" ;
+    # 维度四：服务绑定
+    semi:apiBinding "MES_CORE_SERVICE.executeLotHold" ;
+    # 维度五：约束后验 — 确认激活扣留已存在
+    semi:postCondition "WIPStatus(lotId) == Hold" ;
+    # 辅助：状态转换函数
+    semi:stateTransitionFunction "UPDATE Target(ProductionLot) SET status = 80 WHERE Lot.id = EventRecord.lot_id" .
+
+# 5.4 批次扣留执行记录 (HoldEventRecord)
+semi:HoldEventRecord a owl:Class ;
+    rdfs:subClassOf semi:ProductionEventRecord ,
+        [ a owl:Restriction ;
+          owl:onProperty semi:isInstanceOfEvent ;
+          owl:allValuesFrom semi:HoldEvent ] ;
+    rdfs:label "批次扣留记录" ;
+    semi:tableFilter "operation_type = 4" ;
+    rdfs:comment "批次扣留操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 4。【关联语义】actsOnLot → 被扣留的批次（操作主体，即被扣留的 ProductionLot；该批次 WIPStatus 执行后转为 Hold）；⚠ 该操作不产生新批次（producesLot 不适用，不出现在本子类的 SQL 关联中）。区别于拆批：拆批 actsOnLot 是源批次、producesLot 是新析出批次；扣留操作 actsOnLot 与被操作对象同一，无产出批次。extra 字段可包含预扣留工序信息（preHoldProcessId/preHoldProcessCode）。" .
+
+# 5.5 批次释放事件 (ReleaseEvent)
+semi:ReleaseEvent a owl:Class ;
+    rdfs:subClassOf semi:ProductionEvent ;
+    rdfs:label "批次释放事件类型" ;
+    rdfs:comment "定义批次释放（Release）操作的规则/类型模板。对应 operation_type=5。解除批次激活扣留状态，执行后 WIPStatus 从 Hold 恢复为 Run 或 IDLE（取决于 process_status 值）。⚠ 不产生新批次（无 producesLot），actsOnLot 指向被释放的扣留批次本身。注意区分：status=80(BatchStatus.Staged/暂存) 是独立字段，与激活扣留不等价，釋放操作针对激活扣留记录（HoldEventRecord），而非仅针对 status=80 字段。执行记录层见 semi:ReleaseEventRecord。" ;
+    # 维度一：准入规则 — 目标批次须存在激活扣留记录
+    semi:preCondition "WIPStatus(lotId) == Hold" ;
+    # 维度二：参数规约 — 仅需批次ID
+    semi:inputSchema "{ lotId: string }" ;
+    # 维度三：状态算子 — 记录释放事件；WIPStatus 由激活扣留计算推导（非直接设字段）
+    semi:transformationLogic "INSERT ReleaseEventRecord(lot_id=?lotId, operation_type=5, gmt_create=NOW())" ;
+    # 维度四：服务绑定
+    semi:apiBinding "MES_CORE_SERVICE.executeLotRelease" ;
+    # 维度五：约束后验 — 确认激活扣留已解除
+    semi:postCondition "WIPStatus(lotId) != Hold" ;
+    # 辅助：状态转换函数 — WIPStatus 由推导计算，物理无直接单字段更新；此处记录语义
+    semi:stateTransitionFunction "INSERT ReleaseEventRecord WHERE lot_id = EventRecord.lot_id; DERIVED: WIPStatus(lot_id) transitions Hold → Run|IDLE based on process_status" .
+
+# 5.6 批次释放执行记录 (ReleaseEventRecord)
+semi:ReleaseEventRecord a owl:Class ;
+    rdfs:subClassOf semi:ProductionEventRecord ,
+        [ a owl:Restriction ;
+          owl:onProperty semi:isInstanceOfEvent ;
+          owl:allValuesFrom semi:ReleaseEvent ] ;
+    rdfs:label "批次释放记录" ;
+    semi:tableFilter "operation_type = 5" ;
+    rdfs:comment "批次释放操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 5。【关联语义】actsOnLot → 被扣留待释放的批次（操作主体，即被释放的 ProductionLot；该批次 WIPStatus 执行后从 Hold 恢复为 Run 或 IDLE）；⚠ 该操作不产生新批次（producesLot 不适用）。WIPStatus 的转变由推导逻辑决定：释放后不再满足激活扣留条件（EXISTS HoldEventRecord 且无 ReleaseEventRecord），WIPStatus 恢复为 process_status 决定的 Run 或 IDLE。区别于拆批：拆批有明确的 actsOnLot（源批次）→ producesLot（新析出批次）谱系关系；释放/扣留操作均为单批次状态变更，不涉及批次谱系生成。" .
 
 ### ==========================================
 ### 6. 操作类型枚举 (NamedIndividuals)

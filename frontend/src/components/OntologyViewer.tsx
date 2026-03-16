@@ -278,7 +278,7 @@ export default function OntologyViewer() {
     };
 
     // ── Virtual type-template class nodes: diamond shape ──
-    node.filter(d => d.type === 'class' && !!d.virtual && d.virtual_kind !== 'action_event')
+    node.filter(d => d.type === 'class' && !!d.virtual && d.virtual_kind !== 'action_event' && d.virtual_kind !== 'EmbeddedJSON')
       .append('path')
       .attr('d', diamondPath(20))
       .attr('fill', '#1c1408')
@@ -291,7 +291,7 @@ export default function OntologyViewer() {
       .attr('opacity', 0.92);
 
     // "T" label inside diamond
-    node.filter(d => d.type === 'class' && !!d.virtual && d.virtual_kind !== 'action_event')
+    node.filter(d => d.type === 'class' && !!d.virtual && d.virtual_kind !== 'action_event' && d.virtual_kind !== 'EmbeddedJSON')
       .append('text')
       .text('T')
       .attr('dy', '0.35em')
@@ -326,7 +326,7 @@ export default function OntologyViewer() {
       .style('pointer-events', 'none');
 
     // ── Regular class nodes: circle ──
-    node.filter(d => d.type === 'class' && !d.virtual)
+    node.filter(d => d.type === 'class' && (!d.virtual || d.virtual_kind === 'EmbeddedJSON'))
       .append('circle')
       .attr('r', 18)
       .attr('fill', d => getGroupColor(d.group))
@@ -353,15 +353,14 @@ export default function OntologyViewer() {
       .text(d => d.label.length > 12 ? d.label.slice(0, 12) + '…' : d.label)
       .attr('dy', d => {
         if (d.type === 'dataProperty') return 20;
-        if (d.virtual) return 32;
+        if (d.virtual && d.virtual_kind !== 'EmbeddedJSON') return 32;
         return 30;
       })
       .attr('text-anchor', 'middle')
       .attr('font-size', d => d.type === 'class' ? 11 : 9)
       .attr('fill', d => {
         if (d.virtual && d.virtual_kind === 'action_event') return '#c4b5fd';
-        if (d.virtual && d.virtual_kind === 'EmbeddedJSON') return '#6ee7b7';
-        if (d.virtual) return '#fde68a';
+        if (d.virtual && d.virtual_kind !== 'EmbeddedJSON') return '#fde68a';
         if (d.type === 'class') return '#e2e8f0';
         return '#94a3b8';
       })
@@ -456,7 +455,7 @@ export default function OntologyViewer() {
       if (d.id === selectedNode.id) {
         g.insert('circle', ':first-child')
           .attr('class', 'selected-ring')
-          .attr('r', d.type === 'dataProperty' ? 14 : d.virtual ? 26 : 23)
+          .attr('r', d.type === 'dataProperty' ? 14 : (d.virtual && d.virtual_kind !== 'EmbeddedJSON') ? 26 : 23)
           .attr('fill', 'none')
           .attr('stroke', '#f59e0b')
           .attr('stroke-width', 3)
@@ -683,23 +682,19 @@ export default function OntologyViewer() {
                         ? '数据属性'
                         : selectedNode.virtual && selectedNode.virtual_kind === 'action_event'
                           ? '操作/事件类（抽象）'
-                          : selectedNode.virtual && selectedNode.virtual_kind === 'EmbeddedJSON'
-                            ? 'EmbeddedJSON 嵌入类'
-                            : selectedNode.virtual
-                              ? '类型模板（虚拟类）'
-                              : '本体类（实体）'}
+                          : selectedNode.virtual && selectedNode.virtual_kind !== 'EmbeddedJSON'
+                            ? '类型模板（虚拟类）'
+                            : '本体类（实体）'}
                     </span>
                   </div>
 
                   {/* 虚拟类说明 */}
-                  {selectedNode.virtual && (
+                  {selectedNode.virtual && selectedNode.virtual_kind !== 'EmbeddedJSON' && (
                     <div style={styles.detailRow}>
-                      <span style={{ ...styles.detailValue, color: selectedNode.virtual_kind === 'action_event' ? '#c4b5fd' : selectedNode.virtual_kind === 'EmbeddedJSON' ? '#34d399' : '#fbbf24', fontSize: 11 }}>
+                      <span style={{ ...styles.detailValue, color: selectedNode.virtual_kind === 'action_event' ? '#c4b5fd' : '#fbbf24', fontSize: 11 }}>
                         {selectedNode.virtual_kind === 'action_event'
                           ? '抽象操作/事件类，定义操作行为规则，无物理表。'
-                          : selectedNode.virtual_kind === 'EmbeddedJSON'
-                            ? `EmbeddedJSON 嵌入类，数据嵌套于宿主表 JSON 字段，无独立物理表。`
-                            : 'Type 层模板，无物理表。执行记录见对应 *Record 实例类。'}
+                          : 'Type 层模板，无物理表。执行记录见对应 *Record 实例类。'}
                       </span>
                     </div>
                   )}

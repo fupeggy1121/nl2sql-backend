@@ -920,6 +920,96 @@
       "note": "拆批操作执行记录，filter_condition = operation_type=1 隔离拆批行。物理层三联写：本表（主记录）+ matrix_routerx_operation_lot_batch_resume_log_detail（批次状态快照）+ matrix_routerx_operation_lot_batch_resume_wafer_detail_log（逐片Wafer迁移明细）。"
     },
     {
+      "logic_class": "semi:HoldEvent",
+      "physical_table": null,
+      "label_cn": "批次扣留事件类型",
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "note": "Type层定义，对应 LotOperationType operation_type=4（批次扣留）的规则/类型模板。作为 ProductionEvent 子类，通过 Named Individual semi:HoldOp 定义。批次扣留后状态变为 status=80（Staged/暂存）。支持指定未来站点进行预扣留（extra 字段含 preHoldProcessId/preHoldProcessCode）。执行记录见 semi:HoldEventRecord。"
+    },
+    {
+      "logic_class": "semi:HoldEventRecord",
+      "physical_table": "matrix_routerx_operation_lot_batch_resume_log",
+      "primary_key": "id",
+      "label_cn": "批次扣留操作执行记录",
+      "display_column": "lot_code",
+      "filter_condition": "operation_type = 4",
+      "virtual": false,
+      "properties": {
+        "semi:hasEventStartTime": "gmt_create",
+        "semi:hasLotCode": "lot_code",
+        "semi:hasProductCode": "product_code",
+        "semi:hasProcessCode": "process_code",
+        "semi:hasProcessName": "process_name",
+        "semi:hasOperatorId": "create_user_id",
+        "semi:hasOperator": "create_user",
+        "semi:hasExtraInfo": "extra"
+      },
+      "key_columns": [
+        "id",
+        "lot_id",
+        "lot_code",
+        "product_id",
+        "product_code",
+        "product_name",
+        "process_id",
+        "process_code",
+        "process_name",
+        "operation_type",
+        "extra",
+        "create_user_id",
+        "create_user",
+        "gmt_create"
+      ],
+      "operation_type_ref": "value_mappings.semi:LotOperationType",
+      "note": "批次扣留操作执行记录，filter_condition = operation_type=4。批次被扣留后 matrix_routerx_operation_lot.status 变为 80（Staged/暂存）。extra 字段可包含预扣留站点信息（preHoldProcessId/preHoldProcessCode），用于指定批次到达未来某工序时自动触发扣留。"
+    },
+    {
+      "logic_class": "semi:ReleaseEvent",
+      "physical_table": null,
+      "label_cn": "批次释放事件类型",
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "note": "Type层定义，对应 LotOperationType operation_type=5（批次释放）的规则/类型模板。作为 ProductionEvent 子类，通过 Named Individual semi:ReleaseOp 定义。批次释放后状态从 status=80（Staged/暂存）恢复为正常流转状态（status=50 加工中或其他）。执行记录见 semi:ReleaseEventRecord。"
+    },
+    {
+      "logic_class": "semi:ReleaseEventRecord",
+      "physical_table": "matrix_routerx_operation_lot_batch_resume_log",
+      "primary_key": "id",
+      "label_cn": "批次释放操作执行记录",
+      "display_column": "lot_code",
+      "filter_condition": "operation_type = 5",
+      "virtual": false,
+      "properties": {
+        "semi:hasEventStartTime": "gmt_create",
+        "semi:hasLotCode": "lot_code",
+        "semi:hasProductCode": "product_code",
+        "semi:hasProcessCode": "process_code",
+        "semi:hasProcessName": "process_name",
+        "semi:hasOperatorId": "create_user_id",
+        "semi:hasOperator": "create_user",
+        "semi:hasExtraInfo": "extra"
+      },
+      "key_columns": [
+        "id",
+        "lot_id",
+        "lot_code",
+        "product_id",
+        "product_code",
+        "product_name",
+        "process_id",
+        "process_code",
+        "process_name",
+        "operation_type",
+        "extra",
+        "create_user_id",
+        "create_user",
+        "gmt_create"
+      ],
+      "operation_type_ref": "value_mappings.semi:LotOperationType",
+      "note": "批次释放操作执行记录，filter_condition = operation_type=5。解除批次暂存（status=80）状态，恢复批次可进站加工。"
+    },
+    {
       "logic_class": "semi:WarehouseLocation",
       "physical_table": "warehouse_model",
       "primary_key": "id",
@@ -2100,6 +2190,21 @@
           "取消批次"
         ],
         "note": "status=-50 已作废"
+      },
+      "Staged": {
+        "description": "暂存批次（一些零头批次或返工批次被移入线边仓暂存，等待工艺判定后再进行后续加工操作）",
+        "physical_condition": "matrix_routerx_operation_lot.status = 80",
+        "applies_to_table": "matrix_routerx_operation_lot",
+        "applies_to_column": "status",
+        "is_terminal": false,
+        "nl_triggers": [
+          "暂存",
+          "已暂存",
+          "暂存中",
+          "暂存状态",
+          "线边仓暂存"
+        ],
+        "note": "status=80 Staged/暂存状态。批次被移入线边仓暂存，禁止做任何加工操作，必须移出线边仓后再执行后续加工"
       }
     },
     "semi:LotProcessStatus": {
@@ -2718,6 +2823,48 @@
           "批次完成",
           "加工完成"
         ]
+      }
+    },
+    "semi:LotWIPStatus": {
+      "_comment": "在制状态（WIP三态），属于推导型状态：由 LotProcessStatus（process_status字段）与扣留历史（HoldEventRecord）逻辑组合计算得出，不对应批次表中的单一字段。三态优先级：Hold > Run/IDLE。",
+      "Run": {
+        "description": "运行（批次处于活跃进站加工流转中，无激活扣留记录）",
+        "physical_condition": "matrix_routerx_operation_lot.process_status IN (50, 100, 150) AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _h WHERE _h.lot_id = matrix_routerx_operation_lot.id AND _h.operation_type = 4 AND _h.deleted = 0 AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _r WHERE _r.lot_id = _h.lot_id AND _r.operation_type = 5 AND _r.deleted = 0 AND _r.gmt_create > _h.gmt_create))",
+        "applies_to_table": "matrix_routerx_operation_lot",
+        "nl_triggers": [
+          "在制运行",
+          "wip运行",
+          "run状态",
+          "正常运行中",
+          "未被扣留且在站"
+        ],
+        "note": "process_status IN (50=已进站/PreExecuting, 100=执行中/Executing, 150=待出站/PreOutStation) 且无激活扣留记录（HoldEventRecord 无对应 ReleaseEventRecord）。注意：status=80(暂存/Staged) 与激活扣留是不同维度，不能互相替代。"
+      },
+      "IDLE": {
+        "description": "闲置（批次处于待进站或已出站状态，无激活扣留记录）",
+        "physical_condition": "matrix_routerx_operation_lot.process_status IN (0, 200) AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _h WHERE _h.lot_id = matrix_routerx_operation_lot.id AND _h.operation_type = 4 AND _h.deleted = 0 AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _r WHERE _r.lot_id = _h.lot_id AND _r.operation_type = 5 AND _r.deleted = 0 AND _r.gmt_create > _h.gmt_create))",
+        "applies_to_table": "matrix_routerx_operation_lot",
+        "nl_triggers": [
+          "在制闲置",
+          "wip闲置",
+          "idle状态",
+          "待进站闲置",
+          "出站闲置"
+        ],
+        "note": "process_status IN (0=待进站/PreInStation, 200=已出站/OutStation) 且无激活扣留记录（HoldEventRecord 无对应 ReleaseEventRecord）。"
+      },
+      "Hold": {
+        "description": "扣留（批次存在激活扣留记录 HoldEventRecord 且尚未被 ReleaseEventRecord 释放，不管当前 process_status 值）",
+        "physical_condition": "EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _h WHERE _h.lot_id = matrix_routerx_operation_lot.id AND _h.operation_type = 4 AND _h.deleted = 0 AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _r WHERE _r.lot_id = _h.lot_id AND _r.operation_type = 5 AND _r.deleted = 0 AND _r.gmt_create > _h.gmt_create))",
+        "applies_to_table": "matrix_routerx_operation_lot",
+        "nl_triggers": [
+          "在制扣留",
+          "wip扣留",
+          "wip hold",
+          "在制hold",
+          "有扣留未释放"
+        ],
+        "note": "激活扣留 = HoldEventRecord(operation_type=4) 且无时间上晚于它的 ReleaseEventRecord(operation_type=5)。Hold 优先级最高，覆盖 Run/IDLE。注意：status=80(BatchStatus.Staged/暂存) 是独立维度，与激活扣留不等价，不可互换。"
       }
     }
   },

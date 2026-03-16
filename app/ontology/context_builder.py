@@ -449,6 +449,33 @@ _VALUE_KEYWORDS: Dict[str, Tuple[str, str]] = {
     "完工": ("semi:BatchStatus", "Completed"),
     "已完成批次": ("semi:BatchStatus", "Completed"),
     "取消批次": ("semi:BatchStatus", "Cancelled"),
+    "暂存": ("semi:BatchStatus", "Staged"),
+    "已暂存": ("semi:BatchStatus", "Staged"),
+    "暂存中": ("semi:BatchStatus", "Staged"),
+    "暂存状态": ("semi:BatchStatus", "Staged"),
+    "线边仓暂存": ("semi:BatchStatus", "Staged"),
+    "扣留": ("semi:BatchStatus", "Staged"),
+    "被扣留": ("semi:BatchStatus", "Staged"),
+    "已扣留": ("semi:BatchStatus", "Staged"),
+    "扣留中": ("semi:BatchStatus", "Staged"),
+    "扣留状态": ("semi:BatchStatus", "Staged"),
+
+    # ── LotWIPStatus（在制三态，推导型：process_status + 扣留历史）──
+    # Run: process_status IN (50,100,150) AND status <> 80
+    "在制运行": ("semi:LotWIPStatus", "Run"),
+    "wip运行": ("semi:LotWIPStatus", "Run"),
+    "run状态": ("semi:LotWIPStatus", "Run"),
+    "正常运行中": ("semi:LotWIPStatus", "Run"),
+    # IDLE: process_status IN (0,200) AND status <> 80
+    "在制闲置": ("semi:LotWIPStatus", "IDLE"),
+    "wip闲置": ("semi:LotWIPStatus", "IDLE"),
+    "idle状态": ("semi:LotWIPStatus", "IDLE"),
+    "空闲批次": ("semi:LotWIPStatus", "IDLE"),
+    # Hold: status = 80 (存在激活扣留记录且未释放)
+    "在制扣留": ("semi:LotWIPStatus", "Hold"),
+    "wip扣留": ("semi:LotWIPStatus", "Hold"),
+    "wip hold": ("semi:LotWIPStatus", "Hold"),
+    "在制hold": ("semi:LotWIPStatus", "Hold"),
 
     # ── HoldStatus (matrix_routerx_operation_lot_hold_action.status) ──
     "hold": ("semi:HoldStatus", "Held"),

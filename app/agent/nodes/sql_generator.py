@@ -229,14 +229,7 @@ def _enforce_physical_table_names(sql: str, semantic_ctx: dict) -> str:
     except Exception:
         all_valid_tables = {t.lower() for t in physical_tables_from_semantic}
 
-    # 也从 annotation_metadata 补充（Supabase schema 注解）
-    try:
-        from app.services.nl2sql_enhanced import get_enhanced_nl2sql_converter
-        ann = get_enhanced_nl2sql_converter().annotation_metadata
-        for t in ann.get("tables", {}).keys():
-            all_valid_tables.add(t.lower())
-    except Exception:
-        pass
+    # 注意：不从 Supabase annotation_metadata 补充白名单，因为它可能包含旧 demo 表（如 stations）导致 LLM 幻觉表名无法被纠正
 
     # 3. 提取 SQL 中 FROM / JOIN 后的表名
     token_pattern = re.compile(
