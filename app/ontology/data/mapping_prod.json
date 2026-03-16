@@ -1180,7 +1180,7 @@
         "semi:hasParamGroupCat": "param_group_cat",
         "semi:hasParamGroupDesc": "param_group_desc"
       },
-      "note": "制程参数组（工艺参数组），对应 param_group WHERE param_group_cat='process'。聚合设备加工过站时需采集的制程参数，用于过程监控和 SPC 分析。由 usesProcessParamGroup 从 ProcessStation 引用，由 specifiesProcessParam 从 ProcessConstraint 引用（含产品专属卡控值）。通过 containsProcessParam 聚合 ProcessParam 实例。"
+      "note": "制程参数组（工艺参数组），对应 param_group WHERE param_group_cat='process'。聚合设备加工过站时需采集的制程参数，用于过程监控和 SPC 分析。由 usesProcessParamGroup 从 ProcessStation 引用（通用能力域），由 selectedProcessParamGroup 从 ProcessConstraint 引用（产品专属1:1选定，使用 processParamGroupId）。通过 containsProcessParam 聚合 ProcessParam 实例。"
     },
     {
       "logic_class": "semi:MeasurementParamGroup",
@@ -1193,7 +1193,7 @@
         "semi:hasParamGroupCat": "param_group_cat",
         "semi:hasParamGroupDesc": "param_group_desc"
       },
-      "note": "量测参数组，对应 param_group WHERE param_group_cat='measure'。聚合量测过站时需采集的产品质量参数，用于合格判定和工艺分析。由 usesMeasurementParamGroup 从 ProcessStation 引用，由 specifiesMeasurementParam 从 ProcessConstraint 引用（含产品专属合格界限及 shipmentDecision 出货判定标志）。通过 containsMeasurementParam 聚合 MeasurementParam 实例。"
+      "note": "量测参数组，对应 param_group WHERE param_group_cat='measure'。聚合量测过站时需采集的产品质量参数，用于合格判定和工艺分析。由 usesMeasurementParamGroup 从 ProcessStation 引用（通用能力域），由 selectedMeasurementParamGroup 从 ProcessConstraint 引用（产品专属1:1选定，使用 measurementParamGroupId）。通过 containsMeasurementParam 聚合 MeasurementParam 实例。"
     },
     {
       "logic_class": "semi:ProcessParam",
@@ -1382,14 +1382,16 @@
       "range_class": "semi:Carrier"
     },
     {
-      "logic_relation": "semi:usesRoute",
-      "description": "ProductModel 使用哪条 Route(工艺路径)",
-      "strategy": "ForeignKey",
+      "logic_relation": "semi:hasMainRoute",
+      "description": "ProductModel 绑定的主工艺路径（main route）",
+      "strategy": "EmbeddedJSON",
       "join_logic": {
         "source_table": "product_model",
-        "source_key": "route_id",
-        "target_table": "routerx_router_config",
-        "target_key": "id"
+        "source_json_column": "main_route",
+        "source_json_path": "$.id",
+        "target_table": "matrix_routerx_config_route",
+        "target_key": "id",
+        "note": "product_model.main_route 是完整路径对象 JSON，根节点 $.id 即对应 matrix_routerx_config_route.id（routeType=0/MAIN）。每个产品模型唯一对应一条主路径。"
       },
       "domain_class": "semi:ProductModel",
       "range_class": "semi:Route"
@@ -1901,37 +1903,33 @@
       "range_class": "semi:MeasurementParam"
     },
     {
-      "logic_relation": "semi:specifiesProcessParam",
-      "description": "ProcessConstraint（产品工艺约束节点）指定该产品在本工序要求采集的工艺参数组（及其产品专属卡控规格）",
+      "logic_relation": "semi:selectedProcessParamGroup",
+      "description": "ProcessConstraint（产品工艺约束节点）在本工序选定的制程参数组（1:1，从站点通用能力域中选定唯一参数组）",
       "strategy": "EmbeddedJSON",
       "join_logic": {
         "source_table": "product_model",
         "source_json_column": "main_route",
-        "source_json_path": "$.processes[*].processParamList[*].paramModelId",
-        "intermediate_table": "param_model",
-        "intermediate_key": "id",
+        "source_json_path": "$.processes[*].processParamGroupId",
         "target_table": "param_group",
         "target_key": "id",
-        "target_fk": "param_model.param_group",
-        "note": "2跳 JOIN：product_model.main_route $.processes[*].processParamList[*].paramModelId → param_model.id（semi:ProcessParam，filter: param_cat='工艺参数'） → param_model.param_group → param_group.id（semi:ProcessParamGroup）。产品层卡控边界（target/maxValue/minValue/tolerance/unit）内嵌在 processParamList 各项 JSON 中，无独立列。如需直接访问单个制程参数定义，可中止于 param_model 层（semi:ProcessParam）。"
+        "target_filter": "param_group_cat = 'process'",
+        "note": "每个 process 节点含 processParamGroupId（字符串/整数），直接对应 param_group.id WHERE param_group_cat='process'。每工序节点只有一个制程参数组（1:1）。"
       },
       "domain_class": "semi:ProcessConstraint",
       "range_class": "semi:ProcessParamGroup"
     },
     {
-      "logic_relation": "semi:specifiesMeasurementParam",
-      "description": "ProcessConstraint（产品工艺约束节点）指定该产品在本工序要求采集的量测参数组（及其产品专属合格界限）",
+      "logic_relation": "semi:selectedMeasurementParamGroup",
+      "description": "ProcessConstraint（产品工艺约束节点）在本工序选定的量测参数组（1:1，从站点通用能力域中选定唯一参数组）",
       "strategy": "EmbeddedJSON",
       "join_logic": {
         "source_table": "product_model",
         "source_json_column": "main_route",
-        "source_json_path": "$.processes[*].measurementParamList[*].paramModelId",
-        "intermediate_table": "param_model",
-        "intermediate_key": "id",
+        "source_json_path": "$.processes[*].measurementParamGroupId",
         "target_table": "param_group",
         "target_key": "id",
-        "target_fk": "param_model.param_group",
-        "note": "2跳 JOIN：product_model.main_route $.processes[*].measurementParamList[*].paramModelId → param_model.id（semi:MeasurementParam，filter: param_cat='量测参数'） → param_model.param_group → param_group.id（semi:MeasurementParamGroup）。每项额外含 shipmentDecision（布尔，该参数是否作为出货判定条件），其余结构与 processParamList 相同。如需直接访问单个量测参数定义，可中止于 param_model 层（semi:MeasurementParam）。"
+        "target_filter": "param_group_cat = 'measure'",
+        "note": "每个 process 节点含 measurementParamGroupId（字符串/整数），直接对应 param_group.id WHERE param_group_cat='measure'。每工序节点只有一个量测参数组（1:1）。"
       },
       "domain_class": "semi:ProcessConstraint",
       "range_class": "semi:MeasurementParamGroup"
