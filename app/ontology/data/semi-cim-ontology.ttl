@@ -174,9 +174,10 @@ semi:isCarriedBy a owl:ObjectProperty ;
     rdfs:label "由载具承载" .
 
 # 2.3 工艺约束注入逻辑 (Core Decoupling Logic)
-semi:usesRoute a owl:ObjectProperty ;
+semi:hasMainRoute a owl:ObjectProperty ;
     rdfs:domain semi:ProductModel ; rdfs:range semi:Route ;
-    rdfs:label "使用工艺路径模板" .
+    rdfs:label "使用主工艺路径" ;
+    rdfs:comment "产品模型绑定的主工艺路径。物理：product_model.main_route.id → matrix_routerx_config_route.id（routeType=0/MAIN）。每个产品模型唯一对应一条主路径，决定物料流转的完整工序序列。" .
 
 semi:consistsOfStation a owl:ObjectProperty ;
     rdfs:domain semi:Route ; rdfs:range semi:ProcessStation ;
@@ -369,11 +370,7 @@ semi:isQualified a owl:DatatypeProperty ;
     rdfs:label "认证状态(Qual)" ;
     rdfs:comment "设备是否通过工艺认证(Qual run)；当前数据库无独立列直接存储，mapping 对应 null（语义建模保留，查询时需通过设备状态/日志推导）。" .
 
-semi:hasControlLimit a owl:DatatypeProperty ;
-    rdfs:domain semi:ProcessConstraint ;
-    rdfs:range xsd:string ;
-    rdfs:label "制程卡控界限" ;
-    rdfs:comment "工艺参数或量测参数的上下控制边界（target/maxValue/minValue/tolerance），物理层以 JSON 数组嵌入 product_model.main_route 的 $.processes[*].processParamList 和 $.processes[*].measurementParamList 字段中，每个参数对象含 paramModelId（→ param_model.id，即 semi:ProcessParam）、paramName、unit 及各产品专属卡控边界值，无单独数据列。注：paramModelId 指向 param_model 表，而非 property_model（后者用于物料规格属性 semi:MaterialParameterSpec）。" .
+
 
 semi:hasVersion a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf (semi:ProcessStation semi:Route semi:ProductModel semi:BOM semi:Recipe) ] ;
@@ -1359,19 +1356,27 @@ semi:hasRecordSerialNo a owl:DatatypeProperty ;
 
 semi:ProcessParamGroup a owl:Class ;
     rdfs:label "制程参数组" ;
-    rdfs:comment "制程参数采集分组，聚合设备加工过站时需要采集的工艺制程参数（如温度、压力、时间），用于过程监控和 SPC 分析。物理表：param_group WHERE param_group_cat='process'。由 semi:usesProcessParamGroup 从工序站点引用（通用制程采集可行域），由 semi:specifiesProcessParam 从 ProcessConstraint 引用（产品专属制程卡控配置）。通过 semi:containsProcessParam 聚合多个 semi:ProcessParam 实例。" .
+    rdfs:comment "制程参数采集分组，聚合设备加工过站时需要采集的工艺制程参数（如温度、压力、时间），用于过程监控和 SPC 分析。物理表：param_group WHERE param_group_cat='process'。由 semi:usesProcessParamGroup 从工序站点引用（通用制程采集可行域），由 semi:selectedProcessParamGroup 从 ProcessConstraint 引用（产品专属制程卡控配置，1:1选定）。通过 semi:containsProcessParam 聚合多个 semi:ProcessParam 实例。" .
 
 semi:MeasurementParamGroup a owl:Class ;
     rdfs:label "量测参数组" ;
-    rdfs:comment "量测参数采集分组，聚合量测过站时需要采集的产品阶段性质量参数（如膜厚、线宽、TTV），用于产品合格判定和工艺分析。物理表：param_group WHERE param_group_cat='measure'。由 semi:usesMeasurementParamGroup 从工序站点引用（通用量测采集可行域），由 semi:specifiesMeasurementParam 从 ProcessConstraint 引用（产品专属量测合格界限配置）。通过 semi:containsMeasurementParam 聚合多个 semi:MeasurementParam 实例。" .
+    rdfs:comment "量测参数采集分组，聚合量测过站时需要采集的产品阶段性质量参数（如膜厚、线宽、TTV），用于产品合格判定和工艺分析。物理表：param_group WHERE param_group_cat='measure'。由 semi:usesMeasurementParamGroup 从工序站点引用（通用量测采集可行域），由 semi:selectedMeasurementParamGroup 从 ProcessConstraint 引用（产品专属量测配置，1:1选定）。通过 semi:containsMeasurementParam 聚合多个 semi:MeasurementParam 实例。" .
 
 semi:ProcessParam a owl:Class ;
     rdfs:label "制程参数定义" ;
-    rdfs:comment "单个制程参数的元数据定义，包含参数名称、编号、单位等，归属于 semi:ProcessParamGroup。物理表：param_model WHERE param_cat='工艺参数'。param_group 字段（FK → param_group.id）指向所属的制程参数组。由 ProcessConstraint 的 processParamList（$.processes[*].processParamList[*].paramModelId）引用并附加产品专属卡控规格值（target/maxValue/minValue/tolerance/unit）。与 semi:MaterialParameterSpec 独立：前者为制造过程参数，后者为物料交付规格。" .
+    rdfs:comment "单个制程参数的元数据定义，包含参数名称、编号、单位等，归属于 semi:ProcessParamGroup。物理表：param_model WHERE param_cat='工艺参数'。param_group 字段（FK → param_group.id）指向所属的制程参数组。由 semi:ProcessParamSpec（产品专属卡控规格实例）通过 semi:constrainsProcessParam 引用，附加该产品在该工序的专属卡控值（target/maxValue/minValue/tolerance/unit）。与 semi:MaterialParameterSpec 独立：前者为制造过程参数，后者为物料交付规格。" .
 
 semi:MeasurementParam a owl:Class ;
     rdfs:label "量测参数定义" ;
-    rdfs:comment "单个量测参数的元数据定义，包含参数名称、编号、单位等，归属于 semi:MeasurementParamGroup。物理表：param_model WHERE param_cat='量测参数'。param_group 字段（FK → param_group.id）指向所属的量测参数组。由 ProcessConstraint 的 measurementParamList（$.processes[*].measurementParamList[*].paramModelId）引用并附加产品专属合格界限及 shipmentDecision（出货判定标志）。" .
+    rdfs:comment "单个量测参数的元数据定义，包含参数名称、编号、单位等，归属于 semi:MeasurementParamGroup。物理表：param_model WHERE param_cat='量测参数'。param_group 字段（FK → param_group.id）指向所属的量测参数组。由 semi:MeasurementParamSpec（产品专属合格界限实例）通过 semi:constrainsMeasurementParam 引用，附加该产品专属合格界限及 shipmentDecision（出货判定标志）、isSPCTarget（SPC监控标志）。" .
+
+semi:ProcessParamSpec a owl:Class ;
+    rdfs:label "制程参数卡控规格" ;
+    rdfs:comment "某产品模型在特定工序对一个制程参数的专属卡控规格实例，内聚参数引用与产品专属上下限值。无独立物理表，数据来源：product_model.main_route 的 $.processes[*].processParamList[*]（EmbeddedJSON，每个数组元素对应一个 ProcessParamSpec 实例）。每个实例通过 semi:constrainsProcessParam 指向具体 semi:ProcessParam 参数定义，并携带该产品在该工序的专属卡控规格值（target/maxValue/minValue/tolerance/unit/samplingRule/collectionMethod）。" .
+
+semi:MeasurementParamSpec a owl:Class ;
+    rdfs:label "量测参数卡控规格" ;
+    rdfs:comment "某产品模型在特定工序对一个量测参数的专属合格界限规格实例，内聚参数引用、合格界限值及出货/SPC标志。无独立物理表，数据来源：product_model.main_route 的 $.processes[*].measurementParamList[*]（EmbeddedJSON，每个数组元素对应一个 MeasurementParamSpec 实例）。每个实例通过 semi:constrainsMeasurementParam 指向具体 semi:MeasurementParam 参数定义，并携带 target/maxValue/minValue/tolerance/unit/samplingRule/collectionMethod/shipmentDecision/isSPCTarget 等属性。若 isSPCTarget=true，则该量测参数同时出现在 spcParamList（SPC 监控子集）中。" .
 
 # 11.2 对象属性 — 站点级参数组关联（通用能力约束）
 
@@ -1397,15 +1402,40 @@ semi:containsMeasurementParam a owl:ObjectProperty ;
 
 # 11.3 对象属性 — 产品层参数卡控关联（ProcessConstraint 专属）
 
-semi:specifiesProcessParam a owl:ObjectProperty ;
-    rdfs:domain semi:ProcessConstraint ; rdfs:range semi:ProcessParamGroup ;
-    rdfs:label "产品工序指定制程参数组" ;
-    rdfs:comment "某产品模型在特定工序要求采集的制程参数组（semi:ProcessParamGroup）及其产品专属卡控规格。物理：product_model.main_route 的 $.processes[*].processParamList（EmbeddedJSON，每项含 paramModelId→param_model.id、paramName、target/maxValue/minValue/tolerance/unit；卡控值为该产品的专属覆盖值，可与参数组通用默认值不同）。语义上为 usesProcessParamGroup 所定义通用范围内的产品专属收窄，通过 paramModelId→param_model.param_group 可回溯到具体 ProcessParamGroup 实例。" .
+semi:hasSubRoute a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessConstraint ; rdfs:range semi:Route ;
+    rdfs:label "工序挂载子路径" ;
+    rdfs:comment "某工序约束节点（ProcessConstraint）在该站点可触发的子工艺路径（抽检/分支路径）。物理：product_model.main_route 的 $.processes[*].subRoute[]（EmbeddedJSON 数组，每项含 id→matrix_routerx_config_route.id、routeName、routeType=3(SPOT_CHECK)、samplingRule、processes[] 子站点约束列表）。子路径是可选配置（0:N），代表产品在该主工序站点根据抽检规则触发的额外检测分支，如表金属检测路径、轮廓仪抽样路径。子路径本身也是完整的 Route 实体，其 processes[] 内嵌与主路径相同结构的 ProcessConstraint 节点。" .
 
-semi:specifiesMeasurementParam a owl:ObjectProperty ;
+semi:selectedProcessParamGroup a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessConstraint ; rdfs:range semi:ProcessParamGroup ;
+    rdfs:label "产品工序选定制程参数组" ;
+    rdfs:comment "某产品模型在特定工序选择的制程参数组（1:1，从站点通用能力域中选定唯一一组）。物理：product_model.main_route 的 $.processes[*].processParamGroupId → param_group.id WHERE param_group_cat='process'。代表该产品在该工序从哪个制程参数组中选取参数进行卡控（组的选择是1:1的，参数的选取是1:N的，由 hasProcessParamSpec 承载）。" .
+
+semi:selectedMeasurementParamGroup a owl:ObjectProperty ;
     rdfs:domain semi:ProcessConstraint ; rdfs:range semi:MeasurementParamGroup ;
-    rdfs:label "产品工序指定量测参数组" ;
-    rdfs:comment "某产品模型在特定工序要求采集的量测参数组（semi:MeasurementParamGroup）及其产品专属合格界限。物理：product_model.main_route 的 $.processes[*].measurementParamList（EmbeddedJSON，每项含 paramModelId→param_model.id、paramName、target/maxValue/minValue/tolerance/unit/shipmentDecision；shipmentDecision 标志该参数是否作为出货判定条件）。语义上为 usesMeasurementParamGroup 所定义通用范围内的产品专属收窄。" .
+    rdfs:label "产品工序选定量测参数组" ;
+    rdfs:comment "某产品模型在特定工序选择的量测参数组（1:1，从站点通用能力域中选定唯一一组）。物理：product_model.main_route 的 $.processes[*].measurementParamGroupId → param_group.id WHERE param_group_cat='measure'。代表该产品在该工序从哪个量测参数组中选取参数配置合格界限。" .
+
+semi:hasProcessParamSpec a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessConstraint ; rdfs:range semi:ProcessParamSpec ;
+    rdfs:label "工序制程参数卡控规格" ;
+    rdfs:comment "ProcessConstraint 持有若干制程参数卡控规格实例（1:N）。物理：product_model.main_route 的 $.processes[*].processParamList[]（EmbeddedJSON 数组，每个数组元素对应一个 ProcessParamSpec 实例）。" .
+
+semi:hasMeasurementParamSpec a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessConstraint ; rdfs:range semi:MeasurementParamSpec ;
+    rdfs:label "工序量测参数卡控规格" ;
+    rdfs:comment "ProcessConstraint 持有若干量测参数卡控规格实例（1:N）。物理：product_model.main_route 的 $.processes[*].measurementParamList[]（EmbeddedJSON 数组）。" .
+
+semi:constrainsProcessParam a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessParamSpec ; rdfs:range semi:ProcessParam ;
+    rdfs:label "卡控对应制程参数" ;
+    rdfs:comment "ProcessParamSpec 指向其卡控的具体制程参数定义实体。物理：processParamList[*].paramModelId → param_model.id WHERE param_cat='工艺参数'。" .
+
+semi:constrainsMeasurementParam a owl:ObjectProperty ;
+    rdfs:domain semi:MeasurementParamSpec ; rdfs:range semi:MeasurementParam ;
+    rdfs:label "卡控对应量测参数" ;
+    rdfs:comment "MeasurementParamSpec 指向其卡控的具体量测参数定义实体。物理：measurementParamList[*].paramModelId → param_model.id WHERE param_cat='量测参数'。" .
 
 semi:specifiesProductEqpGroup a owl:ObjectProperty ;
     rdfs:domain semi:ProcessConstraint ; rdfs:range semi:EquipmentGroup ;
@@ -1457,4 +1487,75 @@ semi:hasParamUnit a owl:DatatypeProperty ;
     rdfs:range xsd:integer ;
     rdfs:label "参数单位（枚举ID）" ;
     rdfs:comment "参数的物理量纲单位，以整数枚举 ID 存储（需查 sys_paraminfo_module_type 等字典表解码）。物理：param_model.unit（int 类型）。" .
+
+# 11.6 数据属性 — ProcessParamSpec / MeasurementParamSpec（产品专属卡控规格值）
+# 物理来源：product_model.main_route 的 $.processes[*].processParamList[*] 或 measurementParamList[*] 各字段
+
+semi:hasSpecTargetValue a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:ProcessParamSpec semi:MeasurementParamSpec) ] ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "规格目标值" ;
+    rdfs:comment "参数的目标控制值（中心值/标称值）。物理：processParamList[*].target 或 measurementParamList[*].target。部分参数可为空（未配置 target 时）。" .
+
+semi:hasSpecMaxValue a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:ProcessParamSpec semi:MeasurementParamSpec) ] ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "规格上限值" ;
+    rdfs:comment "参数的卡控上限（超出则判 NG）。物理：processParamList[*].maxValue 或 measurementParamList[*].maxValue。" .
+
+semi:hasSpecMinValue a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:ProcessParamSpec semi:MeasurementParamSpec) ] ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "规格下限值" ;
+    rdfs:comment "参数的卡控下限（低于则判 NG）。物理：processParamList[*].minValue 或 measurementParamList[*].minValue。" .
+
+semi:hasSpecTolerance a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:ProcessParamSpec semi:MeasurementParamSpec) ] ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "规格公差" ;
+    rdfs:comment "参数的允许偏差量（maxValue - target 或 target - minValue）。物理：processParamList[*].tolerance 或 measurementParamList[*].tolerance。" .
+
+semi:hasSpecUnit a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:ProcessParamSpec semi:MeasurementParamSpec) ] ;
+    rdfs:range xsd:string ;
+    rdfs:label "规格单位（字符串）" ;
+    rdfs:comment "该规格实例的物理单位，字符串类型（如 '℃'、'μm'、'mm'）。区别于 semi:hasParamUnit（param_model.unit 为整数枚举ID）。物理：processParamList[*].unit 或 measurementParamList[*].unit。" .
+
+semi:hasCollectionMethod a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:ProcessParamSpec semi:MeasurementParamSpec) ] ;
+    rdfs:range xsd:integer ;
+    rdfs:label "采集方式" ;
+    rdfs:comment "参数数据的采集方式枚举（0=手动录入，1=设备自动采集）。物理：processParamList[*].collectionMethod 或 measurementParamList[*].collectionMethod。" .
+
+semi:hasSpecSamplingRule a owl:DatatypeProperty ;
+    rdfs:domain [ owl:unionOf (semi:ProcessParamSpec semi:MeasurementParamSpec) ] ;
+    rdfs:range xsd:string ;
+    rdfs:label "抽检规则" ;
+    rdfs:comment "该参数的抽检策略（字符串枚举，如 '1'=全检、'2'=按频率抽检、'3'=按数量抽检等）。物理：processParamList[*].samplingRule 或 measurementParamList[*].samplingRule。" .
+
+semi:hasShipmentDecision a owl:DatatypeProperty ;
+    rdfs:domain semi:MeasurementParamSpec ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "出货判定标志" ;
+    rdfs:comment "是否将该量测参数的结果用作出货判定条件（true=出货判定项）。物理：measurementParamList[*].shipmentDecision（0=否，1=是，映射为 boolean）。仅适用于 MeasurementParamSpec。" .
+
+semi:isSPCTarget a owl:DatatypeProperty ;
+    rdfs:domain semi:MeasurementParamSpec ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "SPC监控标志" ;
+    rdfs:comment "该量测参数是否被纳入 SPC（Statistical Process Control）监控子集（true=SPC监控项）。物理判断：若 measurementParamList[*].paramModelId 出现在同一工序节点的 spcParamList[*].paramModelId 中，则 isSPCTarget=true。无直接列存储，由 spcParamList 与 measurementParamList 的 paramModelId 交集推导。仅适用于 MeasurementParamSpec。" .
+
+# 11.7 数据属性 — Route（工艺路径类型）
+
+semi:hasRouteType a owl:DatatypeProperty ;
+    rdfs:domain semi:Route ;
+    rdfs:range xsd:integer ;
+    rdfs:label "路径类型" ;
+    rdfs:comment "工艺路径的分类枚举：0=MAIN（主路径，对应 product_model.main_route 的根节点）；3=SPOT_CHECK（抽检/分支子路径，对应 processes[*].subRoute[*] 节点，如表金属检测路径、轮廓仪抽样路径）。物理：matrix_routerx_config_route.route_type（主路径）或 subRoute[*].type.key（子路径 EmbeddedJSON）。" .
+
+semi:hasRouteSamplingRule a owl:DatatypeProperty ;
+    rdfs:domain semi:Route ;
+    rdfs:range xsd:string ;
+    rdfs:label "路径抽检规则" ;
+    rdfs:comment "子路径（SPOT_CHECK）的触发抽检规则。物理：subRoute[*].samplingRule（EmbeddedJSON 字段，仅 routeType=3 的子路径有此字段）。" .
 
