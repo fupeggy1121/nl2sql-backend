@@ -204,6 +204,15 @@ CLASS_SYNONYMS: dict = {
         ],
     },
 
+    "semi:OutboundBill": {
+        "label_cn": "出库记录单",
+        "synonyms": [
+            "出库单", "出库记录单", "出库凭证", "出库单据",
+            "仓库出库单", "物料出库单", "出库实绩单", "出库记录票",
+            "outboundbill", "outbound_bill", "warehouse_output_record_bill",
+        ],
+    },
+
     "semi:OutboundEventRecord": {
         "label_cn": "出库记录明细",
         "synonyms": [
