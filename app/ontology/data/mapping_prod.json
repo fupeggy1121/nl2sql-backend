@@ -1170,19 +1170,6 @@
       "note": "物料批次实例的实际参数测量值记录表（第三层）。每行断言：批次B（由inventory_id/batch_no关联到warehouse_inventory）的参数P的实测值是V。serial_no在逐件唯一码管理模式下精确到单件；batch_no为软关联冗余字段。"
     },
     {
-      "logic_class": "semi:ParamGroup",
-      "physical_table": "param_group",
-      "primary_key": "id",
-      "natural_key": "param_group_name",
-      "virtual": true,
-      "properties": {
-        "semi:hasParamGroupName": "param_group_name",
-        "semi:hasParamGroupCat": "param_group_cat",
-        "semi:hasParamGroupDesc": "param_group_desc"
-      },
-      "note": "抽象基类，不直接实例化，两个具体子类 ProcessParamGroup / MeasurementParamGroup 通过 filter_condition 分别映射到 param_group WHERE param_group_cat='process'/'measure'。公共属性定义在此处由子类继承。"
-    },
-    {
       "logic_class": "semi:ProcessParamGroup",
       "physical_table": "param_group",
       "primary_key": "id",
@@ -1193,7 +1180,7 @@
         "semi:hasParamGroupCat": "param_group_cat",
         "semi:hasParamGroupDesc": "param_group_desc"
       },
-      "note": "制程参数组（工艺参数组），对应 param_group WHERE param_group_cat='process'。聚合设备加工过站时需采集的制程参数，用于过程监控和 SPC 分析。由 usesProcessParamGroup 从 ProcessStation 引用，由 specifiesProcessParam 从 ProcessConstraint 引用（含产品专属卡控值）。"
+      "note": "制程参数组（工艺参数组），对应 param_group WHERE param_group_cat='process'。聚合设备加工过站时需采集的制程参数，用于过程监控和 SPC 分析。由 usesProcessParamGroup 从 ProcessStation 引用，由 specifiesProcessParam 从 ProcessConstraint 引用（含产品专属卡控值）。通过 containsProcessParam 聚合 ProcessParam 实例。"
     },
     {
       "logic_class": "semi:MeasurementParamGroup",
@@ -1206,20 +1193,35 @@
         "semi:hasParamGroupCat": "param_group_cat",
         "semi:hasParamGroupDesc": "param_group_desc"
       },
-      "note": "量测参数组，对应 param_group WHERE param_group_cat='measure'。聚合量测过站时需采集的产品质量参数，用于合格判定和工艺分析。由 usesMeasurementParamGroup 从 ProcessStation 引用，由 specifiesMeasurementParam 从 ProcessConstraint 引用（含产品专属合格界限及 shipmentDecision 出货判定标志）。"
+      "note": "量测参数组，对应 param_group WHERE param_group_cat='measure'。聚合量测过站时需采集的产品质量参数，用于合格判定和工艺分析。由 usesMeasurementParamGroup 从 ProcessStation 引用，由 specifiesMeasurementParam 从 ProcessConstraint 引用（含产品专属合格界限及 shipmentDecision 出货判定标志）。通过 containsMeasurementParam 聚合 MeasurementParam 实例。"
     },
     {
       "logic_class": "semi:ProcessParam",
       "physical_table": "param_model",
       "primary_key": "id",
       "natural_key": "param_name",
+      "filter_condition": "param_cat = '\u5de5\u827a\u53c2\u6570'",
       "properties": {
         "semi:hasParamName": "param_name",
         "semi:hasParamCode": "param_id",
         "semi:hasParamCat": "param_cat",
         "semi:hasParamUnit": "unit"
       },
-      "note": "单个过程参数（工艺参数或量测参数）的元数据定义。param_cat 字段区分'工艺参数' / '量测参数'。param_group 字段（bigint）为 FK → param_group.id，表示该参数归属的参数组。bind_eqp / classify_id 为扩展字段。注：此表（param_model）是制程参数定义，与物料规格参数 property_model（→ semi:MaterialParameterSpec）是独立的两张表，不可混淆。"
+      "note": "制程参数定义，对应 param_model WHERE param_cat='工艺参数'。param_group（bigint FK）→ param_group.id 指向所属 ProcessParamGroup。与物料规格参数 property_model（→ semi:MaterialParameterSpec）是独立的两张表，不可混淆。"
+    },
+    {
+      "logic_class": "semi:MeasurementParam",
+      "physical_table": "param_model",
+      "primary_key": "id",
+      "natural_key": "param_name",
+      "filter_condition": "param_cat = '\u91cf\u6d4b\u53c2\u6570'",
+      "properties": {
+        "semi:hasParamName": "param_name",
+        "semi:hasParamCode": "param_id",
+        "semi:hasParamCat": "param_cat",
+        "semi:hasParamUnit": "unit"
+      },
+      "note": "量测参数定义，对应 param_model WHERE param_cat='量测参数'。param_group（bigint FK）→ param_group.id 指向所属 MeasurementParamGroup。与 ProcessParam 对应同一物理表 param_model，通过 filter_condition 区分。"
     }
   ],
   "relation_mappings": [
@@ -1867,18 +1869,36 @@
       "range_class": "semi:MeasurementParamGroup"
     },
     {
-      "logic_relation": "semi:containsParam",
-      "description": "ParamGroup（参数组）包含哪些 ProcessParam（过程参数定义），多对多关系（一个参数可归属多个参数组）",
+      "logic_relation": "semi:containsProcessParam",
+      "description": "ProcessParamGroup（制程参数组）包含哪些 ProcessParam（制程参数定义）",
       "strategy": "EmbeddedJSON",
       "join_logic": {
         "source_table": "param_group",
+        "source_filter": "param_group_cat = 'process'",
         "source_json_column": "param_models",
         "target_table": "param_model",
         "target_key": "id",
-        "note": "param_group.param_models 为 JSON 对象（格式：{'id': '5,6'}），其中 id 字段为逗号分隔的 param_model.id 字符串。MySQL 解析写法：需先提取 JSON_UNQUOTE(JSON_EXTRACT(pg.param_models, '$.id'))，再使用 FIND_IN_SET 或字符串分割 JOIN param_model。等效写法：WHERE FIND_IN_SET(pm.id, JSON_UNQUOTE(JSON_EXTRACT(pg.param_models, '$.id')))"
+        "target_filter": "param_cat = '\u5de5\u827a\u53c2\u6570'",
+        "note": "param_group.param_models 为 JSON 对象（格式：{'id': '5,6'}），其中 id 字段为逗号分隔的 param_model.id 字符串。MySQL 解析：WHERE FIND_IN_SET(pm.id, JSON_UNQUOTE(JSON_EXTRACT(pg.param_models, '$.id'))) AND pm.param_cat='工艺参数'"
       },
-      "domain_class": "semi:ParamGroup",
+      "domain_class": "semi:ProcessParamGroup",
       "range_class": "semi:ProcessParam"
+    },
+    {
+      "logic_relation": "semi:containsMeasurementParam",
+      "description": "MeasurementParamGroup（量测参数组）包含哪些 MeasurementParam（量测参数定义）",
+      "strategy": "EmbeddedJSON",
+      "join_logic": {
+        "source_table": "param_group",
+        "source_filter": "param_group_cat = 'measure'",
+        "source_json_column": "param_models",
+        "target_table": "param_model",
+        "target_key": "id",
+        "target_filter": "param_cat = '\u91cf\u6d4b\u53c2\u6570'",
+        "note": "param_group.param_models 为 JSON 对象（格式：{'id': '5,6'}），其中 id 字段为逗号分隔的 param_model.id 字符串。MySQL 解析：WHERE FIND_IN_SET(pm.id, JSON_UNQUOTE(JSON_EXTRACT(pg.param_models, '$.id'))) AND pm.param_cat='量测参数'"
+      },
+      "domain_class": "semi:MeasurementParamGroup",
+      "range_class": "semi:MeasurementParam"
     },
     {
       "logic_relation": "semi:specifiesProcessParam",
@@ -1893,7 +1913,7 @@
         "target_table": "param_group",
         "target_key": "id",
         "target_fk": "param_model.param_group",
-        "note": "2跳 JOIN：product_model.main_route $.processes[*].processParamList[*].paramModelId → param_model.id → param_model.param_group → param_group.id。中间经过 param_model（semi:ProcessParam），最终定位到 param_group（semi:ParamGroup）实例。产品层卡控边界（target/maxValue/minValue/tolerance/unit）内嵌在 processParamList 各项 JSON 中，无独立列。如需直接访问单个参数定义，可中止于 param_model 层（semi:ProcessParam）。"
+        "note": "2跳 JOIN：product_model.main_route $.processes[*].processParamList[*].paramModelId → param_model.id（semi:ProcessParam，filter: param_cat='工艺参数'） → param_model.param_group → param_group.id（semi:ProcessParamGroup）。产品层卡控边界（target/maxValue/minValue/tolerance/unit）内嵌在 processParamList 各项 JSON 中，无独立列。如需直接访问单个制程参数定义，可中止于 param_model 层（semi:ProcessParam）。"
       },
       "domain_class": "semi:ProcessConstraint",
       "range_class": "semi:ProcessParamGroup"
@@ -1911,7 +1931,7 @@
         "target_table": "param_group",
         "target_key": "id",
         "target_fk": "param_model.param_group",
-        "note": "2跳 JOIN：product_model.main_route $.processes[*].measurementParamList[*].paramModelId → param_model.id → param_model.param_group → param_group.id。每项额外含 shipmentDecision（布尔，该参数是否作为出货判定条件），其余结构与 processParamList 相同。如需直接访问单个量测参数定义，可中止于 param_model 层（semi:ProcessParam）。"
+        "note": "2跳 JOIN：product_model.main_route $.processes[*].measurementParamList[*].paramModelId → param_model.id（semi:MeasurementParam，filter: param_cat='量测参数'） → param_model.param_group → param_group.id（semi:MeasurementParamGroup）。每项额外含 shipmentDecision（布尔，该参数是否作为出货判定条件），其余结构与 processParamList 相同。如需直接访问单个量测参数定义，可中止于 param_model 层（semi:MeasurementParam）。"
       },
       "domain_class": "semi:ProcessConstraint",
       "range_class": "semi:MeasurementParamGroup"
