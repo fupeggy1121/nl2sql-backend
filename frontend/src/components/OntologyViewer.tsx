@@ -92,6 +92,11 @@ export default function OntologyViewer() {
   const svgRef = useRef<SVGSVGElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const simulationRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null);
+  // D3 selection refs for highlight effect
+  const nodeSelRef = useRef<d3.Selection<SVGGElement, GraphNode, SVGGElement, unknown> | null>(null);
+  const linkSelRef = useRef<d3.Selection<SVGLineElement, GraphLink, SVGGElement, unknown> | null>(null);
+  const linkLabelSelRef = useRef<d3.Selection<SVGTextElement, GraphLink, SVGGElement, unknown> | null>(null);
+  const linksDataRef = useRef<GraphLink[]>([]);
 
   // State
   const [graphData, setGraphData] = useState<GraphData | null>(null);
@@ -175,6 +180,11 @@ export default function OntologyViewer() {
 
     // Clear previous
     svg.selectAll('*').remove();
+    // Reset selection refs to avoid stale highlight effect
+    nodeSelRef.current = null;
+    linkSelRef.current = null;
+    linkLabelSelRef.current = null;
+    linksDataRef.current = [];
 
     // Deep copy to avoid D3 mutating state
     const nodes: GraphNode[] = filteredData.nodes.map(n => ({ ...n }));
@@ -254,7 +264,7 @@ export default function OntologyViewer() {
           d.fx = null; d.fy = null;
         })
       )
-      .on('click', (_event, d) => setSelectedNode(d));
+      .on('click', (_event, d) => setSelectedNode(prev => prev?.id === d.id ? null : d));
 
     // diamond path helper (for virtual type-template classes)
     const diamondPath = (r: number) =>
@@ -356,6 +366,12 @@ export default function OntologyViewer() {
       })
       .style('pointer-events', 'none');
 
+    // Save selections to refs for highlight effect
+    nodeSelRef.current = node as unknown as d3.Selection<SVGGElement, GraphNode, SVGGElement, unknown>;
+    linkSelRef.current = link as unknown as d3.Selection<SVGLineElement, GraphLink, SVGGElement, unknown>;
+    linkLabelSelRef.current = linkLabel as unknown as d3.Selection<SVGTextElement, GraphLink, SVGGElement, unknown>;
+    linksDataRef.current = links;
+
     // Tick
     simulation.on('tick', () => {
       link
@@ -389,6 +405,64 @@ export default function OntologyViewer() {
 
     return () => { simulation.stop(); };
   }, [filteredData, searchTerm]);
+
+  // ─── Highlight selected node 1-hop neighbors ──
+  useEffect(() => {
+    const node = nodeSelRef.current;
+    const link = linkSelRef.current;
+    const linkLabel = linkLabelSelRef.current;
+    if (!node || !link) return;
+
+    if (!selectedNode) {
+      // Reset all to default opacity
+      node.attr('opacity', d => d.type === 'dataProperty' ? 0.7 : 0.9);
+      link.attr('opacity', 1);
+      if (linkLabel) linkLabel.attr('opacity', 1);
+      return;
+    }
+
+    // Compute 1-hop neighbor IDs
+    const neighborIds = new Set<string>([selectedNode.id]);
+    linksDataRef.current.forEach(l => {
+      const srcId = typeof l.source === 'object' ? (l.source as GraphNode).id : l.source as string;
+      const tgtId = typeof l.target === 'object' ? (l.target as GraphNode).id : l.target as string;
+      if (srcId === selectedNode.id) neighborIds.add(tgtId);
+      if (tgtId === selectedNode.id) neighborIds.add(srcId);
+    });
+
+    // Dim non-neighbor nodes
+    node.attr('opacity', d => neighborIds.has(d.id) ? (d.type === 'dataProperty' ? 0.9 : 1.0) : 0.08);
+
+    // Dim non-adjacent links
+    link.attr('opacity', d => {
+      const srcId = typeof d.source === 'object' ? (d.source as GraphNode).id : d.source as string;
+      const tgtId = typeof d.target === 'object' ? (d.target as GraphNode).id : d.target as string;
+      return (srcId === selectedNode.id || tgtId === selectedNode.id) ? 1 : 0.05;
+    });
+
+    if (linkLabel) {
+      linkLabel.attr('opacity', d => {
+        const srcId = typeof d.source === 'object' ? (d.source as GraphNode).id : d.source as string;
+        const tgtId = typeof d.target === 'object' ? (d.target as GraphNode).id : d.target as string;
+        return (srcId === selectedNode.id || tgtId === selectedNode.id) ? 1 : 0.05;
+      });
+    }
+
+    // Highlight selected node shape (add ring)
+    node.each(function(d) {
+      const g = d3.select<SVGGElement, GraphNode>(this);
+      g.select('.selected-ring').remove();
+      if (d.id === selectedNode.id) {
+        g.insert('circle', ':first-child')
+          .attr('class', 'selected-ring')
+          .attr('r', d.type === 'dataProperty' ? 14 : d.virtual ? 26 : 23)
+          .attr('fill', 'none')
+          .attr('stroke', '#f59e0b')
+          .attr('stroke-width', 3)
+          .attr('stroke-dasharray', 'none');
+      }
+    });
+  }, [selectedNode]);
 
   // ─── Actions ────────────────────────────────
   const handleReload = useCallback(async () => {
