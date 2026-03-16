@@ -1200,7 +1200,7 @@
       "physical_table": "param_model",
       "primary_key": "id",
       "natural_key": "param_name",
-      "filter_condition": "param_cat = '\u5de5\u827a\u53c2\u6570'",
+      "filter_condition": "param_cat = '工艺参数'",
       "properties": {
         "semi:hasParamName": "param_name",
         "semi:hasParamCode": "param_id",
@@ -1214,7 +1214,7 @@
       "physical_table": "param_model",
       "primary_key": "id",
       "natural_key": "param_name",
-      "filter_condition": "param_cat = '\u91cf\u6d4b\u53c2\u6570'",
+      "filter_condition": "param_cat = '量测参数'",
       "properties": {
         "semi:hasParamName": "param_name",
         "semi:hasParamCode": "param_id",
@@ -1222,6 +1222,50 @@
         "semi:hasParamUnit": "unit"
       },
       "note": "量测参数定义，对应 param_model WHERE param_cat='量测参数'。param_group（bigint FK）→ param_group.id 指向所属 MeasurementParamGroup。与 ProcessParam 对应同一物理表 param_model，通过 filter_condition 区分。"
+    },
+    {
+      "logic_class": "semi:ProcessParamSpec",
+      "physical_table": null,
+      "virtual": true,
+      "virtual_kind": "EmbeddedJSON",
+      "embedded_in": "product_model",
+      "label_cn": "制程参数卡控规格",
+      "source_json_column": "main_route",
+      "source_json_path": "$.processes[*].processParamList[*]",
+      "properties": {
+        "semi:constrainsProcessParam": "paramModelId",
+        "semi:hasSpecTargetValue": "target",
+        "semi:hasSpecMaxValue": "maxValue",
+        "semi:hasSpecMinValue": "minValue",
+        "semi:hasSpecTolerance": "tolerance",
+        "semi:hasSpecUnit": "unit",
+        "semi:hasCollectionMethod": "collectionMethod",
+        "semi:hasSpecSamplingRule": "samplingRule"
+      },
+      "note": "EmbeddedJSON，无独立物理表。数据嵌套于 product_model.main_route 字段 $.processes[*].processParamList[*]。每个数组元素对应某产品模型在特定工序对一个制程参数的专属卡控规格实例，通过 paramModelId 关联 param_model（制程参数定义）。"
+    },
+    {
+      "logic_class": "semi:MeasurementParamSpec",
+      "physical_table": null,
+      "virtual": true,
+      "virtual_kind": "EmbeddedJSON",
+      "embedded_in": "product_model",
+      "label_cn": "量测参数卡控规格",
+      "source_json_column": "main_route",
+      "source_json_path": "$.processes[*].measurementParamList[*]",
+      "properties": {
+        "semi:constrainsMeasurementParam": "paramModelId",
+        "semi:hasSpecTargetValue": "target",
+        "semi:hasSpecMaxValue": "maxValue",
+        "semi:hasSpecMinValue": "minValue",
+        "semi:hasSpecTolerance": "tolerance",
+        "semi:hasSpecUnit": "unit",
+        "semi:hasCollectionMethod": "collectionMethod",
+        "semi:hasSpecSamplingRule": "samplingRule",
+        "semi:hasShipmentDecision": "shipmentDecision",
+        "semi:isSPCTarget": "isSPCTarget"
+      },
+      "note": "EmbeddedJSON，无独立物理表。数据嵌套于 product_model.main_route 字段 $.processes[*].measurementParamList[*]。每个数组元素对应某产品模型在特定工序对一个量测参数的专属合格界限规格实例，通过 paramModelId 关联 param_model（量测参数定义）。shipmentDecision 为出货判定标志，isSPCTarget=true 时该参数同时出现在 spcParamList。"
     }
   ],
   "relation_mappings": [
@@ -1880,7 +1924,7 @@
         "source_json_column": "param_models",
         "target_table": "param_model",
         "target_key": "id",
-        "target_filter": "param_cat = '\u5de5\u827a\u53c2\u6570'",
+        "target_filter": "param_cat = '工艺参数'",
         "note": "param_group.param_models 为 JSON 对象（格式：{'id': '5,6'}），其中 id 字段为逗号分隔的 param_model.id 字符串。MySQL 解析：WHERE FIND_IN_SET(pm.id, JSON_UNQUOTE(JSON_EXTRACT(pg.param_models, '$.id'))) AND pm.param_cat='工艺参数'"
       },
       "domain_class": "semi:ProcessParamGroup",
@@ -1896,7 +1940,7 @@
         "source_json_column": "param_models",
         "target_table": "param_model",
         "target_key": "id",
-        "target_filter": "param_cat = '\u91cf\u6d4b\u53c2\u6570'",
+        "target_filter": "param_cat = '量测参数'",
         "note": "param_group.param_models 为 JSON 对象（格式：{'id': '5,6'}），其中 id 字段为逗号分隔的 param_model.id 字符串。MySQL 解析：WHERE FIND_IN_SET(pm.id, JSON_UNQUOTE(JSON_EXTRACT(pg.param_models, '$.id'))) AND pm.param_cat='量测参数'"
       },
       "domain_class": "semi:MeasurementParamGroup",
