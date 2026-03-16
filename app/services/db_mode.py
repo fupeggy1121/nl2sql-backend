@@ -54,18 +54,26 @@ def set_db_mode(mode: str) -> dict:
     切换运行时数据库模式，并立即清除所有缓存的连接对象。
 
     Args:
-        mode: "prod" | "demo" | "auto" | "mysql" | "supabase"
-              - mysql/supabase: 切换 DB_BACKEND 环境变量（本地直连 vs Supabase REST）
-              - prod/demo/auto: 切换 Supabase 环境
+        mode: "test" | "dev" | "mysql" | "supabase" | "prod" | "demo" | "auto"
+              - test:     MySQL 测试环境 (10.60.120.33:3336)
+              - dev:      MySQL 开发环境 (172.16.57.29:3306)
+              - mysql:    等同 test（向后兼容）
+              - supabase: 切换到 Supabase（已停用，保留兼容）
+              - prod/demo/auto: 切换 Supabase 环境（历史模式）
 
     Returns:
         当前模式信息 dict
     """
     global _RUNTIME_DB_MODE
 
-    if mode == "mysql":
+    if mode in ("test", "mysql"):
         os.environ["DB_BACKEND"] = "mysql"
-        logger.info("[db_mode] DB_BACKEND switched to: mysql")
+        os.environ["MYSQL_SOURCE"] = "test"
+        logger.info("[db_mode] DB_BACKEND=mysql, MYSQL_SOURCE=test (测试环境)")
+    elif mode == "dev":
+        os.environ["DB_BACKEND"] = "mysql"
+        os.environ["MYSQL_SOURCE"] = "dev"
+        logger.info("[db_mode] DB_BACKEND=mysql, MYSQL_SOURCE=dev (开发环境)")
     elif mode == "supabase":
         os.environ["DB_BACKEND"] = "supabase"
         logger.info("[db_mode] DB_BACKEND switched to: supabase")
@@ -74,11 +82,11 @@ def set_db_mode(mode: str) -> dict:
     elif mode in ("prod", "demo"):
         _RUNTIME_DB_MODE = mode
     else:
-        raise ValueError(f"Invalid db mode: {mode!r}. Must be 'mysql', 'supabase', 'prod', 'demo', or 'auto'")
+        raise ValueError(f"Invalid db mode: {mode!r}. Must be 'test', 'dev', 'mysql', 'supabase', 'prod', 'demo', or 'auto'")
 
     _reset_cached_connections()
 
-    logger.info(f"[db_mode] Database mode switched to: runtime={_RUNTIME_DB_MODE!r}, backend={os.getenv('DB_BACKEND', 'supabase')}")
+    logger.info(f"[db_mode] Database mode switched to: runtime={_RUNTIME_DB_MODE!r}, backend={os.getenv('DB_BACKEND', 'mysql')}, source={os.getenv('MYSQL_SOURCE', 'test')}")
     return get_current_db_mode()
 
 
@@ -87,7 +95,13 @@ def get_current_db_mode() -> dict:
     creds = get_db_credentials()
     url    = creds.get("supabase_url") or ""
     db_url = creds.get("database_url") or ""
-    db_backend = os.getenv("DB_BACKEND", "supabase")
+    db_backend   = os.getenv("DB_BACKEND",    "mysql")
+    mysql_source = os.getenv("MYSQL_SOURCE",  "test")
+
+    suffix      = mysql_source.upper()
+    mysql_host  = (os.getenv(f"MYSQL_HOST_{suffix}") or os.getenv("MYSQL_HOST") or "10.60.120.33")
+    mysql_port  = (os.getenv(f"MYSQL_PORT_{suffix}") or os.getenv("MYSQL_PORT") or "3336")
+
     return {
         "mode":               _RUNTIME_DB_MODE or "auto",
         "source":             creds["source"],
@@ -95,6 +109,8 @@ def get_current_db_mode() -> dict:
         "database_url_hint":  (db_url[:40] + "...") if len(db_url) > 40 else db_url,
         "runtime_db_mode":    _RUNTIME_DB_MODE,
         "db_backend":         db_backend,
+        "mysql_source":       mysql_source,
+        "mysql_host_hint":    f"{mysql_host}:{mysql_port}",
     }
 
 

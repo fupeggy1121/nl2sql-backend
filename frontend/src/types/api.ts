@@ -80,6 +80,8 @@ export interface DbMode {
     mode: string
     source: string
     runtime_db_mode: string | null
-    db_backend: string   // "mysql" | "supabase"
+    db_backend: string        // "mysql"
+    mysql_source?: string     // "test" | "dev"
+    mysql_host_hint?: string  // e.g. "10.60.120.33:3336"
   }
 }

@@ -1266,6 +1266,46 @@
         "semi:isSPCTarget": "isSPCTarget"
       },
       "note": "EmbeddedJSON，无独立物理表。数据嵌套于 product_model.main_route 字段 $.processes[*].measurementParamList[*]。每个数组元素对应某产品模型在特定工序对一个量测参数的专属合格界限规格实例，通过 paramModelId 关联 param_model（量测参数定义）。shipmentDecision 为出货判定标志，isSPCTarget=true 时该参数同时出现在 spcParamList。"
+    },
+    {
+      "logic_class": "semi:WarehouseEvent",
+      "physical_table": null,
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "label_cn": "库存管理事件（抽象父类）",
+      "note": "抽象父类，不直接映射物理表。作为 semi:Action 子类，与 semi:ProductionEvent 平行，专用于线边仓管理域。具体子类：InboundApprovalEvent、InboundEvent、OutboundEvent。执行记录见对应 *Record 实例类。"
+    },
+    {
+      "logic_class": "semi:WarehouseEventRecord",
+      "physical_table": null,
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "label_cn": "库存管理事件记录（抽象父类）",
+      "note": "库存管理操作的执行记录抽象基类，不直接映射物理表。具体子类：InboundApprovalRecord（warehouse_approval_record）、InboundEventRecord（warehouse_input_bill_detail）、OutboundEventRecord（warehouse_output_bill_detail）。"
+    },
+    {
+      "logic_class": "semi:InboundApprovalEvent",
+      "physical_table": null,
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "label_cn": "入库审批事件类型",
+      "note": "Type 层定义，入库审批操作的事件类型模板。作为 WarehouseEvent 子类。执行记录层见 semi:InboundApprovalRecord（物理表：warehouse_approval_record）。"
+    },
+    {
+      "logic_class": "semi:InboundEvent",
+      "physical_table": null,
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "label_cn": "入库事件类型",
+      "note": "Type 层定义，线边仓入库操作的事件类型模板。作为 WarehouseEvent 子类。执行记录层见 semi:InboundEventRecord（物理表：warehouse_input_bill_detail）。"
+    },
+    {
+      "logic_class": "semi:OutboundEvent",
+      "physical_table": null,
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "label_cn": "出库事件类型",
+      "note": "Type 层定义，线边仓出库操作（领料/调拨）的事件类型模板。作为 WarehouseEvent 子类。执行记录层见 semi:OutboundEventRecord（物理表：warehouse_output_bill_detail）。"
     }
   ],
   "relation_mappings": [

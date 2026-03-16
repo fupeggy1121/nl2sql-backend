@@ -25,14 +25,23 @@ def _build_mysql_connect_kwargs() -> dict:
     """从环境变量构建 pymysql.connect 关键字参数。
 
     优先级:
-      1. MYSQL_* 系列变量（生产专用）
-      2. DATABASE_URL 解析（兼容）
+      1. MYSQL_SOURCE=test|dev → 对应 MYSQL_*_TEST / MYSQL_*_DEV 系列变量
+      2. MYSQL_HOST/PORT/DB/USER/PASSWORD 直接变量（兼容回退）
+      3. 内置默认值
     """
-    host     = os.getenv("MYSQL_HOST",     os.getenv("PROD_DB_HOST",     "10.60.120.33"))
-    port     = int(os.getenv("MYSQL_PORT", os.getenv("PROD_DB_PORT",     "3336")))
-    db       = os.getenv("MYSQL_DB",       os.getenv("PROD_DB_NAME",     "cc_semi_mvp"))
-    user     = os.getenv("MYSQL_USER",     os.getenv("PROD_DB_USER",     "root"))
-    password = os.getenv("MYSQL_PASSWORD", os.getenv("PROD_DB_PASSWORD", ""))
+    source = os.getenv("MYSQL_SOURCE", "test").lower()
+    suffix = source.upper()  # "TEST" or "DEV"
+
+    def _get(key: str, fallback: str) -> str:
+        return (os.getenv(f"MYSQL_{key}_{suffix}")
+                or os.getenv(f"MYSQL_{key}")
+                or os.getenv(f"PROD_DB_{key}", fallback))
+
+    host     = _get("HOST",     "10.60.120.33")
+    port     = int(_get("PORT", "3336"))
+    db       = _get("DB",       "cc_semi_mvp")
+    user     = _get("USER",     "root")
+    password = _get("PASSWORD", "")
     return dict(host=host, port=port, db=db, user=user, password=password,
                 connect_timeout=10, charset="utf8mb4")
 
