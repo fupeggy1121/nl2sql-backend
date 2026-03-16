@@ -55,7 +55,7 @@ semi:ProcessStation a owl:Class ;
 
 semi:ProcessConstraint a owl:Class ;
     rdfs:label "工艺约束（工艺导航节点）" ;
-    rdfs:comment "某产品模型在特定工序下的完整工艺管控规格节点。物理存储：EmbeddedJSON，嵌入 product_model.main_route 字段，路径 $.processes[*]（每个数组元素对应一个工序站点的管控配置）。主要字段：code（工序站点码，关联 semi:ProcessStation）、name（工序名）、recipe（配方绑定 id/code/name，关联 semi:Recipe；部分工序无配方时为空对象）、processParamList（工艺参数管控列表，含 paramName/paramModelId/target/maxValue/minValue/tolerance/unit）、measurementParamList（量测参数合格界限列表，同结构）、remarkList（文字技术要求，主题-内容键值对）、productEqpGroupList（适用设备组配置）。无独立数据库表，所有管控信息以树状 JSON 内聚于 product_model 行的 main_route 字段中。" .
+    rdfs:comment "某产品模型在特定工序下的完整工艺管控规格节点。物理存储：EmbeddedJSON，嵌入 product_model.main_route 字段，路径 $.processes[*]（每个数组元素对应一个工序站点的管控配置）。主要字段：code（工序站点码，关联 semi:ProcessStation）、name（工序名）、recipe（配方绑定 id/code/name，关联 semi:Recipe；部分工序无配方时为空对象）、processParamList（工艺参数管控列表，含 paramName、paramModelId→param_model.id、target/maxValue/minValue/tolerance/unit；为该产品在该工序的专属卡控规格）、measurementParamList（量测参数合格界限列表，同结构，另含 shipmentDecision 出货判定标志）、remarkList（文字技术要求，theme/value 键值对）、productEqpGroupList（产品专属指定设备组绑定，参见 semi:specifiesProductEqpGroup）。无独立数据库表，所有管控信息以树状 JSON 内聚于 product_model 行的 main_route 字段中。" .
 
 semi:ProductionOrder a owl:Class ; 
     rdfs:label "生产工单" ;
@@ -234,7 +234,7 @@ semi:isInstanceOf a owl:ObjectProperty ;
 semi:usesEquipmentGroup a owl:ObjectProperty ;
     rdfs:domain semi:ProcessStation ; rdfs:range semi:EquipmentGroup ;
     rdfs:label "工序绑定可用设备组" ;
-    rdfs:comment "工序引用设备组作为派工可行域，对应 matrix_routerx_config_process.equipment_group_list（JSON 数组）。" .
+    rdfs:comment "工序站点（ProcessStation）引用设备组作为通用派工可行域，对应 matrix_routerx_config_process.equipment_group_list（JSON 数组）。表示该工序在工艺能力层面可使用哪些设备组（1对多）。区别于 semi:specifiesProductEqpGroup：后者是产品模型在该工序额外指定的专属设备组约束（存储于 product_model.main_route），两层约束叠加后形成最终派工可行域。" .
 
 semi:hostsRecipe a owl:ObjectProperty ;
     rdfs:domain semi:Equipment ; rdfs:range semi:Recipe ;
@@ -373,7 +373,7 @@ semi:hasControlLimit a owl:DatatypeProperty ;
     rdfs:domain semi:ProcessConstraint ;
     rdfs:range xsd:string ;
     rdfs:label "制程卡控界限" ;
-    rdfs:comment "工艺参数或量测参数的上下控制边界（target/maxValue/minValue/tolerance），物理层以 JSON 数组嵌入 product_model.main_route 的 $.processes[*].processParamList 和 $.processes[*].measurementParamList 字段中，每个参数对象含 paramModelId（→ property_model.id）、paramName、unit 及管控边界值，无单独数据列。" .
+    rdfs:comment "工艺参数或量测参数的上下控制边界（target/maxValue/minValue/tolerance），物理层以 JSON 数组嵌入 product_model.main_route 的 $.processes[*].processParamList 和 $.processes[*].measurementParamList 字段中，每个参数对象含 paramModelId（→ param_model.id，即 semi:ProcessParam）、paramName、unit 及各产品专属卡控边界值，无单独数据列。注：paramModelId 指向 param_model 表，而非 property_model（后者用于物料规格属性 semi:MaterialParameterSpec）。" .
 
 semi:hasVersion a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf (semi:ProcessStation semi:Route semi:ProductModel semi:BOM semi:Recipe) ] ;
@@ -1344,4 +1344,112 @@ semi:hasRecordSerialNo a owl:DatatypeProperty ;
     rdfs:range xsd:string ;
     rdfs:label "记录件号" ;
     rdfs:comment "逐件测量时关联到的单件唯一码（对应 MaterialBatch.hasBoxNo）。当物料启用了 hasUniqueCodeMgmt=true 时填写，表示该测量值属于批次中的某一具体单件；批次整体测量时为空。物理：warehouse_batch_property_value.serial_no。" .
+
+# ============================================================
+# Section 11: 制程/量测参数体系
+# ParamGroup（参数组）是工艺站点级参数采集能力的逻辑聚合单元；
+# ProcessParam（过程参数定义）是单个可采集参数的元数据定义；
+# 与 Section 10 的 MaterialParameterSpec（物料规格属性）独立，
+# 两者通过语义关联建立交叉维度的质量分析路径。
+# ============================================================
+
+# 11.1 新增类
+
+semi:ParamGroup a owl:Class ;
+    rdfs:label "参数组（抽象基类）" ;
+    rdfs:comment "工艺过程参数采集分组的抽象基类，不直接实例化。两个具体子类：semi:ProcessParamGroup（制程参数组）和 semi:MeasurementParamGroup（量测参数组）。物理表：param_group，通过 param_group_cat 字段区分；基类属性（hasParamGroupName/hasParamGroupDesc）由两个子类共同继承。与 semi:MaterialParameterSpec 的区别：ParamGroup 体系面向制造过程（站点级参数采集能力定义），MaterialParameterSpec 面向物料规格（物料本身的质量标准约束）。" .
+
+semi:ProcessParamGroup a owl:Class ;
+    rdfs:subClassOf semi:ParamGroup ;
+    rdfs:label "制程参数组" ;
+    rdfs:comment "工艺参数采集分组（制程数据）。聚合在设备加工过站时需要采集的工艺制程参数（如温度、压力、时间），用于过程监控和 SPC 分析。物理表：param_group WHERE param_group_cat='process'。由 semi:usesProcessParamGroup 从工序站点引用作为通用制程采集可行域，由 semi:specifiesProcessParam 从 ProcessConstraint 引用作为产品专属制程卡控配置。" .
+
+semi:MeasurementParamGroup a owl:Class ;
+    rdfs:subClassOf semi:ParamGroup ;
+    rdfs:label "量测参数组" ;
+    rdfs:comment "量测参数采集分组（产品质量数据）。聚合在量测过站时需要采集的产品阶段性质量参数（如膜厚、线宽、TTV），用于产品合格判定和工艺分析。物理表：param_group WHERE param_group_cat='measure'。由 semi:usesMeasurementParamGroup 从工序站点引用作为通用量测采集可行域，由 semi:specifiesMeasurementParam 从 ProcessConstraint 引用作为产品专属量测合格界限配置。" .
+
+semi:ProcessParam a owl:Class ;
+    rdfs:label "过程参数定义" ;
+    rdfs:comment "制程中一个可被采集的参数的元数据定义，包含参数名称、编号、所属分类（工艺参数/量测参数）、单位等。多个 ProcessParam 按业务用途聚合成 semi:ParamGroup，由工序站点引用为采集可行域，再由产品模型的 ProcessConstraint 节点进一步绑定产品专属的卡控规格值。物理表：param_model。" .
+
+# 11.2 对象属性 — 站点级参数组关联（通用能力约束）
+
+semi:usesProcessParamGroup a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessStation ; rdfs:range semi:ProcessParamGroup ;
+    rdfs:label "工序绑定制程参数组" ;
+    rdfs:comment "工序站点（ProcessStation）引用制程参数组（semi:ProcessParamGroup），定义该站点在加工过站时需要采集的设备制程参数范围（通用能力约束）。物理：matrix_routerx_config_process.process_data_group_list（JSON 数组，存储 param_group.id 列表）→ param_group.id WHERE param_group_cat='process'。" .
+
+semi:usesMeasurementParamGroup a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessStation ; rdfs:range semi:MeasurementParamGroup ;
+    rdfs:label "工序绑定量测参数组" ;
+    rdfs:comment "工序站点（ProcessStation）引用量测参数组（semi:MeasurementParamGroup），定义该站点在量测过站时需要采集的产品质量参数范围（通用能力约束）。物理：matrix_routerx_config_process.measurement_data_group_list（JSON 数组，存储 param_group.id 列表）→ param_group.id WHERE param_group_cat='measure'。" .
+
+semi:containsParam a owl:ObjectProperty ;
+    rdfs:domain semi:ParamGroup ; rdfs:range semi:ProcessParam ;
+    rdfs:label "参数组包含过程参数" ;
+    rdfs:comment "参数组聚合多个过程参数定义（ProcessParam），物理层通过 param_group.param_models（JSON，格式：{\"id\": \"5,6\"}，逗号分隔的 param_model.id）引用 param_model。JOIN 写法：JSON_TABLE 或字符串分割解析 param_models->>'$.id' 后与 param_model.id 关联。" .
+
+# 11.3 对象属性 — 产品层参数卡控关联（ProcessConstraint 专属）
+
+semi:specifiesProcessParam a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessConstraint ; rdfs:range semi:ProcessParamGroup ;
+    rdfs:label "产品工序指定制程参数组" ;
+    rdfs:comment "某产品模型在特定工序要求采集的制程参数组（semi:ProcessParamGroup）及其产品专属卡控规格。物理：product_model.main_route 的 $.processes[*].processParamList（EmbeddedJSON，每项含 paramModelId→param_model.id、paramName、target/maxValue/minValue/tolerance/unit；卡控值为该产品的专属覆盖值，可与参数组通用默认值不同）。语义上为 usesProcessParamGroup 所定义通用范围内的产品专属收窄，通过 paramModelId→param_model.param_group 可回溯到具体 ProcessParamGroup 实例。" .
+
+semi:specifiesMeasurementParam a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessConstraint ; rdfs:range semi:MeasurementParamGroup ;
+    rdfs:label "产品工序指定量测参数组" ;
+    rdfs:comment "某产品模型在特定工序要求采集的量测参数组（semi:MeasurementParamGroup）及其产品专属合格界限。物理：product_model.main_route 的 $.processes[*].measurementParamList（EmbeddedJSON，每项含 paramModelId→param_model.id、paramName、target/maxValue/minValue/tolerance/unit/shipmentDecision；shipmentDecision 标志该参数是否作为出货判定条件）。语义上为 usesMeasurementParamGroup 所定义通用范围内的产品专属收窄。" .
+
+semi:specifiesProductEqpGroup a owl:ObjectProperty ;
+    rdfs:domain semi:ProcessConstraint ; rdfs:range semi:EquipmentGroup ;
+    rdfs:label "产品工序专属指定设备组" ;
+    rdfs:comment "某产品模型在特定工序专属指定必须使用的设备组（区别于 usesEquipmentGroup 所定义的站点级通用可行域）。典型场景：站点通用能力允许 10 台设备，但某特殊产品因工艺敏感性必须限定在指定的若干台上加工。物理：product_model.main_route 的 $.processes[*].productEqpGroupList（EmbeddedJSON，存储 equipment_group 相关标识）。" .
+
+# 11.4 数据属性 — ParamGroup
+
+semi:hasParamGroupName a owl:DatatypeProperty ;
+    rdfs:domain semi:ParamGroup ;
+    rdfs:range xsd:string ;
+    rdfs:label "参数组名称" ;
+    rdfs:comment "参数组的业务显示名称。物理：param_group.param_group_name。" .
+
+semi:hasParamGroupCat a owl:DatatypeProperty ;
+    rdfs:domain semi:ParamGroup ;
+    rdfs:range xsd:string ;
+    rdfs:label "参数组类别" ;
+    rdfs:comment "'process'（工艺参数组）或 'measure'（量测参数组），区分制程数据采集组与产品质量量测采集组。物理：param_group.param_group_cat。" .
+
+semi:hasParamGroupDesc a owl:DatatypeProperty ;
+    rdfs:domain semi:ParamGroup ;
+    rdfs:range xsd:string ;
+    rdfs:label "参数组描述" ;
+    rdfs:comment "参数组的业务说明文本。物理：param_group.param_group_desc。" .
+
+# 11.5 数据属性 — ProcessParam
+
+semi:hasParamName a owl:DatatypeProperty ;
+    rdfs:domain semi:ProcessParam ;
+    rdfs:range xsd:string ;
+    rdfs:label "参数名称" ;
+    rdfs:comment "过程参数的业务显示名称（如：温度、压力、膜厚）。物理：param_model.param_name。" .
+
+semi:hasParamCode a owl:DatatypeProperty ;
+    rdfs:domain semi:ProcessParam ;
+    rdfs:range xsd:string ;
+    rdfs:label "参数编号" ;
+    rdfs:comment "过程参数的系统编号（业务标识码）。物理：param_model.param_id。" .
+
+semi:hasParamCat a owl:DatatypeProperty ;
+    rdfs:domain semi:ProcessParam ;
+    rdfs:range xsd:string ;
+    rdfs:label "参数类别" ;
+    rdfs:comment "参数所属的业务类别，如'工艺参数'（制程采集）或'量测参数'（质量采集），与所属 ParamGroup 的 hasParamGroupCat 对应。物理：param_model.param_cat。" .
+
+semi:hasParamUnit a owl:DatatypeProperty ;
+    rdfs:domain semi:ProcessParam ;
+    rdfs:range xsd:integer ;
+    rdfs:label "参数单位（枚举ID）" ;
+    rdfs:comment "过程参数的物理量纲单位，以整数枚举 ID 存储（需查 sys_paraminfo_module_type 等字典表解码）。物理：param_model.unit（int 类型）。" .
 
