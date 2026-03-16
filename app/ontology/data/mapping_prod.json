@@ -1468,6 +1468,32 @@
   ],
   "relation_mappings": [
     {
+      "logic_relation": "semi:containsInboundDetail",
+      "description": "入库记录单包含入库明细行（1:N）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "warehouse_input_record_bill",
+        "source_key": "id",
+        "target_table": "warehouse_input_record_bill_detail",
+        "target_key": "record_bill_id"
+      },
+      "domain_class": "semi:InboundBill",
+      "range_class": "semi:InboundEventRecord"
+    },
+    {
+      "logic_relation": "semi:containsOutboundDetail",
+      "description": "出库记录单包含出库明细行（1:N）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "warehouse_output_record_bill",
+        "source_key": "id",
+        "target_table": "warehouse_output_record_bill_detail",
+        "target_key": "record_bill_id"
+      },
+      "domain_class": "semi:OutboundBill",
+      "range_class": "semi:OutboundEventRecord"
+    },
+    {
       "logic_relation": "semi:belongsToLot",
       "description": "Wafer 属于哪个 ProductionLot",
       "strategy": "ForeignKey",

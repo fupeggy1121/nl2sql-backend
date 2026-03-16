@@ -1223,7 +1223,19 @@ semi:outboundFromLocation a owl:ObjectProperty ;
     rdfs:label "出库源库位" ;
     rdfs:comment "本次出库操作的源存储库位。" .
 
-# 8.6 审批记录关联属性
+# 8.6 入库单-明细包含关系
+semi:containsInboundDetail a owl:ObjectProperty ;
+    rdfs:domain semi:InboundBill ; rdfs:range semi:InboundEventRecord ;
+    rdfs:label "包含入库明细" ;
+    rdfs:comment "入库记录单与入库明细行之间的包含关系（1:N）。物理映射：warehouse_input_record_bill.id → warehouse_input_record_bill_detail.record_bill_id（FK）。一张入库记录单包含一行或多行入库明细，每行对应一个物料/批次的入库行项目。" .
+
+# 8.7 出库单-明细包含关系
+semi:containsOutboundDetail a owl:ObjectProperty ;
+    rdfs:domain semi:OutboundBill ; rdfs:range semi:OutboundEventRecord ;
+    rdfs:label "包含出库明细" ;
+    rdfs:comment "出库记录单与出库明细行之间的包含关系（1:N）。物理映射：warehouse_output_record_bill.id → warehouse_output_record_bill_detail.record_bill_id（FK）。一张出库记录单包含一行或多行出库明细，每行对应一个物料/批次的出库行项目。" .
+
+# 8.8 审批记录关联属性
 semi:approvalForMaterial a owl:ObjectProperty ;
     rdfs:domain semi:InboundApprovalRecord ; rdfs:range semi:Material ;
     rdfs:label "审批物料类型" ;
