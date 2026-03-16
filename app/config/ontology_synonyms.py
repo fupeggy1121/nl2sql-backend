@@ -186,6 +186,34 @@ CLASS_SYNONYMS: dict = {
         ],
     },
 
+    "semi:InboundBill": {
+        "label_cn": "入库记录单",
+        "synonyms": [
+            "入库单", "入库记录单", "入库实绩单", "入库凭证",
+            "仓库入库单", "物料入库单", "入库单据", "入库记录票",
+            "inboundbill", "inbound_bill", "warehouse_input_record_bill",
+        ],
+    },
+
+    "semi:InboundEventRecord": {
+        "label_cn": "入库记录明细",
+        "synonyms": [
+            "入库记录", "入库明细", "入库记录明细", "入库操作记录",
+            "入库日志", "入库历史", "物料入库记录", "入库行项",
+            "inboundeventrecord", "inbound_record",
+        ],
+    },
+
+    "semi:OutboundEventRecord": {
+        "label_cn": "出库记录明细",
+        "synonyms": [
+            "出库记录", "出库明细", "出库记录明细", "出库操作记录",
+            "出库日志", "出库历史", "物料出库记录",
+            "领料记录", "出库单明细", "出库行项",
+            "outboundeventrecord", "outbound_record",
+        ],
+    },
+
     "semi:Action": {
         "label_cn": "生产动作/操作",
         "synonyms": [

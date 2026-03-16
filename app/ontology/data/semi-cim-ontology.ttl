@@ -1052,7 +1052,7 @@ semi:CompleteLotOp    a owl:NamedIndividual ; rdfs:label "23-批次完结"      
 ### ==========================================
 ### 适用范围：线边仓（产线本地仓）管理
 ### 对应物理表：warehouse_location, warehouse_inventory,
-###            warehouse_approval_record, warehouse_input_bill_detail, warehouse_output_bill_detail
+###            warehouse_approval_record, warehouse_input_record_bill, warehouse_input_record_bill_detail, warehouse_output_bill_detail
 ### ==========================================
 
 # 7.1 库位 (WarehouseLocation) — warehouse_model
@@ -1114,14 +1114,21 @@ semi:InboundEvent a owl:Class ;
     semi:apiBinding "WMS_SERVICE.executeInbound" ;
     semi:postCondition "Inventory(batch=?materialBatchId, location=?locationId).hasStockQty > 0" .
 
-# 7.9 入库执行记录 (InboundEventRecord) — warehouse_input_bill_detail
+# 7.9 入库记录单 (InboundBill) — warehouse_input_record_bill
+semi:InboundBill a owl:Class ;
+    rdfs:subClassOf semi:WarehouseEventRecord ;
+    rdfs:label "入库记录单" ;
+    semi:isAbstract "false"^^xsd:boolean ;
+    rdfs:comment "入库操作的单据头部记录（主表）。物理映射：warehouse_input_record_bill 表（每行代表一次完整的入库单据，1:N 对应 semi:InboundEventRecord 明细行）。核心字段：record_bill_no（唯一单号/UNI）、status（单据审批状态）、type（入库类型）、gmt_create/user_create（创建时间/人）、reject_reason（拒绝原因）。通过 id → warehouse_input_record_bill_detail.record_bill_id 关联入库明细。" .
+
+# 7.9b 入库执行记录明细 (InboundEventRecord) — warehouse_input_record_bill_detail
 semi:InboundEventRecord a owl:Class ;
     rdfs:subClassOf semi:WarehouseEventRecord ,
         [ a owl:Restriction ;
           owl:onProperty semi:isInstanceOfWarehouseEvent ;
           owl:allValuesFrom semi:InboundEvent ] ;
-    rdfs:label "入库记录" ;
-    rdfs:comment "入库操作的具体执行记录。物理映射：warehouse_input_bill_detail 表（与入库单头表 warehouse_input_bill 通过 input_bill_id 关联，一单多行，每行对应一个物料批次实例）。核心关联：(1) inboundBatch → semi:MaterialBatch，入库的物料批次实例（unique_code=唯一码，Material.hasUniqueCodeMgmt=true 时填写）；(2) inboundToLocation → semi:WarehouseLocation，目标库位（warehouse_id 外键）；(3) hasBillNo（input_bill_no）、hasBillQty（count）、hasBillTime（create_time）。执行后触发 warehouse_inventory 对应行更新（在库数量增加）。" .
+    rdfs:label "入库记录明细" ;
+    rdfs:comment "入库操作的具体执行明细记录。物理映射：warehouse_input_record_bill_detail 表（每行对应一个物料/批次的入库行项目，通过 record_bill_id 外键关联入库单主表 warehouse_input_record_bill）。核心关联：(1) inboundBatch → semi:MaterialBatch，入库的物料批次实例（batch_no/unique_code）；(2) inboundToLocation → semi:WarehouseLocation，目标库位（warehouse_id 外键）；(3) hasBillNo（record_bill_no）、hasBillQty（count）、hasBillTime（gmt_create）、supplier（供应商）。执行后触发 warehouse_inventory 对应行更新（在库数量增加）。" .
 
 # 7.10 出库事件定义 (OutboundEvent)
 semi:OutboundEvent a owl:Class ;
@@ -1217,7 +1224,7 @@ semi:approvalForMaterial a owl:ObjectProperty ;
 semi:triggersInbound a owl:ObjectProperty ;
     rdfs:domain semi:InboundApprovalRecord ; rdfs:range semi:InboundEventRecord ;
     rdfs:label "审批通过触发入库" ;
-    rdfs:comment "审批通过(hasApprovalStatus=1)后关联触发的入库执行记录，建立'审批→入库'的操作因果链（对应 warehouse_approval_record → warehouse_input_bill 的外键关联）。" .
+    rdfs:comment "审批通过(hasApprovalStatus=1)后关联触发的入库执行记录，建立'审批→入库'的操作因果链（对应 warehouse_approval_record → warehouse_input_record_bill_detail 的关联）。" .
 
 ### ==========================================
 ### 9. WMS 数据属性 (WMS Data Properties)
@@ -1298,7 +1305,7 @@ semi:hasBillNo a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf (semi:InboundEventRecord semi:OutboundEventRecord) ] ;
     rdfs:range xsd:string ;
     rdfs:label "单据编号" ;
-    rdfs:comment "入库单/出库单的唯一单据号，对应 warehouse_input_bill.bill_no 或 warehouse_output_bill.bill_no。" .
+    rdfs:comment "入库单/出库单的唯一单据号，对应 warehouse_input_record_bill_detail.record_bill_no 或 warehouse_output_bill_detail.output_bill_no。" .
 
 semi:hasBillQty a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf (semi:InboundEventRecord semi:OutboundEventRecord) ] ;

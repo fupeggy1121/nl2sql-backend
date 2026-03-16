@@ -1066,7 +1066,7 @@
         "warehouse_name",
         "receive_time"
       ],
-      "note": "物料批次实例无独立表，批次字段（batch_no/unique_code）嵌入在warehouse_inventory、warehouse_input_bill_detail、warehouse_output_bill_detail中。此处主映射到warehouse_inventory（完整批次在库快照）。单件追踪型填充unique_code（盒号），批量计数型仅有batch_no；由warehouse_material.batch/unique_code字段配置物料管理模式。"
+      "note": "物料批次实例无独立表，批次字段（batch_no/unique_code）嵌入在warehouse_inventory、warehouse_input_record_bill_detail、warehouse_output_bill_detail中。此处主映射到warehouse_inventory（完整批次在库快照）。单件追踪型填充unique_code（盒号），批量计数型仅有batch_no；由warehouse_material.batch/unique_code字段配置物料管理模式。"
     },
     {
       "logic_class": "semi:Inventory",
@@ -1122,35 +1122,68 @@
       "note": "产成品入库审批记录。audit_state为字符串类型，支持多阶段审批流（如单值'1'或逗号分隔'1,2,3'表示多个审批节点已完成）。lot_id/lot_code关联源ProductionLot；packing_num为包装盒数，对应产成品MaterialBatch实例数。"
     },
     {
-      "logic_class": "semi:InboundEventRecord",
-      "physical_table": "warehouse_input_bill_detail",
+      "logic_class": "semi:InboundBill",
+      "physical_table": "warehouse_input_record_bill",
       "primary_key": "id",
-      "label_cn": "入库记录",
-      "display_column": "material_model_name",
+      "label_cn": "入库记录单",
+      "display_column": "record_bill_no",
       "properties": {
-        "semi:hasBillNo": "input_bill_no",
-        "semi:hasBillQty": "count",
-        "semi:hasBillTime": "create_time"
+        "semi:hasBillNo": "record_bill_no",
+        "semi:hasBillStatus": "status",
+        "semi:hasBillType": "type"
       },
       "key_columns": [
         "id",
-        "input_bill_id",
+        "record_bill_no",
+        "status",
+        "type",
+        "gmt_create",
+        "user_create",
+        "remark",
+        "reject_reason",
+        "reject_reason_remark",
+        "auto_audit",
         "input_bill_no",
+        "input_bill_id"
+      ],
+      "note": "入库记录单主表（头表），每行代表一次完整的入库操作单据。status为单据审批状态；type为入库类型；record_bill_no为唯一单号（UNI）；gmt_create/user_create为创建时间/人。通过 id → warehouse_input_record_bill_detail.record_bill_id（1:N）关联明细行。"
+    },
+    {
+      "logic_class": "semi:InboundEventRecord",
+      "physical_table": "warehouse_input_record_bill_detail",
+      "primary_key": "id",
+      "label_cn": "入库记录明细",
+      "display_column": "material_model_name",
+      "properties": {
+        "semi:hasBillNo": "record_bill_no",
+        "semi:hasBillQty": "count",
+        "semi:hasBillTime": "gmt_create"
+      },
+      "key_columns": [
+        "id",
+        "record_bill_id",
+        "record_bill_no",
         "material_model_id",
         "material_model_code",
         "material_model_name",
+        "material_model_version",
         "material_type_name",
+        "material_category_name",
         "unique_code",
         "batch_no",
+        "supplier",
         "count",
         "unit_name",
         "warehouse_id",
         "warehouse_name",
-        "create_time",
+        "gmt_create",
+        "user_create",
         "status",
-        "type"
+        "type",
+        "input_bill_no",
+        "input_bill_id"
       ],
-      "note": "入库单明细表（一单多行，每行=一个物料批次实例的入库记录）。与入库单头表warehouse_input_bill通过input_bill_id关联。unique_code为盒号（单件追踪型）；warehouse_id外键引用warehouse_location.id。"
+      "note": "入库记录明细表（一单多行，每行=一个物料/批次的入库行项目）。通过record_bill_id外键关联入库记录单主表warehouse_input_record_bill；record_bill_no为冗余单号字段。batch_no/unique_code标识具体物料批次实例；warehouse_id关联库位；supplier为供应商信息。"
     },
     {
       "logic_class": "semi:OutboundEventRecord",
@@ -1371,7 +1404,7 @@
       "virtual": true,
       "virtual_kind": "action_event",
       "label_cn": "库存管理事件记录（抽象父类）",
-      "note": "库存管理操作的执行记录抽象基类，不直接映射物理表。具体子类：InboundApprovalRecord（warehouse_approval_record）、InboundEventRecord（warehouse_input_bill_detail）、OutboundEventRecord（warehouse_output_bill_detail）。"
+      "note": "库存管理操作的执行记录抽象基类，不直接映射物理表。具体子类：InboundApprovalRecord（warehouse_approval_record）、InboundBill（warehouse_input_record_bill）、InboundEventRecord（warehouse_input_record_bill_detail）、OutboundEventRecord（warehouse_output_bill_detail）。"
     },
     {
       "logic_class": "semi:InboundApprovalEvent",
@@ -1387,7 +1420,7 @@
       "virtual": true,
       "virtual_kind": "action_event",
       "label_cn": "入库事件类型",
-      "note": "Type 层定义，线边仓入库操作的事件类型模板。作为 WarehouseEvent 子类。执行记录层见 semi:InboundEventRecord（物理表：warehouse_input_bill_detail）。"
+      "note": "Type 层定义，线边仓入库操作的事件类型模板。作为 WarehouseEvent 子类。执行记录层见 semi:InboundEventRecord（物理表：warehouse_input_record_bill_detail）；单据头表见 semi:InboundBill（physical: warehouse_input_record_bill）。"
     },
     {
       "logic_class": "semi:OutboundEvent",
