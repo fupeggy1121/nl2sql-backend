@@ -1141,14 +1141,26 @@ class SemanticContextBuilder:
                         count_target_column=vm.count_target_column,
                     ))
 
-        # 复合语义修正：当查询同时含 "在制" 和 "扣留"/"hold" 但没有更精确的 LotWIPStatus.Hold
-        # 时，"扣留" 应解释为 WIP hold（激活 HoldEventRecord），而非 BatchStatus.Staged
+        # 复合语义修正：
+        # 情况 A: 查询同时含 "在制" 和 "扣留"/"hold" 且没有更精确的 LotWIPStatus.Hold
+        #   → "扣留" 应解释为 WIP hold（激活 HoldEventRecord），而非 BatchStatus.Staged
+        # 情况 B: 查询直接指向操作记录（"扣留记录"/"hold记录"/"扣留日志"）
+        #   → 目标表是日志表，BatchStatus 过滤不应注入
+        hold_log_ctx_words = ("扣留记录", "hold记录", "扣留日志", "hold日志", "扣留历史", "hold历史",
+                             "扣留操作记录", "hold操作")
         wip_ctx_words = ("在制", "wip", "在产")
         hold_ctx_words = ("扣留", "hold")
-        if (any(w in query_lower for w in wip_ctx_words)
+
+        if any(w in query_lower for w in hold_log_ctx_words):
+            # 情况 B：直接删除所有 BatchStatus 干扰（目标表已是日志表）
+            results = [
+                f for f in results
+                if f.semantic_domain != "semi:BatchStatus"
+            ]
+        elif (any(w in query_lower for w in wip_ctx_words)
                 and any(h in query_lower for h in hold_ctx_words)
                 and ("semi:LotWIPStatus", "Hold") not in seen_pairs):
-            # 移除因裸子串 "扣留"/"在制"/"wip" 触发的 BatchStatus 过滤（由 LotWIPStatus.Hold 精确替代）
+            # 情况 A：WIP 语境 + 扣留 → 注入 LotWIPStatus.Hold
             results = [
                 f for f in results
                 if not (f.semantic_domain == "semi:BatchStatus"

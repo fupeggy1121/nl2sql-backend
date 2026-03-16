@@ -146,6 +146,46 @@ CLASS_SYNONYMS: dict = {
         ],
     },
 
+    "semi:HoldEventRecord": {
+        "label_cn": "批次扣留记录",
+        "synonyms": [
+            "扣留记录", "扣留操作记录", "扣留日志", "扣留历史",
+            "hold记录", "hold日志", "hold操作", "hold历史",
+            "批次hold记录", "批次扣留历史",
+            "holdrecord", "holdeventrecord",
+        ],
+    },
+
+    "semi:ReleaseEventRecord": {
+        "label_cn": "批次释放记录",
+        "synonyms": [
+            "释放记录", "释放操作记录", "释放日志", "释放历史",
+            "release记录", "release日志", "release操作",
+            "批次release记录", "批次释放历史",
+            "releaserecord", "releaseeventrecord",
+        ],
+    },
+
+    "semi:SplitEventRecord": {
+        "label_cn": "拆批记录",
+        "synonyms": [
+            "拆批记录", "拆批操作记录", "拆批日志", "拆批历史",
+            "split记录", "split日志", "split操作",
+            "批次拆批记录",
+            "splitrecord", "spliteventrecord",
+        ],
+    },
+
+    "semi:ProductionEventRecord": {
+        "label_cn": "生产事件记录",
+        "synonyms": [
+            "批次操作记录", "生产事件记录", "操作日志",
+            "批次日志", "批次事件日志", "批次历史记录",
+            "production_event_log", "resume_log",
+            "operationlog", "eventrecord",
+        ],
+    },
+
     "semi:Action": {
         "label_cn": "生产动作/操作",
         "synonyms": [
