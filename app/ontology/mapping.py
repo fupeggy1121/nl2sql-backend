@@ -392,6 +392,8 @@ class MappingDictionary:
         for domain, values in data.items():
             self._value_map[domain] = {}
             for val_key, val_data in values.items():
+                if not isinstance(val_data, dict):
+                    continue  # skip metadata keys like "_comment"
                 vm = ValueMapping(
                     semantic_value=val_key,
                     description=val_data.get("description", ""),

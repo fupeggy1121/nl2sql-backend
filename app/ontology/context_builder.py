@@ -1040,6 +1040,10 @@ class SemanticContextBuilder:
             (f.semantic_domain, f.semantic_value) for f in existing_filters
             if f.semantic_value != "__wip_auto__"
         }
+        # 若 LotWIPStatus 已命中（精确推导型三态），抑制 BatchStatus.Running 的 nl_trigger 污染
+        # （BatchStatus.Running.nl_triggers 包含 "在制" 等 WIP 通用词，会误触发）
+        if any(f.semantic_domain == "semi:LotWIPStatus" for f in existing_filters):
+            seen_pairs.add(("semi:BatchStatus", "Running"))
         for domain, domain_map in self._mapping._value_map.items():
             for val_key, vm in domain_map.items():
                 pair = (domain, val_key)
@@ -1076,6 +1080,9 @@ class SemanticContextBuilder:
         """
         batch_domain = "semi:BatchStatus"
         if any(f.semantic_domain == batch_domain for f in existing_filters):
+            return None
+        # LotWIPStatus 已提供精确三态推导，不再叠加 BatchStatus 终态排除
+        if any(f.semantic_domain == "semi:LotWIPStatus" for f in existing_filters):
             return None
 
         # 只检查 Running 的 nl_triggers（WIP 语义）
@@ -1133,6 +1140,41 @@ class SemanticContextBuilder:
                         count_target_table=vm.count_target_table,
                         count_target_column=vm.count_target_column,
                     ))
+
+        # 复合语义修正：当查询同时含 "在制" 和 "扣留"/"hold" 但没有更精确的 LotWIPStatus.Hold
+        # 时，"扣留" 应解释为 WIP hold（激活 HoldEventRecord），而非 BatchStatus.Staged
+        wip_ctx_words = ("在制", "wip", "在产")
+        hold_ctx_words = ("扣留", "hold")
+        if (any(w in query_lower for w in wip_ctx_words)
+                and any(h in query_lower for h in hold_ctx_words)
+                and ("semi:LotWIPStatus", "Hold") not in seen_pairs):
+            # 移除因裸子串 "扣留"/"在制"/"wip" 触发的 BatchStatus 过滤（由 LotWIPStatus.Hold 精确替代）
+            results = [
+                f for f in results
+                if not (f.semantic_domain == "semi:BatchStatus"
+                        and f.semantic_value in ("Staged", "Running"))
+            ]
+            vm_hold = self._mapping.map_value("semi:LotWIPStatus", "Hold")
+            if vm_hold:
+                results.append(ResolvedFilter(
+                    semantic_domain="semi:LotWIPStatus",
+                    semantic_value="Hold",
+                    description=vm_hold.description,
+                    physical_condition=vm_hold.physical_condition,
+                    physical_values=vm_hold.physical_values,
+                    applies_to_table=vm_hold.applies_to_table,
+                    applies_to_column=vm_hold.applies_to_column,
+                    count_target_table=vm_hold.count_target_table,
+                    count_target_column=vm_hold.count_target_column,
+                ))
+        elif any(f.semantic_domain == "semi:LotWIPStatus" for f in results):
+            # LotWIPStatus 已精确命中（来自 _VALUE_KEYWORDS 直接匹配），移除 BatchStatus.Running 噪音
+            results = [
+                f for f in results
+                if not (f.semantic_domain == "semi:BatchStatus"
+                        and f.semantic_value == "Running")
+            ]
+
         return results
 
     # ----------------------------------------------------------------- #

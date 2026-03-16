@@ -1066,11 +1066,13 @@ semi:Inventory a owl:Class ;
 semi:WarehouseEvent a owl:Class ;
     rdfs:subClassOf semi:Action ;
     rdfs:label "库存管理事件定义（抽象父类）" ;
+    semi:isAbstract "true"^^xsd:boolean ;
     rdfs:comment "定义库存管理操作类型的抽象模板（入库/出库/审批等）。作为 semi:Action 的子类，与 semi:ProductionEvent 平行，专用于线边仓物料管理域；作用对象为物料批次（semi:MaterialBatch）和库位（semi:WarehouseLocation），区别于生产事件（作用于 semi:ProductionLot 和 semi:ProcessStation）。具体操作类型子类：semi:InboundApprovalEvent、semi:InboundEvent、semi:OutboundEvent。" .
 
 # 7.5 库存管理事件记录（抽象父类）(WarehouseEventRecord)
 semi:WarehouseEventRecord a owl:Class ;
     rdfs:label "库存管理事件记录（抽象父类）" ;
+    semi:isAbstract "true"^^xsd:boolean ;
     rdfs:comment "库存管理操作的执行记录抽象基类，与 semi:ProductionEventRecord 平行，专用于仓库管理域。作用对象：semi:MaterialBatch（物料批次实例）× semi:WarehouseLocation（库位）；通过 semi:isInstanceOfWarehouseEvent 关联对应的事件类型定义。具体子类：semi:InboundApprovalRecord、semi:InboundEventRecord、semi:OutboundEventRecord。" .
 
 # 7.6 入库审批事件定义 (InboundApprovalEvent)
