@@ -186,6 +186,42 @@ CLASS_SYNONYMS: dict = {
         ],
     },
 
+    "semi:InboundRequest": {
+        "label_cn": "入库申请单",
+        "synonyms": [
+            "入库申请单", "入库申请", "入库请求单", "申请入库",
+            "入库申购单", "物料入库申请", "入库申请主单",
+            "inboundrequest", "inbound_request", "warehouse_input_bill",
+        ],
+    },
+
+    "semi:InboundRequestDetail": {
+        "label_cn": "入库申请明细",
+        "synonyms": [
+            "入库申请明细", "入库申请行", "申请入库明细",
+            "入库申请行项", "入库申购明细",
+            "inboundrequestdetail", "inbound_request_detail", "warehouse_input_bill_detail",
+        ],
+    },
+
+    "semi:OutboundRequest": {
+        "label_cn": "出库申请单",
+        "synonyms": [
+            "出库申请单", "出库申请", "出库请求单", "申请出库",
+            "领料申请单", "出库申请主单", "出库单申请",
+            "outboundrequest", "outbound_request", "warehouse_output_bill",
+        ],
+    },
+
+    "semi:OutboundRequestDetail": {
+        "label_cn": "出库申请明细",
+        "synonyms": [
+            "出库申请明细", "出库申请行", "申请出库明细",
+            "出库申请行项", "领料申请明细",
+            "outboundrequestdetail", "outbound_request_detail", "warehouse_output_bill_detail",
+        ],
+    },
+
     "semi:InboundBill": {
         "label_cn": "入库记录单",
         "synonyms": [

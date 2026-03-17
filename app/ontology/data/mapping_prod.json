@@ -1122,6 +1122,65 @@
       "note": "产成品入库审批记录。audit_state为字符串类型，支持多阶段审批流（如单值'1'或逗号分隔'1,2,3'表示多个审批节点已完成）。lot_id/lot_code关联源ProductionLot；packing_num为包装盒数，对应产成品MaterialBatch实例数。"
     },
     {
+      "logic_class": "semi:InboundRequest",
+      "physical_table": "warehouse_input_bill",
+      "primary_key": "id",
+      "label_cn": "入库申请单",
+      "display_column": "bill_no",
+      "properties": {
+        "semi:hasBillNo": "bill_no",
+        "semi:hasBillStatus": "status",
+        "semi:hasBillType": "type"
+      },
+      "key_columns": [
+        "id",
+        "bill_no",
+        "status",
+        "type",
+        "create_time",
+        "create_user_name",
+        "remark",
+        "reject_reason",
+        "reject_reason_remark",
+        "auto_audit"
+      ],
+      "note": "入库申请单主表。每行代表一次入库申请。status为申请审批状态；bill_no为唯一申请单号（UNI）；审批通过后生成入库记录单（warehouse_input_record_bill），通过 id → warehouse_input_record_bill.input_bill_id（FK）建立关联。"
+    },
+    {
+      "logic_class": "semi:InboundRequestDetail",
+      "physical_table": "warehouse_input_bill_detail",
+      "primary_key": "id",
+      "label_cn": "入库申请明细",
+      "display_column": "material_model_name",
+      "properties": {
+        "semi:hasBillNo": "input_bill_no",
+        "semi:hasBillQty": "count"
+      },
+      "key_columns": [
+        "id",
+        "input_bill_id",
+        "input_bill_no",
+        "material_model_id",
+        "material_model_code",
+        "material_model_name",
+        "material_model_version",
+        "material_type_name",
+        "material_category_name",
+        "unique_code",
+        "batch_no",
+        "supplier",
+        "count",
+        "unit_name",
+        "warehouse_id",
+        "warehouse_name",
+        "create_time",
+        "create_user_name",
+        "status",
+        "type"
+      ],
+      "note": "入库申请明细表（一单多行，每行=一个物料/批次的申请行项目）。通过input_bill_id外键关联入库申请单主表warehouse_input_bill；input_bill_no为冗余单号字段。"
+    },
+    {
       "logic_class": "semi:InboundBill",
       "physical_table": "warehouse_input_record_bill",
       "primary_key": "id",
@@ -1184,6 +1243,69 @@
         "input_bill_id"
       ],
       "note": "入库记录明细表（一单多行，每行=一个物料/批次的入库行项目）。通过record_bill_id外键关联入库记录单主表warehouse_input_record_bill；record_bill_no为冗余单号字段。batch_no/unique_code标识具体物料批次实例；warehouse_id关联库位；supplier为供应商信息。"
+    },
+    {
+      "logic_class": "semi:OutboundRequest",
+      "physical_table": "warehouse_output_bill",
+      "primary_key": "id",
+      "label_cn": "出库申请单",
+      "display_column": "bill_no",
+      "properties": {
+        "semi:hasBillNo": "bill_no",
+        "semi:hasBillStatus": "status",
+        "semi:hasBillType": "type"
+      },
+      "key_columns": [
+        "id",
+        "bill_no",
+        "status",
+        "type",
+        "create_time",
+        "create_user_name",
+        "destination",
+        "remark",
+        "scan_code",
+        "output_dept",
+        "auto_audit"
+      ],
+      "note": "出库申请单主表。每行代表一次完整的出库申请。status为申请审批状态；bill_no为唯一申请单号（UNI）；destination为出库目标（生产线/部门）；output_dept为申请部门。审批通过后生成出库记录单（warehouse_output_record_bill），通过 id → warehouse_output_record_bill.output_bill_id（FK）建立关联。"
+    },
+    {
+      "logic_class": "semi:OutboundRequestDetail",
+      "physical_table": "warehouse_output_bill_detail",
+      "primary_key": "id",
+      "label_cn": "出库申请明细",
+      "display_column": "material_model_name",
+      "properties": {
+        "semi:hasBillNo": "output_bill_no",
+        "semi:hasBillQty": "output_count"
+      },
+      "key_columns": [
+        "id",
+        "output_bill_id",
+        "output_bill_no",
+        "material_model_id",
+        "material_model_code",
+        "material_model_name",
+        "material_model_version",
+        "material_type_name",
+        "material_category_name",
+        "unique_code",
+        "batch_no",
+        "supplier",
+        "output_count",
+        "require_count",
+        "quantity",
+        "unit_name",
+        "warehouse_id",
+        "warehouse_name",
+        "create_time",
+        "create_user_name",
+        "status",
+        "type",
+        "destination"
+      ],
+      "note": "出库申请明细表（一单多行，每行=一个物料/批次的申请行项目）。通过output_bill_id外键关联出库申请单主表warehouse_output_bill；output_bill_no为冗余单号字段。destination记录申请出库目标；require_count为申领量，output_count为实际申请量。"
     },
     {
       "logic_class": "semi:OutboundBill",
@@ -1439,7 +1561,7 @@
       "virtual": true,
       "virtual_kind": "action_event",
       "label_cn": "库存管理事件记录（抽象父类）",
-      "note": "库存管理操作的执行记录抽象基类，不直接映射物理表。具体子类：InboundApprovalRecord（warehouse_approval_record）、InboundBill（warehouse_input_record_bill）、InboundEventRecord（warehouse_input_record_bill_detail）、OutboundBill（warehouse_output_record_bill）、OutboundEventRecord（warehouse_output_record_bill_detail）。"
+      "note": "库存管理操作的执行记录抽象基类，不直接映射物理表。具体子类：InboundApprovalRecord（warehouse_approval_record）、InboundRequest（warehouse_input_bill）、InboundRequestDetail（warehouse_input_bill_detail）、InboundBill（warehouse_input_record_bill）、InboundEventRecord（warehouse_input_record_bill_detail）、OutboundRequest（warehouse_output_bill）、OutboundRequestDetail（warehouse_output_bill_detail）、OutboundBill（warehouse_output_record_bill）、OutboundEventRecord（warehouse_output_record_bill_detail）。"
     },
     {
       "logic_class": "semi:InboundApprovalEvent",
@@ -1467,6 +1589,58 @@
     }
   ],
   "relation_mappings": [
+    {
+      "logic_relation": "semi:containsInboundRequestDetail",
+      "description": "入库申请单包含入库申请明细行（1:N）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "warehouse_input_bill",
+        "source_key": "id",
+        "target_table": "warehouse_input_bill_detail",
+        "target_key": "input_bill_id"
+      },
+      "domain_class": "semi:InboundRequest",
+      "range_class": "semi:InboundRequestDetail"
+    },
+    {
+      "logic_relation": "semi:generatesInboundBill",
+      "description": "入库申请单审批通过后生成入库记录单",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "warehouse_input_bill",
+        "source_key": "id",
+        "target_table": "warehouse_input_record_bill",
+        "target_key": "input_bill_id"
+      },
+      "domain_class": "semi:InboundRequest",
+      "range_class": "semi:InboundBill"
+    },
+    {
+      "logic_relation": "semi:containsOutboundRequestDetail",
+      "description": "出库申请单包含出库申请明细行（1:N）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "warehouse_output_bill",
+        "source_key": "id",
+        "target_table": "warehouse_output_bill_detail",
+        "target_key": "output_bill_id"
+      },
+      "domain_class": "semi:OutboundRequest",
+      "range_class": "semi:OutboundRequestDetail"
+    },
+    {
+      "logic_relation": "semi:generatesOutboundBill",
+      "description": "出库申请单审批通过后生成出库记录单",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "warehouse_output_bill",
+        "source_key": "id",
+        "target_table": "warehouse_output_record_bill",
+        "target_key": "output_bill_id"
+      },
+      "domain_class": "semi:OutboundRequest",
+      "range_class": "semi:OutboundBill"
+    },
     {
       "logic_relation": "semi:containsInboundDetail",
       "description": "入库记录单包含入库明细行（1:N）",
