@@ -30,6 +30,10 @@ class SynonymManagerService:
     def _get_executor(self):
         """获取 PostgreSQL 执行器 (短连接), 失败则抛异常"""
         import os
+        # 快速失败: DB_BACKEND 不是 supabase/postgres 时跳过 PG 尝试
+        if os.getenv('DB_BACKEND', 'supabase') not in ('supabase', 'postgres'):
+            self._pg_available = False
+            raise ConnectionError("DB_BACKEND 不是 supabase/postgres，跳过 PG")
         # 快速失败: 如果 DB_HOST 就是 None，跳过 PG 尝试
         if not os.getenv('SUPABASE_DB_HOST'):
             self._pg_available = False

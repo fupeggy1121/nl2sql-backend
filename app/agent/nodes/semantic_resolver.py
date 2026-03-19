@@ -114,7 +114,7 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
 
     # ── B2: 语义缓存查找（追问不使用缓存，避免上下文依赖）──
     # v4: 本体类版本前缀——当规则/模板发生重大变更时更新版本号可立即淘汰旧缓存
-    _SEMANTIC_CACHE_VERSION = "v14"  # v14: 补全仓库域同义词(semi:Inventory/WarehouseLocation/MaterialBatch)
+    _SEMANTIC_CACHE_VERSION = "v16"  # v16: Slot Filling升级 — context_builder策略S预注入 + intent_slots定向匹配
     _cache_key = f"{_SEMANTIC_CACHE_VERSION}:{effective_input}"
     _cache_hit = False
     if not is_followup:
@@ -139,8 +139,18 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
         t0 = time.perf_counter()
 
         from app.ontology.context_builder import build_semantic_context
+        from app.models.intent_slots import IntentSlots
 
-        ctx = build_semantic_context(effective_input)
+        # Slot Filling: 从 intent_data 提取语义槽，传给 context_builder 做定向匹配
+        slots_dict = intent_data.get("intent_slots", {})
+        slots = IntentSlots.from_dict(slots_dict) if slots_dict else None
+        if slots and (slots.subject or slots.dimension_by):
+            logger.info(
+                "[semantic_resolver] Using intent_slots for directed matching: "
+                "subject=%s dimension_by=%s", slots.subject, slots.dimension_by
+            )
+
+        ctx = build_semantic_context(effective_input, intent_slots=slots)
 
         # P2: hint 增强路径 — 如果 build_semantic_context 没有匹配到物理表，
         # 且 intent_router 提供了 target_class_hints，直接从映射字典补充 physical_tables。

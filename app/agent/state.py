@@ -19,6 +19,7 @@ class AgentState(TypedDict, total=False):
     # ── 意图路由 ──
     intent: str                                  # 意图分类: query / chat / alert / schedule
     intent_data: Dict[str, Any]                  # 意图识别完整结果（含 entities, confidence 等）
+    intent_slots: Dict[str, Any]                 # 语义槽（IntentSlots.to_dict()），意图识别的细粒度输出
 
     # ── 语义解析 (Phase 3: 本体引擎) ──
     semantic_context: Dict[str, Any]             # 本体语义上下文 (SemanticContext.to_dict())

@@ -163,6 +163,7 @@ class IntentRecognizer:
                 'query_type': merged.get('query_type', 'LIST'),
                 'target_class_hints': merged.get('target_class_hints', []),
                 'semantic_filters': merged.get('semantic_filters', []),
+                'intent_slots': llm_result.get('intent_slots', {}),
                 'clarifications': self._generate_clarifications(
                     merged['intent'],
                     merged['entities'],
@@ -309,7 +310,7 @@ class IntentRecognizer:
         class_labels = self._get_ontology_class_labels()
         class_list_str = "\n".join(f"  - {lbl}" for lbl in class_labels) if class_labels else "  （本体类目录暂不可用）"
 
-        prompt = f"""你是半导体CIM/MES系统的查询意图分析专家。请分析用户输入的查询意图。
+        prompt = f"""你是半导体CIM/MES系统的查询意图分析专家。请分析用户输入的查询意图，并填充语义槽。
 
 ## 可查询的本体类（业务对象）
 {class_list_str}
@@ -328,31 +329,73 @@ class IntentRecognizer:
 - 物料 / Material → semi:Material
 - 辅料 / Auxiliary → semi:Auxiliary
 
+## 仓库管理域（WMS）术语对照
+- 入库 / 入库记录 / 入库明细 / 物料入库 / 入库数量 → semi:InboundEventRecord
+- 入库单 / 入库记录单 / 入库凭证 → semi:InboundBill
+- 入库申请 / 入库申请单 → semi:InboundRequest
+- 出库 / 出库记录 / 出库明细 / 物料出库 / 领料记录 / 出库数量 → semi:OutboundEventRecord
+- 出库单 / 出库记录单 / 出库凭证 → semi:OutboundBill
+- 出库申请 / 领料申请 → semi:OutboundRequest
+- 库存 / 在库 / 库存量 / 库存分布 / 实时库存 → semi:Inventory
+- 仓库 / 库位 / 库区 / 各仓库 → semi:WarehouseLocation
+- 物料批次 / 来料批次 / 入库批次 → semi:MaterialBatch
+
 ## query_type 判断规则
-- LIST    : 查询列表 / 显示所有 / 返回记录（"列表"是完整词，不要拆分）
+- LIST    : 查询列表 / 显示所有 / 返回记录 / 按某字段排序取前N（无需分组汇总，"列表"是完整词，不要拆分）
 - COUNT   : 统计数量 / 有多少 / 数一数（量词类问题）
-- AGGREGATE: 求和 / 平均 / 最大最小 / 良率 / 稼动率
+- AGGREGATE: 需要先按某维度 GROUP BY 再汇总（求和/计数/平均/最大最小），常见场景：各X的Y总计、某指标排名Top N（排名前需先聚合）、良率、稼动率
 - TREND   : 趋势 / 对比 / 同比 / 环比 / 按时间分组
 
-## Few-shot 示例
+## 判断 AGGREGATE vs LIST 的关键区别
+- 有"各X"/"按X分组"/"每个X"等分组维度词 → AGGREGATE（需 GROUP BY）
+- "排名/Top N"单独出现但无分组维度词 → LIST（仅 ORDER BY + LIMIT）
+- "排名/Top N" + 聚合词（总量/数量/合计/汇总/总计）同时出现 → AGGREGATE
+
+## intent_slots 语义槽说明（用于定向 SQL 构造）
+每个槽位对应 SQL 的一个核心要素，无法确定时填 null：
+- subject      : 查询主体对象（自然语言，对应 FROM 的主表），如 "入库记录" / "物料" / "库存"
+- action       : 查询动作，枚举: "查询列表" / "统计聚合" / "计数" / "趋势分析"
+- dimension_by : GROUP BY 维度（聚合时必填），如 "物料" / "仓库" / "工序"
+- metric       : SELECT 聚合指标（聚合时必填），如 "入库数量" / "库存数量" / "批次数"
+- sort_order   : 排序方向 "DESC" | "ASC"（无排序要求时填 null）
+- limit_n      : 取前N条的整数（如 Top3 → 3，无限制时填 null）
+- filter_hints : 过滤条件列表（自然语言），如 ["状态=已完成", "时间范围=本月", "仓库=仓库01"]
+- reasoning    : 槽填充的简短推理说明
+
+## Few-shot 示例（含 intent_slots）
 Q: "查询可用的片篮列表"
 A: intent=direct_query, query_type=LIST, target_class_hints=["semi:Carrier"],
-   semantic_filters=[{{"attribute":"status","semantic_value":"Available"}}]
+   semantic_filters=[{{"attribute":"status","semantic_value":"Available"}}],
+   intent_slots={{"subject":"载具","action":"查询列表","dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":["状态=可用"],"reasoning":"列表查询，过滤可用状态"}}
 
 Q: "统计当前在制的批次数量"
 A: intent=query_production, query_type=COUNT, target_class_hints=["semi:ProductionLot"],
-   semantic_filters=[{{"attribute":"lot_status","semantic_value":"Running"}}]
+   semantic_filters=[{{"attribute":"lot_status","semantic_value":"Running"}}],
+   intent_slots={{"subject":"批次","action":"计数","dimension_by":null,"metric":"批次数量","sort_order":null,"limit_n":null,"filter_hints":["状态=在制"],"reasoning":"COUNT查询在制批次"}}
 
 Q: "本月各工序的设备稼动率"
 A: intent=query_equipment, query_type=AGGREGATE, target_class_hints=["semi:Equipment","semi:ProcessStation"],
-   semantic_filters=[]
+   semantic_filters=[],
+   intent_slots={{"subject":"设备","action":"统计聚合","dimension_by":"工序","metric":"稼动率","sort_order":null,"limit_n":null,"filter_hints":["时间范围=本月"],"reasoning":"按工序分组计算设备稼动率"}}
+
+Q: "统计入库数量排名Top3的物料"
+A: intent=generate_report, query_type=AGGREGATE, target_class_hints=["semi:InboundEventRecord"],
+   semantic_filters=[],
+   intent_slots={{"subject":"入库记录","action":"统计聚合","dimension_by":"物料","metric":"入库数量","sort_order":"DESC","limit_n":3,"filter_hints":[],"reasoning":"按物料分组汇总入库数量，降序取前3"}}
+
+Q: "各仓库的库存分布"
+A: intent=generate_report, query_type=AGGREGATE, target_class_hints=["semi:Inventory","semi:WarehouseLocation"],
+   semantic_filters=[],
+   intent_slots={{"subject":"库存","action":"统计聚合","dimension_by":"仓库","metric":"库存数量","sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"按仓库维度统计库存分布"}}
 
 Q: "过去7天良率趋势"
 A: intent=query_quality, query_type=TREND, target_class_hints=["semi:ProductionLot"],
-   semantic_filters=[{{"attribute":"timeRange","semantic_value":"last_7_days"}}]
+   semantic_filters=[{{"attribute":"timeRange","semantic_value":"last_7_days"}}],
+   intent_slots={{"subject":"批次","action":"趋势分析","dimension_by":"日期","metric":"良率","sort_order":"ASC","limit_n":null,"filter_hints":["时间范围=过去7天"],"reasoning":"按日期分组统计良率趋势"}}
 
 Q: "你好"
-A: intent=chat, query_type=LIST, target_class_hints=[], semantic_filters=[]
+A: intent=chat, query_type=LIST, target_class_hints=[], semantic_filters=[],
+   intent_slots={{"subject":null,"action":null,"dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"闲聊，无业务查询意图"}}
 
 ## 当前用户输入
 "{text}"
@@ -364,9 +407,19 @@ A: intent=chat, query_type=LIST, target_class_hints=[], semantic_filters=[]
     "query_type": "LIST|COUNT|AGGREGATE|TREND",
     "target_class_hints": ["semi:Carrier"],
     "semantic_filters": [{{"attribute": "status", "semantic_value": "Available"}}],
+    "intent_slots": {{
+        "subject": "查询主体（自然语言）或 null",
+        "action": "查询列表|统计聚合|计数|趋势分析",
+        "dimension_by": "聚合维度或 null",
+        "metric": "聚合指标或 null",
+        "sort_order": "DESC|ASC|null",
+        "limit_n": 3,
+        "filter_hints": [],
+        "reasoning": "槽填充推理说明"
+    }},
     "confidence": 0.95,
     "entities": {{"timeRange": "today", "table": "carrier"}},
-    "reasoning": "判断理由"
+    "reasoning": "意图判断理由"
 }}"""
 
         response = ""
@@ -393,6 +446,7 @@ A: intent=chat, query_type=LIST, target_class_hints=[], semantic_filters=[]
                 'query_type': result.get('query_type', 'LIST'),
                 'target_class_hints': result.get('target_class_hints', []),
                 'semantic_filters': result.get('semantic_filters', []),
+                'intent_slots': result.get('intent_slots', {}),
                 'reasoning': result.get('reasoning', '')
             }
 
@@ -406,6 +460,7 @@ A: intent=chat, query_type=LIST, target_class_hints=[], semantic_filters=[]
                 'query_type': 'LIST',
                 'target_class_hints': [],
                 'semantic_filters': [],
+                'intent_slots': {},
                 'reasoning': 'JSON parse failed',
                 'llm_raw_response': response
             }
@@ -418,6 +473,7 @@ A: intent=chat, query_type=LIST, target_class_hints=[], semantic_filters=[]
                 'query_type': 'LIST',
                 'target_class_hints': [],
                 'semantic_filters': [],
+                'intent_slots': {},
                 'reasoning': f'LLM error: {str(e)}'
             }
     

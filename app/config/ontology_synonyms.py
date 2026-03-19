@@ -76,7 +76,7 @@ CLASS_SYNONYMS: dict = {
         "synonyms": [
             "站点", "工艺站", "工序", "station", "制程站",
             "process_station", "工艺节点", "制程", "操作",
-            "operation", "op", "流程节点",
+            "operation", "流程节点",
             "工站",  # 用户口语写法
         ],
     },
@@ -234,8 +234,9 @@ CLASS_SYNONYMS: dict = {
     "semi:InboundEventRecord": {
         "label_cn": "入库记录明细",
         "synonyms": [
-            "入库记录", "入库明细", "入库记录明细", "入库操作记录",
+            "入库", "入库记录", "入库明细", "入库记录明细", "入库操作记录",
             "入库日志", "入库历史", "物料入库记录", "入库行项",
+            "入库数量", "入库统计", "入库汇总", "入库总量", "入库排名",
             "inboundeventrecord", "inbound_record",
         ],
     },
@@ -252,9 +253,10 @@ CLASS_SYNONYMS: dict = {
     "semi:OutboundEventRecord": {
         "label_cn": "出库记录明细",
         "synonyms": [
-            "出库记录", "出库明细", "出库记录明细", "出库操作记录",
+            "出库", "出库记录", "出库明细", "出库记录明细", "出库操作记录",
             "出库日志", "出库历史", "物料出库记录",
             "领料记录", "出库单明细", "出库行项",
+            "出库数量", "出库统计", "出库汇总", "出库总量", "出库排名",
             "outboundeventrecord", "outbound_record",
         ],
     },
@@ -301,9 +303,11 @@ CLASS_SYNONYMS: dict = {
     "semi:MaterialBatch": {
         "label_cn": "物料批次",
         "synonyms": [
-            "批次", "物料批次", "物料实例", "批号",
-            "物料批", "来料批次", "入库批次", "在库批次",
-            "batch", "material_batch", "lot",
+            # 注意: "批次"/"lot"/"batch"/"批号" 属于 MES semi:ProductionLot，不在此列
+            # MaterialBatch 仅表示 WMS 域的物料实例（来料/入库/在库的物料单元）
+            "物料批次", "物料实例", "物料批",
+            "来料批次", "入库批次", "在库批次",
+            "material_batch",
         ],
     },
 

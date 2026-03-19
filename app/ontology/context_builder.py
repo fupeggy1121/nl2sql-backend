@@ -558,18 +558,24 @@ class SemanticContextBuilder:
     # 主入口
     # ----------------------------------------------------------------- #
 
-    def build(self, user_query: str) -> SemanticContext:
+    def build(self, user_query: str, intent_slots=None) -> SemanticContext:
         """
         完整构建流程:
           1. 提取关键词 → 匹配本体类
           2. 提取值关键词 → 值映射过滤
           3. 类间路径发现 → 物理 JOIN 翻译（意图感知子图过滤）
           4. 业务规则匹配
+
+        Args:
+            user_query: 原始用户查询文本
+            intent_slots: IntentSlots 实例（来自意图识别槽填充），用于定向匹配。
+                          subject/dimension_by 会被预注入为高优先级候选类，
+                          有效避免同义词引擎因覆盖不足导致的 0-match 问题。
         """
         ctx = SemanticContext(user_query=user_query)
 
-        # Step 1: 匹配本体类
-        matched = self._match_classes(user_query)
+        # Step 1: 匹配本体类（intent_slots 提供预注入高优先级候选）
+        matched = self._match_classes(user_query, intent_slots=intent_slots)
         ctx.matched_classes = matched
         logger.info(
             "Matched %d classes from query: %s",
@@ -649,11 +655,12 @@ class SemanticContextBuilder:
     # Step 1: 关键词 → 本体类匹配
     # ----------------------------------------------------------------- #
 
-    def _match_classes(self, query: str) -> List[MatchedClass]:
+    def _match_classes(self, query: str, intent_slots=None) -> List[MatchedClass]:
         """
         从查询中提取中文/英文关键词并匹配到本体类。
 
         策略（优先级从高到低，静态规则优先）:
+          S. [预注入] intent_slots.subject / dimension_by 的同义词定向搜索（最高优先级）
           A. 映射字典的中文标签做精确子串匹配
           B. _CLASS_SYNONYMS 同义词/缩写词典匹配
           C. OntologyGraph 的 label_index 扫描
@@ -664,6 +671,29 @@ class SemanticContextBuilder:
         results: List[MatchedClass] = []
         seen_classes: Set[str] = set()
         query_lower = query.lower()
+
+        # ── 策略S: intent_slots 定向预注入（最高优先级）──────────────────────────
+        # 如果意图识别已填充 subject / dimension_by 槽，直接用这些描述词在同义词表中
+        # 做精确匹配，将结果预注入 results。这解决了原始查询词无法触发同义词的根本问题。
+        if intent_slots is not None:
+            active_synonyms = _get_active_synonyms()
+            for slot_text in filter(None, [
+                getattr(intent_slots, "subject", None),
+                getattr(intent_slots, "dimension_by", None),
+            ]):
+                slot_lower = slot_text.lower()
+                for keyword, logic_class in active_synonyms.items():
+                    if keyword in slot_lower or slot_lower in keyword:
+                        if logic_class not in seen_classes:
+                            pt = self._mapping.get_physical_table(logic_class)
+                            if pt:
+                                seen_classes.add(logic_class)
+                                results.append(self._to_matched_class(keyword, pt))
+                                logger.info(
+                                    "[context_builder] Slot-injected class %s "
+                                    "via intent_slots '%s'→keyword '%s'",
+                                    logic_class, slot_text, keyword,
+                                )
 
         # 策略A: 映射字典中文标签精确匹配（label_cn 是查询子串）
         for pt in self._mapping.list_all_tables():
@@ -1383,7 +1413,15 @@ def build_semantic_context(
     user_query: str,
     ontology: Optional[OntologyGraph] = None,
     mapping: Optional[MappingDictionary] = None,
+    intent_slots=None,
 ) -> SemanticContext:
-    """一行调用: 从自然语言 → SemanticContext"""
+    """一行调用: 从自然语言 → SemanticContext
+
+    Args:
+        user_query: 原始用户查询文本
+        ontology: 可选，覆盖默认 OntologyGraph
+        mapping: 可选，覆盖默认 MappingDictionary
+        intent_slots: 可选，IntentSlots 实例，用于定向匹配（策略S）
+    """
     builder = SemanticContextBuilder(ontology=ontology, mapping=mapping)
-    return builder.build(user_query)
+    return builder.build(user_query, intent_slots=intent_slots)

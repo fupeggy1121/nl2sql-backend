@@ -851,12 +851,11 @@ _supabase_client = None
 def get_supabase_client():
     """获取 Supabase 客户端单例。
 
-    DB_BACKEND=postgres 时返回 None：
-      QueryExecutor 会走纯 psycopg2 路径，SupabaseClient 完全跳过。
     DB_BACKEND=supabase（默认）时返回正常客户端。
+    其他值（mysql、postgres 等）均返回 None，调用方走降级路径。
     """
     import os
-    if os.getenv("DB_BACKEND", "supabase") == "postgres":
+    if os.getenv("DB_BACKEND", "supabase") != "supabase":
         return None
 
     global _supabase_client

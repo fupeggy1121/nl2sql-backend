@@ -144,6 +144,7 @@ def intent_router_node(state: AgentState) -> dict:
     return {
         "intent": route,
         "intent_data": intent_data,
+        "intent_slots": intent_data.get("intent_slots", {}),
         "start_time": time.time(),
         "pipeline_trace": trace,
     }

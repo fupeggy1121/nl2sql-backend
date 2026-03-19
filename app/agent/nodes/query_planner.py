@@ -67,8 +67,26 @@ def query_planner_node(state: AgentState) -> dict:
     semantic_context = state.get("semantic_context", {})
     physical_tables = semantic_context.get("physical_tables", [])
     if physical_tables:
-        # 取第一个（主表）作为 query_plan.table
-        query_plan["table"] = physical_tables[0]
+        # 如果 intent 提供了 target_class_hints，优先选择与 hint 类对应的物理表，
+        # 避免因字母排序导致错误域表排在首位（如 material < warehouse_input_record_bill_detail）
+        target_hints = intent_data.get("target_class_hints", [])
+        selected_table = None
+        if target_hints:
+            try:
+                from app.ontology.mapping import get_mapping
+                mapping = get_mapping()
+                for hint_class in target_hints:
+                    pt = mapping.get_physical_table(hint_class)
+                    if pt and pt.table_name and pt.table_name in physical_tables:
+                        selected_table = pt.table_name
+                        logger.info(
+                            f"[query_planner] Hint-selected table: {selected_table} "
+                            f"(via {hint_class})"
+                        )
+                        break
+            except Exception as _hint_err:
+                logger.debug(f"[query_planner] Hint table lookup failed: {_hint_err}")
+        query_plan["table"] = selected_table or physical_tables[0]
         if len(physical_tables) > 1:
             query_plan["all_tables"] = physical_tables
 
@@ -81,6 +99,30 @@ def query_planner_node(state: AgentState) -> dict:
             if inferred_table:
                 query_plan["table"] = inferred_table
                 logger.info(f"[query_planner] Inherited table from last query: {inferred_table}")
+
+    # ── Slot Filling 补充: 用 intent_slots 填充 limit / metric / sort_order ──
+    # intent_slots 由意图识别器的 LLM 槽填充产出，比 entities 更细粒度、更精确
+    try:
+        from app.models.intent_slots import IntentSlots
+        _slots = IntentSlots.from_dict(intent_data.get("intent_slots", {}))
+        # limit_n: Top N 查询，如 intent 没有提取到 limit 时使用槽值
+        if _slots.limit_n and not query_plan.get("limit"):
+            query_plan["limit"] = _slots.limit_n
+            logger.info(f"[query_planner] Slot-filled limit: {_slots.limit_n}")
+        # metric: 聚合指标，如 intent 没有提取到 metrics 时使用槽值
+        if _slots.metric and not query_plan.get("metrics"):
+            query_plan["metrics"] = [_slots.metric]
+            logger.info(f"[query_planner] Slot-filled metric: {_slots.metric}")
+        # sort_order: 排序方向
+        if _slots.sort_order and not query_plan.get("sort_order"):
+            query_plan["sort_order"] = _slots.sort_order
+            logger.info(f"[query_planner] Slot-filled sort_order: {_slots.sort_order}")
+        # dimension_by: GROUP BY 维度（便于 sql_generator 参考）
+        if _slots.dimension_by and not query_plan.get("group_by"):
+            query_plan["group_by"] = _slots.dimension_by
+            logger.info(f"[query_planner] Slot-filled group_by: {_slots.dimension_by}")
+    except Exception as _slot_err:
+        logger.debug(f"[query_planner] intent_slots enrichment skipped: {_slot_err}")
 
     logger.info(f"[query_planner] Plan: table={query_plan['table']}, "
                 f"metrics={query_plan['metrics']}")
