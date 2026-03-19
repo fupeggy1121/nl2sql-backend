@@ -276,6 +276,52 @@ CLASS_SYNONYMS: dict = {
             "产品物料清单",
         ],
     },
+
+    # ── 仓库域 ────────────────────────────────────────────────────────────────
+    "semi:Inventory": {
+        "label_cn": "库存明细",
+        "synonyms": [
+            "库存", "库存明细", "库存分布", "库存情况", "库存数量",
+            "库存明细记录", "在库物料", "在库量", "在库数", "库存清单",
+            "物料库存", "当前库存", "实时库存", "库存快照",
+            "inventory", "warehouse_inventory",
+        ],
+    },
+
+    "semi:WarehouseLocation": {
+        "label_cn": "库位",
+        "synonyms": [
+            "仓库", "库位", "仓位", "储位", "库区",
+            "仓储位置", "存储位置", "货位", "库位分布",
+            "各仓库", "各库位", "每个仓库", "所有仓库",
+            "warehouse", "warehouse_location", "warehouse_model",
+        ],
+    },
+
+    "semi:MaterialBatch": {
+        "label_cn": "物料批次",
+        "synonyms": [
+            "批次", "物料批次", "物料实例", "批号",
+            "物料批", "来料批次", "入库批次", "在库批次",
+            "batch", "material_batch", "lot",
+        ],
+    },
+
+    "semi:WarehouseEvent": {
+        "label_cn": "库存管理事件",
+        "synonyms": [
+            "库存事件", "仓库事件", "出入库事件",
+            "warehouse_event", "wms_event",
+        ],
+    },
+
+    "semi:WarehouseEventRecord": {
+        "label_cn": "库存管理事件记录",
+        "synonyms": [
+            "库存记录", "仓库记录", "出入库记录",
+            "warehouse_record",
+        ],
+    },
 }
 
 

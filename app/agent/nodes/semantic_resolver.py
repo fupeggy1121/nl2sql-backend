@@ -114,7 +114,7 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
 
     # ── B2: 语义缓存查找（追问不使用缓存，避免上下文依赖）──
     # v4: 本体类版本前缀——当规则/模板发生重大变更时更新版本号可立即淘汰旧缓存
-    _SEMANTIC_CACHE_VERSION = "v13"  # v13: 修复_parse_value_mappings跳过非dict条目(_comment等); 在制+扣留复合语义修正→LotWIPStatus.Hold
+    _SEMANTIC_CACHE_VERSION = "v14"  # v14: 补全仓库域同义词(semi:Inventory/WarehouseLocation/MaterialBatch)
     _cache_key = f"{_SEMANTIC_CACHE_VERSION}:{effective_input}"
     _cache_hit = False
     if not is_followup:

@@ -161,15 +161,20 @@ def create_object():
     if any(o.get("logic_class") == logic_class for o in items):
         return _err(f"logic_class '{logic_class}' 已存在", 409)
 
-    entry = {
+    entry: Dict = {
         "logic_class": logic_class,
         "physical_table": physical_table or None,
         "primary_key": body.get("primary_key") or "id",
         "label_cn": body.get("label_cn", ""),
         "display_column": body.get("display_column") or None,
+        "filter_condition": body.get("filter_condition") or None,
         "key_columns": body.get("key_columns", []),
         "properties": body.get("properties", {}),
         "virtual": body.get("virtual", False),
+        "virtual_kind": body.get("virtual_kind") or None,
+        "embedded_in": body.get("embedded_in") or None,
+        "source_json_column": body.get("source_json_column") or None,
+        "source_json_path": body.get("source_json_path") or None,
         "note": body.get("note"),
     }
     # 移除 None 值的可选字段（保持 JSON 整洁）
@@ -208,7 +213,10 @@ def update_object(logic_class_raw: str):
             # 允许更新的字段（不允许修改 logic_class 本身）
             for field in [
                 "physical_table", "primary_key", "label_cn", "display_column",
-                "key_columns", "properties", "virtual", "note", "embedded_in",
+                "filter_condition", "key_columns", "properties",
+                "virtual", "virtual_kind",
+                "embedded_in", "source_json_column", "source_json_path",
+                "note",
             ]:
                 if field in body:
                     items[i][field] = body[field]

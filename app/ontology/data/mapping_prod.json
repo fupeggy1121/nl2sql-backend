@@ -1343,8 +1343,21 @@
       "properties": {
         "semi:hasBillNo": "record_bill_no",
         "semi:hasBillQty": "output_count",
-        "semi:hasBillTime": "gmt_create"
+        "semi:hasRequireQty": "require_count",
+        "semi:hasStockQty": "quantity",
+        "semi:hasStockUnit": "unit_name",
+        "semi:hasBillTime": "gmt_create",
+        "semi:hasStatus": "status",
+        "semi:hasOutboundType": "type",
+        "semi:hasDestination": "destination",
+        "semi:hasOperator": "user_create"
       },
+      "denormalized_columns_excluded": [
+        "material_model_code/name/version/type/category → 通过 semi:recordsBatch → semi:MaterialBatch 获取",
+        "batch_no/unique_code → 通过 semi:recordsBatch → semi:MaterialBatch.hasBatchNo/hasBoxNo 获取",
+        "warehouse_name → 通过 semi:outboundFromLocation → semi:WarehouseLocation.hasWarehouseName 获取",
+        "supplier → 通过 semi:MaterialBatch 冗余字段，不属于出库事件本体"
+      ],
       "key_columns": [
         "id",
         "record_bill_id",
@@ -1553,7 +1566,7 @@
       "virtual": true,
       "virtual_kind": "action_event",
       "label_cn": "库存管理事件（抽象父类）",
-      "note": "抽象父类，不直接映射物理表。作为 semi:Action 子类，与 semi:ProductionEvent 平行，专用于线边仓管理域。具体子类：InboundApprovalEvent、InboundEvent、OutboundEvent。执行记录见对应 *Record 实例类。"
+      "note": "抽象父类，不直接映射物理表。作为 semi:Action 子类，与 semi:ProductionEvent 平行，专用于线边仓管理域。具体子类：InboundApprovalEvent（入库审批）、InboundRequestEvent（入库申请）、InboundEvent（入库执行）、OutboundRequestEvent（出库申请）、OutboundEvent（出库执行）。执行记录见对应 *Record 实例类。"
     },
     {
       "logic_class": "semi:WarehouseEventRecord",
@@ -1561,7 +1574,7 @@
       "virtual": true,
       "virtual_kind": "action_event",
       "label_cn": "库存管理事件记录（抽象父类）",
-      "note": "库存管理操作的执行记录抽象基类，不直接映射物理表。具体子类：InboundApprovalRecord（warehouse_approval_record）、InboundRequest（warehouse_input_bill）、InboundRequestDetail（warehouse_input_bill_detail）、InboundBill（warehouse_input_record_bill）、InboundEventRecord（warehouse_input_record_bill_detail）、OutboundRequest（warehouse_output_bill）、OutboundRequestDetail（warehouse_output_bill_detail）、OutboundBill（warehouse_output_record_bill）、OutboundEventRecord（warehouse_output_record_bill_detail）。"
+      "note": "库存管理操作的执行记录抽象基类，不直接映射物理表。每个实例代表一次完整的库存交易事件单据。⚠ 子类仅限事件单据层（头表）：InboundApprovalRecord（warehouse_approval_record）、InboundRequest（warehouse_input_bill）、InboundBill（warehouse_input_record_bill）、OutboundRequest（warehouse_output_bill）、OutboundBill（warehouse_output_record_bill）。⚠ 明细行项目类不是 WarehouseEventRecord 子类：InboundEventRecord（warehouse_input_record_bill_detail）通过 containsInboundDetail 从属于 InboundBill；OutboundEventRecord（warehouse_output_record_bill_detail）通过 containsOutboundDetail 从属于 OutboundBill；InboundRequestDetail（warehouse_input_bill_detail）通过 containsInboundRequestDetail 从属于 InboundRequest；OutboundRequestDetail（warehouse_output_bill_detail）通过 containsOutboundRequestDetail 从属于 OutboundRequest。"
     },
     {
       "logic_class": "semi:InboundApprovalEvent",
@@ -1569,7 +1582,15 @@
       "virtual": true,
       "virtual_kind": "action_event",
       "label_cn": "入库审批事件类型",
-      "note": "Type 层定义，入库审批操作的事件类型模板。作为 WarehouseEvent 子类。执行记录层见 semi:InboundApprovalRecord（物理表：warehouse_approval_record）。"
+      "note": "Type 层定义，入库审批操作的事件类型模板。作为 WarehouseEvent 子类。执行记录层见 semi:InboundApprovalRecord（物理表：warehouse_approval_record）。isInstanceOfWarehouseEvent 精化约束：InboundApprovalRecord allValuesFrom InboundApprovalEvent。"
+    },
+    {
+      "logic_class": "semi:InboundRequestEvent",
+      "physical_table": null,
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "label_cn": "入库申请事件类型",
+      "note": "Type 层定义，线边仓入库申请操作的事件类型模板。作为 WarehouseEvent 子类。执行记录层见 semi:InboundRequest（物理表：warehouse_input_bill）。isInstanceOfWarehouseEvent 精化约束：InboundRequest allValuesFrom InboundRequestEvent。"
     },
     {
       "logic_class": "semi:InboundEvent",
@@ -1577,7 +1598,15 @@
       "virtual": true,
       "virtual_kind": "action_event",
       "label_cn": "入库事件类型",
-      "note": "Type 层定义，线边仓入库操作的事件类型模板。作为 WarehouseEvent 子类。执行记录层见 semi:InboundEventRecord（物理表：warehouse_input_record_bill_detail）；单据头表见 semi:InboundBill（physical: warehouse_input_record_bill）。"
+      "note": "Type 层定义，线边仓入库执行操作的事件类型模板。作为 WarehouseEvent 子类。执行记录层见 semi:InboundBill（物理表：warehouse_input_record_bill）；明细行见 semi:InboundEventRecord（warehouse_input_record_bill_detail）。isInstanceOfWarehouseEvent 精化约束：InboundBill allValuesFrom InboundEvent。"
+    },
+    {
+      "logic_class": "semi:OutboundRequestEvent",
+      "physical_table": null,
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "label_cn": "出库申请事件类型",
+      "note": "Type 层定义，线边仓出库申请操作的事件类型模板。作为 WarehouseEvent 子类。执行记录层见 semi:OutboundRequest（物理表：warehouse_output_bill）。isInstanceOfWarehouseEvent 精化约束：OutboundRequest allValuesFrom OutboundRequestEvent。"
     },
     {
       "logic_class": "semi:OutboundEvent",
@@ -1585,7 +1614,7 @@
       "virtual": true,
       "virtual_kind": "action_event",
       "label_cn": "出库事件类型",
-      "note": "Type 层定义，线边仓出库操作（领料/调拨）的事件类型模板。作为 WarehouseEvent 子类。执行记录层见 semi:OutboundEventRecord（物理表：warehouse_output_record_bill_detail）；单据头表见 semi:OutboundBill（physical: warehouse_output_record_bill）。"
+      "note": "Type 层定义，线边仓出库执行操作（领料/调拨）的事件类型模板。作为 WarehouseEvent 子类。执行记录层见 semi:OutboundBill（物理表：warehouse_output_record_bill）；明细行见 semi:OutboundEventRecord（warehouse_output_record_bill_detail）。isInstanceOfWarehouseEvent 精化约束：OutboundBill allValuesFrom OutboundEvent。"
     }
   ],
   "relation_mappings": [
@@ -1666,6 +1695,64 @@
       },
       "domain_class": "semi:OutboundBill",
       "range_class": "semi:OutboundEventRecord"
+    },
+    {
+      "logic_relation": "semi:outboundFromLocation",
+      "description": "出库明细行从哪个库位出库（明细→库位，多条明细可指向同一库位）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "warehouse_output_record_bill_detail",
+        "source_key": "warehouse_id",
+        "target_table": "warehouse_model",
+        "target_key": "id"
+      },
+      "domain_class": "semi:OutboundEventRecord",
+      "range_class": "semi:WarehouseLocation",
+      "note": "warehouse_output_record_bill_detail.warehouse_id → warehouse_model.id。记录本次出库操作从哪个库位（bin/shelf）领出物料，是出库溯源和库位扣减的关键外键。"
+    },
+    {
+      "logic_relation": "semi:recordsBatch",
+      "description": "出库明细行涉及的物料批次实例（明细→批次实例，通过batch_no/unique_code+warehouse_id联合定位）",
+      "strategy": "CompositeKey",
+      "join_logic": {
+        "source_table": "warehouse_output_record_bill_detail",
+        "source_keys": ["batch_no", "unique_code", "warehouse_id"],
+        "target_table": "warehouse_inventory",
+        "target_keys": ["batch_no", "unique_code", "warehouse_id"],
+        "note": "单件追踪型（unique_code非空）以unique_code+warehouse_id精确定位；批量计数型（unique_code为空）以batch_no+warehouse_id定位。"
+      },
+      "domain_class": "semi:OutboundEventRecord",
+      "range_class": "semi:MaterialBatch",
+      "note": "出库明细中batch_no/unique_code字段软关联到warehouse_inventory中的批次快照行，建立出库操作←→批次实例之间的语义连接，支持批次追溯和出库历史查询。"
+    },
+    {
+      "logic_relation": "semi:storedAtLocation",
+      "description": "物料批次实例存放在哪个库位（MaterialBatch→WarehouseLocation）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "warehouse_inventory",
+        "source_key": "warehouse_id",
+        "target_table": "warehouse_model",
+        "target_key": "id"
+      },
+      "domain_class": "semi:MaterialBatch",
+      "range_class": "semi:WarehouseLocation",
+      "note": "warehouse_inventory.warehouse_id → warehouse_model.id。建立批次实例←→库位之间的核心空间位置关系，支持'某批次在哪个库位'和'某库位有哪些批次'双向查询。"
+    },
+    {
+      "logic_relation": "semi:updatesInventory",
+      "description": "入库记录明细生成后同步更新对应库存快照行（InboundEventRecord→Inventory）",
+      "strategy": "CompositeKey",
+      "join_logic": {
+        "source_table": "warehouse_input_record_bill_detail",
+        "source_keys": ["batch_no", "unique_code", "warehouse_id"],
+        "target_table": "warehouse_inventory",
+        "target_keys": ["batch_no", "unique_code", "warehouse_id"],
+        "note": "入库单审批通过并执行入库后，warehouse_input_record_bill_detail中的每一行对应更新或新增warehouse_inventory中的一条在库快照记录，数量字段从count合并到quantity。"
+      },
+      "domain_class": "semi:InboundEventRecord",
+      "range_class": "semi:Inventory",
+      "note": "入库记录单生成时，入库明细行通过batch_no/unique_code+warehouse_id定位并更新warehouse_inventory（semi:Inventory）的quantity字段，反映实时库存变化。"
     },
     {
       "logic_relation": "semi:belongsToLot",

@@ -36,6 +36,14 @@ interface ObjectMapping {
   key_columns: string[];
   properties: Record<string, string | null>;
   virtual?: boolean;
+  /** 虚拟类子类型: action_event | EmbeddedJSON */
+  virtual_kind?: string | null;
+  /** EmbeddedJSON: 宿主物理表，如 product_model */
+  embedded_in?: string | null;
+  /** EmbeddedJSON: JSON 列名，如 main_route */
+  source_json_column?: string | null;
+  /** EmbeddedJSON: JSONPath 表达式，如 $.processes[*].measurementParamList[*] */
+  source_json_path?: string | null;
   note?: string;
 }
 
@@ -469,7 +477,9 @@ function ObjectMappingsTab() {
     setEditItem({
       logic_class: '', physical_table: '', primary_key: 'id',
       label_cn: '', display_column: '', filter_condition: '',
-      key_columns: [], properties: {}, virtual: false, note: '',
+      key_columns: [], properties: {},
+      virtual: false, virtual_kind: '', embedded_in: '', source_json_column: '', source_json_path: '',
+      note: '',
     });
     setIsEditing(false);
     setShowModal(true);
@@ -578,11 +588,36 @@ function ObjectMappingsTab() {
               <tr key={item.logic_class} className="hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-3 font-mono text-xs text-blue-700">{item.logic_class}</td>
                 <td className="px-4 py-3 font-mono text-xs text-gray-600">
-                  {item.physical_table || <span className="text-gray-300 italic">virtual</span>}
-                  {item.filter_condition && (
-                    <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 rounded">
-                      WHERE {item.filter_condition}
-                    </span>
+                  {item.physical_table ? (
+                    <>
+                      {item.physical_table}
+                      {item.filter_condition && (
+                        <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 rounded">
+                          WHERE {item.filter_condition}
+                        </span>
+                      )}
+                    </>
+                  ) : item.virtual_kind === 'EmbeddedJSON' ? (
+                    <div className="space-y-0.5">
+                      <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-teal-100 text-teal-700 rounded">
+                        EmbeddedJSON
+                      </span>
+                      {item.embedded_in && (
+                        <div className="text-gray-500 leading-tight">
+                          <span className="text-gray-700">{item.embedded_in}</span>
+                          {item.source_json_column && (
+                            <span className="text-gray-400">.{item.source_json_column}</span>
+                          )}
+                        </div>
+                      )}
+                      {item.source_json_path && (
+                        <div className="text-[10px] text-teal-600 font-mono break-all leading-tight max-w-[220px]">
+                          {item.source_json_path}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-gray-300 italic">virtual</span>
                   )}
                 </td>
                 <td className="px-4 py-3 text-gray-800">{item.label_cn}</td>
@@ -721,17 +756,86 @@ function ObjectMappingsTab() {
             logicClass={editItem.logic_class}
           />
 
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="virtual-cb"
-              checked={!!editItem.virtual}
-              onChange={e => setEditItem({ ...editItem, virtual: e.target.checked })}
-              className="w-4 h-4 rounded border-gray-300"
-            />
-            <label htmlFor="virtual-cb" className="text-sm text-gray-700">
-              虚拟类（无对应物理表）
-            </label>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="virtual-cb"
+                checked={!!editItem.virtual}
+                onChange={e => setEditItem({
+                  ...editItem,
+                  virtual: e.target.checked,
+                  // 取消虚拟时清除虚拟类专属字段
+                  ...(e.target.checked ? {} : {
+                    virtual_kind: '', embedded_in: '', source_json_column: '', source_json_path: ''
+                  })
+                })}
+                className="w-4 h-4 rounded border-gray-300"
+              />
+              <label htmlFor="virtual-cb" className="text-sm text-gray-700">
+                虚拟类（无对应物理表）
+              </label>
+            </div>
+
+            {editItem.virtual && (
+              <div className="pl-6 space-y-3 border-l-2 border-gray-200">
+                <Field label="虚拟类型（virtual_kind）" hint="EmbeddedJSON = 嵌入 JSON 列；action_event = 抽象事件类">
+                  <select
+                    value={editItem.virtual_kind || ''}
+                    onChange={e => setEditItem({ ...editItem, virtual_kind: e.target.value || null })}
+                    className={inputCls}
+                  >
+                    <option value="">— 请选择 —</option>
+                    <option value="EmbeddedJSON">EmbeddedJSON（嵌入 JSON 字段）</option>
+                    <option value="action_event">action_event（抽象事件/抽象父类）</option>
+                  </select>
+                </Field>
+
+                {editItem.virtual_kind === 'EmbeddedJSON' && (
+                  <div className="space-y-3 p-3 bg-teal-50 rounded-lg border border-teal-200">
+                    <p className="text-xs font-medium text-teal-700">EmbeddedJSON 数据源配置</p>
+                    <Field label="宿主表（embedded_in）" hint="承载 JSON 列的物理表，如 product_model">
+                      <input
+                        value={editItem.embedded_in || ''}
+                        onChange={e => setEditItem({ ...editItem, embedded_in: e.target.value })}
+                        className={inputCls}
+                        placeholder="product_model"
+                      />
+                    </Field>
+                    <Field label="JSON 列名（source_json_column）" hint="存储 JSON 的列名，如 main_route">
+                      <input
+                        value={editItem.source_json_column || ''}
+                        onChange={e => setEditItem({ ...editItem, source_json_column: e.target.value })}
+                        className={inputCls}
+                        placeholder="main_route"
+                      />
+                    </Field>
+                    <Field
+                      label="JSONPath（source_json_path）"
+                      hint="定位嵌入数组元素的路径，如 $.processes[*].measurementParamList[*]"
+                    >
+                      <input
+                        value={editItem.source_json_path || ''}
+                        onChange={e => setEditItem({ ...editItem, source_json_path: e.target.value })}
+                        className={`${inputCls} font-mono`}
+                        placeholder="$.processes[*].measurementParamList[*]"
+                      />
+                    </Field>
+                    <div className="text-xs text-teal-600 bg-teal-100 rounded p-2 leading-relaxed">
+                      <strong>数据来源预览：</strong>
+                      {editItem.embedded_in && editItem.source_json_column ? (
+                        <span className="font-mono ml-1">
+                          {editItem.embedded_in}.{editItem.source_json_column}
+                          {editItem.source_json_path ? ` → ${editItem.source_json_path}` : ''}
+                        </span>
+                      ) : (
+                        <span className="text-teal-400 ml-1">填写宿主表和列名后显示</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <Field label="备注" hint="可选">

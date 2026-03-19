@@ -439,9 +439,11 @@ semi:hasProcessStatus a owl:DatatypeProperty ;
 #   Run  → process_status IN (50,100,150) AND NOT EXISTS(激活扣留)
 #   IDLE → process_status IN (0,200)      AND NOT EXISTS(激活扣留)
 #   Hold → EXISTS(激活扣留)，不论 process_status 取值
-semi:LotWIPStatus a owl:Class ;
-    rdfs:label "在制状态（WIP三态）" ;
-    rdfs:comment "批次在制管理状态的三态枚举，属于推导型状态（derived status），不直接对应批次表中的单一字段。由两个维度逻辑组合计算：(1) semi:LotProcessStatus（process_status字段）中的站点级加工阶段；(2) 批次是否存在激活扣留记录（HoldEventRecord 无对应 ReleaseEventRecord）。三态：Run（运行）/ IDLE（闲置）/ Hold（扣留，优先级最高）。值映射及 SQL 条件见 value_mappings['semi:LotWIPStatus']。" .
+# semi:LotWIPStatus — 推导型在制状态三态枚举（Run / IDLE / Hold）
+# ⚠ 不声明为 owl:Class：LotWIPStatus 是计算推导值（derived status），无独立个体，
+#   不作为对象属性的值域类，不应在本体可视化中渲染为节点。
+#   枚举值与 SQL 推导条件定义在 mapping_prod.json → value_mappings["semi:LotWIPStatus"]。
+#   属性引用方式：semi:hasLotWIPStatus rdfs:range xsd:string（枚举字符串：Run/IDLE/Hold）。
 
 semi:hasLotType a owl:DatatypeProperty ;
     rdfs:domain semi:ProductionLot ;
@@ -1079,13 +1081,13 @@ semi:WarehouseEvent a owl:Class ;
     rdfs:subClassOf semi:Action ;
     rdfs:label "库存管理事件定义（抽象父类）" ;
     semi:isAbstract "true"^^xsd:boolean ;
-    rdfs:comment "定义库存管理操作类型的抽象模板（入库/出库/审批等）。作为 semi:Action 的子类，与 semi:ProductionEvent 平行，专用于线边仓物料管理域；作用对象为物料批次（semi:MaterialBatch）和库位（semi:WarehouseLocation），区别于生产事件（作用于 semi:ProductionLot 和 semi:ProcessStation）。具体操作类型子类：semi:InboundApprovalEvent、semi:InboundEvent、semi:OutboundEvent。" .
+    rdfs:comment "定义库存管理操作类型的抽象模板（入库/出库/审批/申请等）。作为 semi:Action 的子类，与 semi:ProductionEvent 平行，专用于线边仓物料管理域；作用对象为物料批次（semi:MaterialBatch）和库位（semi:WarehouseLocation），区别于生产事件（作用于 semi:ProductionLot 和 semi:ProcessStation）。具体操作类型子类：semi:InboundApprovalEvent（入库审批）、semi:InboundRequestEvent（入库申请）、semi:InboundEvent（入库执行）、semi:OutboundRequestEvent（出库申请）、semi:OutboundEvent（出库执行）。" .
 
 # 7.5 库存管理事件记录（抽象父类）(WarehouseEventRecord)
 semi:WarehouseEventRecord a owl:Class ;
     rdfs:label "库存管理事件记录（抽象父类）" ;
     semi:isAbstract "true"^^xsd:boolean ;
-    rdfs:comment "库存管理操作的执行记录抽象基类，与 semi:ProductionEventRecord 平行，专用于仓库管理域。作用对象：semi:MaterialBatch（物料批次实例）× semi:WarehouseLocation（库位）；通过 semi:isInstanceOfWarehouseEvent 关联对应的事件类型定义。具体子类：semi:InboundApprovalRecord、semi:InboundRequest、semi:InboundRequestDetail、semi:InboundBill、semi:InboundEventRecord、semi:OutboundRequest、semi:OutboundRequestDetail、semi:OutboundBill、semi:OutboundEventRecord。" .
+    rdfs:comment "库存管理操作的执行记录抽象基类，与 semi:ProductionEventRecord 平行，专用于仓库管理域。每个实例代表一次完整的库存交易事件单据（如一次入库、一次出库、一次申请）。具体子类（事件单据层）：semi:InboundApprovalRecord（入库审批记录）、semi:InboundRequest（入库申请单）、semi:InboundBill（入库记录单）、semi:OutboundRequest（出库申请单）、semi:OutboundBill（出库记录单）。⚠ 明细行项目（semi:InboundEventRecord、semi:OutboundEventRecord、semi:InboundRequestDetail、semi:OutboundRequestDetail）不是独立的 WarehouseEventRecord，而是通过包含关系（containsInboundDetail / containsOutboundDetail / containsInboundRequestDetail / containsOutboundRequestDetail）挂载在对应单据下，代表单据中每个物料批次的行条目。" .
 
 # 7.6 入库审批事件定义 (InboundApprovalEvent)
 semi:InboundApprovalEvent a owl:Class ;
@@ -1120,19 +1122,20 @@ semi:InboundEvent a owl:Class ;
 
 # 7.9 入库记录单 (InboundBill) — warehouse_input_record_bill
 semi:InboundBill a owl:Class ;
-    rdfs:subClassOf semi:WarehouseEventRecord ;
+    rdfs:subClassOf semi:WarehouseEventRecord ,
+        [ a owl:Restriction ;
+          owl:onProperty semi:isInstanceOfWarehouseEvent ;
+          owl:allValuesFrom semi:InboundEvent ] ;
     rdfs:label "入库记录单" ;
     semi:isAbstract "false"^^xsd:boolean ;
     rdfs:comment "入库操作的单据头部记录（主表）。物理映射：warehouse_input_record_bill 表（每行代表一次完整的入库单据，1:N 对应 semi:InboundEventRecord 明细行）。核心字段：record_bill_no（唯一单号/UNI）、status（单据审批状态）、type（入库类型）、gmt_create/user_create（创建时间/人）、reject_reason（拒绝原因）。通过 id → warehouse_input_record_bill_detail.record_bill_id 关联入库明细。" .
 
 # 7.9b 入库执行记录明细 (InboundEventRecord) — warehouse_input_record_bill_detail
+# ⚠ 设计注意：InboundEventRecord 是 InboundBill 的行项目，不是独立的 WarehouseEventRecord 子类。
+#   它代表「一次入库单据中针对某个物料批次的一条入库明细」，通过 containsInboundDetail 从属于 InboundBill。
 semi:InboundEventRecord a owl:Class ;
-    rdfs:subClassOf semi:WarehouseEventRecord ,
-        [ a owl:Restriction ;
-          owl:onProperty semi:isInstanceOfWarehouseEvent ;
-          owl:allValuesFrom semi:InboundEvent ] ;
     rdfs:label "入库记录明细" ;
-    rdfs:comment "入库操作的具体执行明细记录。物理映射：warehouse_input_record_bill_detail 表（每行对应一个物料/批次的入库行项目，通过 record_bill_id 外键关联入库单主表 warehouse_input_record_bill）。核心关联：(1) inboundBatch → semi:MaterialBatch，入库的物料批次实例（batch_no/unique_code）；(2) inboundToLocation → semi:WarehouseLocation，目标库位（warehouse_id 外键）；(3) hasBillNo（record_bill_no）、hasBillQty（count）、hasBillTime（gmt_create）、supplier（供应商）。执行后触发 warehouse_inventory 对应行更新（在库数量增加）。" .
+    rdfs:comment "入库操作的具体执行明细记录（行项目）。物理映射：warehouse_input_record_bill_detail 表（每行对应一个物料/批次的入库行项目，通过 record_bill_id 外键关联入库单主表 warehouse_input_record_bill）。【非 WarehouseEventRecord 子类】：本类是 InboundBill 的组成行，通过对象属性 semi:containsInboundDetail（InboundBill→InboundEventRecord）建立从属关系。核心关联：(1) inboundBatch → semi:MaterialBatch（batch_no/unique_code）；(2) inboundToLocation → semi:WarehouseLocation（warehouse_id）；(3) hasBillQty（count）、hasBillTime（gmt_create）、updatesInventory → semi:Inventory。" .
 
 # 7.10 出库事件定义 (OutboundEvent)
 semi:OutboundEvent a owl:Class ;
@@ -1147,45 +1150,66 @@ semi:OutboundEvent a owl:Class ;
 
 # 7.11 出库记录单 (OutboundBill) — warehouse_output_record_bill
 semi:OutboundBill a owl:Class ;
-    rdfs:subClassOf semi:WarehouseEventRecord ;
+    rdfs:subClassOf semi:WarehouseEventRecord ,
+        [ a owl:Restriction ;
+          owl:onProperty semi:isInstanceOfWarehouseEvent ;
+          owl:allValuesFrom semi:OutboundEvent ] ;
     rdfs:label "出库记录单" ;
     semi:isAbstract "false"^^xsd:boolean ;
     rdfs:comment "出库操作的单据头部记录（主表）。物理映射：warehouse_output_record_bill 表（每行代表一次完整的出库单据，1:N 对应 semi:OutboundEventRecord 明细行）。核心字段：record_bill_no（唯一单号/UNI）、status（单据审批状态）、type（出库类型）、destination（出库目标/生产线/部门）、gmt_create/user_create（创建时间/人）、scan_code（扫码字段）。通过 id → warehouse_output_record_bill_detail.record_bill_id 关联出库明细。" .
 
 # 7.11b 出库执行记录明细 (OutboundEventRecord) — warehouse_output_record_bill_detail
+# ⚠ 设计注意：OutboundEventRecord 是 OutboundBill 的行项目，不是独立的 WarehouseEventRecord 子类。
+#   它代表「一次出库单据中针对某个物料批次的一条出库明细」，通过 containsOutboundDetail 从属于 OutboundBill。
 semi:OutboundEventRecord a owl:Class ;
-    rdfs:subClassOf semi:WarehouseEventRecord ,
-        [ a owl:Restriction ;
-          owl:onProperty semi:isInstanceOfWarehouseEvent ;
-          owl:allValuesFrom semi:OutboundEvent ] ;
     rdfs:label "出库记录明细" ;
-    rdfs:comment "出库操作的具体执行明细记录。物理映射：warehouse_output_record_bill_detail 表（每行对应一个物料/批次的出库行项目，通过 record_bill_id 外键关联出库单主表 warehouse_output_record_bill）。核心关联：(1) outboundBatch → semi:MaterialBatch，出库的物料批次实例（batch_no/unique_code）；(2) outboundFromLocation → semi:WarehouseLocation，源库位（warehouse_id 外键）；(3) hasBillNo（record_bill_no）、hasBillQty（output_count）、hasBillTime（gmt_create）；destination 记录出库目标（生产线/部门）；require_count 为申领量，quantity 为在库量快照。执行后触发 warehouse_inventory 对应行更新（在库数量减少）。" .
+    rdfs:comment "出库操作的具体执行明细记录（行项目）。物理映射：warehouse_output_record_bill_detail 表（每行对应一个物料/批次的出库行项目，通过 record_bill_id 外键关联出库单主表 warehouse_output_record_bill）。【非 WarehouseEventRecord 子类】：本类是 OutboundBill 的组成行，通过对象属性 semi:containsOutboundDetail（OutboundBill→OutboundEventRecord）建立从属关系。核心关联：(1) recordsBatch → semi:MaterialBatch（batch_no/unique_code）；(2) outboundFromLocation → semi:WarehouseLocation（warehouse_id）；(3) hasBillQty（output_count）、hasRequireQty（require_count）、hasStockQty（quantity）、hasBillTime（gmt_create）；destination 记录出库目标（生产线/部门）。" .
+
+# 7.12a 入库申请事件定义 (InboundRequestEvent)
+semi:InboundRequestEvent a owl:Class ;
+    rdfs:subClassOf semi:WarehouseEvent ;
+    rdfs:label "入库申请事件定义" ;
+    rdfs:comment "定义线边仓入库申请操作的规则/类型模板。物料需求方（生产线/部门）向仓库提出入库申请，经审批通过后触发 InboundEvent 执行入库并生成 InboundBill。执行记录层见 semi:InboundRequest。" .
 
 # 7.12 入库申请单 (InboundRequest) — warehouse_input_bill
 semi:InboundRequest a owl:Class ;
-    rdfs:subClassOf semi:WarehouseEventRecord ;
+    rdfs:subClassOf semi:WarehouseEventRecord ,
+        [ a owl:Restriction ;
+          owl:onProperty semi:isInstanceOfWarehouseEvent ;
+          owl:allValuesFrom semi:InboundRequestEvent ] ;
     rdfs:label "入库申请单" ;
     semi:isAbstract "false"^^xsd:boolean ;
     rdfs:comment "入库操作的申请单据（申请层）。物理映射：warehouse_input_bill 表（每行代表一次入库申请，审批通过后生成 semi:InboundBill 入库记录单）。核心字段：bill_no（唯一申请单号/UNI）、status（审批状态）、type（入库类型）、reject_reason/reject_reason_remark（拒绝原因）。通过 id → warehouse_input_record_bill.input_bill_id（FK）关联已生成的入库记录单。业务流程：入库申请 → 审批 → 生成 InboundBill → 执行InboundEventRecord。" .
 
 # 7.13 入库申请明细 (InboundRequestDetail) — warehouse_input_bill_detail
+# ⚠ 设计注意：InboundRequestDetail 是 InboundRequest 的行项目，不是独立的 WarehouseEventRecord 子类。
+#   通过 containsInboundRequestDetail（InboundRequest→InboundRequestDetail）建立从属关系。
 semi:InboundRequestDetail a owl:Class ;
-    rdfs:subClassOf semi:WarehouseEventRecord ;
     rdfs:label "入库申请明细" ;
-    rdfs:comment "入库申请单中的物料/批次申请行项目。物理映射：warehouse_input_bill_detail 表（每行对应一个物料批次的入库申请行，通过 input_bill_id 外键关联申请单主表 warehouse_input_bill）。核心字段：material_model_code/name、batch_no/unique_code（批次标识）、count（申请数量）、warehouse_id/name（目标库位）、input_bill_no（冗余单号）。" .
+    rdfs:comment "入库申请单中的物料/批次申请行项目（行项目，非独立事件记录）。物理映射：warehouse_input_bill_detail 表（每行对应一个物料批次的入库申请行，通过 input_bill_id 外键关联申请单主表 warehouse_input_bill）。核心字段：material_model_code/name、batch_no/unique_code（批次标识）、count（申请数量）、warehouse_id/name（目标库位）、input_bill_no（冗余单号）。" .
+
+# 7.14a 出库申请事件定义 (OutboundRequestEvent)
+semi:OutboundRequestEvent a owl:Class ;
+    rdfs:subClassOf semi:WarehouseEvent ;
+    rdfs:label "出库申请事件定义" ;
+    rdfs:comment "定义线边仓出库申请操作的规则/类型模板。生产线/部门提出物料领料申请，经审批通过后触发 OutboundEvent 执行出库并生成 OutboundBill。执行记录层见 semi:OutboundRequest。" .
 
 # 7.14 出库申请单 (OutboundRequest) — warehouse_output_bill
 semi:OutboundRequest a owl:Class ;
-    rdfs:subClassOf semi:WarehouseEventRecord ;
+    rdfs:subClassOf semi:WarehouseEventRecord ,
+        [ a owl:Restriction ;
+          owl:onProperty semi:isInstanceOfWarehouseEvent ;
+          owl:allValuesFrom semi:OutboundRequestEvent ] ;
     rdfs:label "出库申请单" ;
     semi:isAbstract "false"^^xsd:boolean ;
     rdfs:comment "出库操作的申请单据（申请层）。物理映射：warehouse_output_bill 表（每行代表一次出库申请，审批通过后生成 semi:OutboundBill 出库记录单）。核心字段：bill_no（唯一申请单号/UNI）、status（审批状态）、type（出库类型）、destination（出库目标/生产线/部门）、output_dept（申请部门）、scan_code（扫码字段）。通过 id → warehouse_output_record_bill.output_bill_id（FK）关联已生成的出库记录单。业务流程：出库申请 → 审批 → 生成 OutboundBill → 执行 OutboundEventRecord。" .
 
 # 7.15 出库申请明细 (OutboundRequestDetail) — warehouse_output_bill_detail
+# ⚠ 设计注意：OutboundRequestDetail 是 OutboundRequest 的行项目，不是独立的 WarehouseEventRecord 子类。
+#   通过 containsOutboundRequestDetail（OutboundRequest→OutboundRequestDetail）建立从属关系。
 semi:OutboundRequestDetail a owl:Class ;
-    rdfs:subClassOf semi:WarehouseEventRecord ;
     rdfs:label "出库申请明细" ;
-    rdfs:comment "出库申请单中的物料/批次申请行项目。物理映射：warehouse_output_bill_detail 表（每行对应一个物料批次的出库申请行，通过 output_bill_id 外键关联申请单主表 warehouse_output_bill）。核心字段：material_model_code/name、batch_no/unique_code（批次标识）、output_count（申请出库量）、require_count（申领量）、destination（出库目标）、warehouse_id/name（源库位）、output_bill_no（冗余单号）。" .
+    rdfs:comment "出库申请单中的物料/批次申请行项目（行项目，非独立事件记录）。物理映射：warehouse_output_bill_detail 表（每行对应一个物料批次的出库申请行，通过 output_bill_id 外键关联申请单主表 warehouse_output_bill）。核心字段：material_model_code/name、batch_no/unique_code（批次标识）、output_count（申请出库量）、require_count（申领量）、destination（出库目标）、warehouse_id/name（源库位）、output_bill_no（冗余单号）。" .
 
 ### ==========================================
 ### 8. WMS 对象属性 (WMS Object Properties)
@@ -1195,7 +1219,7 @@ semi:OutboundRequestDetail a owl:Class ;
 semi:isInstanceOfWarehouseEvent a owl:ObjectProperty ;
     rdfs:domain semi:WarehouseEventRecord ; rdfs:range semi:WarehouseEvent ;
     rdfs:label "库存管理事件执行记录" ;
-    rdfs:comment "该库存管理执行记录（WarehouseEventRecord 子类实例）对应的事件类型定义（WarehouseEvent 子类），关联记录到事件规约。与 semi:isInstanceOfEvent（ProductionEventRecord→ProductionEvent）平行，两者共同构成生产域与仓库域的事件类型溯源机制。" .
+    rdfs:comment "该库存管理执行记录（WarehouseEventRecord 子类实例）对应的事件类型定义（WarehouseEvent 子类），关联记录到事件规约。与 semi:isInstanceOfEvent（ProductionEventRecord→ProductionEvent）平行。各子类通过 owl:allValuesFrom 约束精化 range：InboundApprovalRecord→InboundApprovalEvent / InboundRequest→InboundRequestEvent / InboundBill→InboundEvent / OutboundRequest→OutboundRequestEvent / OutboundBill→OutboundEvent。" .
 
 # 8.2 MaterialBatch 关联属性
 semi:batchOfMaterial a owl:ObjectProperty ;
