@@ -108,6 +108,7 @@ interface UnifiedChatProps {
   onNavigateToTraceability?: (params: { lotCode?: string; waferCode?: string }) => void;
   sessionId: string;
   skipDataGeneration?: boolean;
+  onRenameSession?: (name: string) => void;
 }
 
 type ChatStep = 'input' | 'clarify' | 'explain' | 'execute' | 'results';
@@ -118,6 +119,7 @@ export function UnifiedChat({
   onNavigateToTraceability,
   sessionId,
   skipDataGeneration = false,
+  onRenameSession,
 }: UnifiedChatProps) {
   const { createSavedReport, fetchChatMessages, addChatMessage, refetchSavedReports } = useData();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -232,6 +234,12 @@ export function UnifiedChat({
     setInput('');
     setIsProcessing(true);
     setStep('execute');
+
+    // Auto-name session from the first real question
+    if (onRenameSession && messages.filter(m => m.type === 'user').length === 0) {
+      const title = content.trim().replace(/\s+/g, ' ');
+      onRenameSession(title.length > 20 ? title.slice(0, 18) + '\u2026' : title);
+    }
 
     try {
       await addChatMessage(sessionId, userMessage);

@@ -6,19 +6,21 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { UnifiedChat } from './components/UnifiedChat/UnifiedChat';
 
 interface MESPageProps {
-  skipDataGeneration?: boolean; // 可选：跳过数据生成步骤
-  setMessages?: (messages: Message[]) => void; // 新增：用于将消息传递给父组件
-  setIsProcessing?: (isProcessing: boolean) => void; // 新增：用于将处理状态传递给父组件
-  sessionId: string; // 新增：接收会话ID
+  skipDataGeneration?: boolean;
+  setMessages?: (messages: Message[]) => void;
+  setIsProcessing?: (isProcessing: boolean) => void;
+  sessionId: string;
   onNavigateToTraceability?: (params: { lotCode?: string; waferCode?: string }) => void;
+  onRenameSession?: (name: string) => void;
 }
 
 export const MESPage: React.FC<MESPageProps> = ({
   skipDataGeneration = false,
   setMessages,
   setIsProcessing,
-  sessionId, // 接收 sessionId
+  sessionId,
   onNavigateToTraceability,
+  onRenameSession,
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +81,7 @@ export const MESPage: React.FC<MESPageProps> = ({
         setIsProcessing={setIsProcessing}
         skipDataGeneration={skipDataGeneration}
         onNavigateToTraceability={onNavigateToTraceability}
+        onRenameSession={onRenameSession}
       />
     </div>
   );

@@ -33,7 +33,7 @@ const ontologySubItems = [
 
 // ── Main App ──────────────────────────────────────────────────────
 export default function App() {
-  const { fetchChatSessions, createChatSession, fetchLatestChatSession, dashboards, createDashboard, deleteDashboard, savedReports, deleteSavedReport } = useData()
+  const { fetchChatSessions, createChatSession, fetchLatestChatSession, deleteChatSession, renameChatSession, dashboards, createDashboard, deleteDashboard, savedReports, deleteSavedReport } = useData()
 
   const [activeTopModule, setActiveTopModule] = useState<TopModule>('ai-chat')
   const [activeSubModule, setActiveSubModule] = useState<string>('')
@@ -226,11 +226,29 @@ export default function App() {
             {chatSessions.map(session => {
               const active = activeSubModule === session.id
               return (
-                <button key={session.id} onClick={() => { setActiveTopModule('ai-chat'); setActiveSubModule(session.id) }}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', background: active ? '#eff6ff' : 'transparent', color: active ? '#1d4ed8' : '#374151', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', borderLeft: active ? '2px solid #2563eb' : '2px solid transparent', overflow: 'hidden' }}>
+                <div key={session.id}
+                  onClick={() => { setActiveTopModule('ai-chat'); setActiveSubModule(session.id) }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px 9px 14px', background: active ? '#eff6ff' : 'transparent', color: active ? '#1d4ed8' : '#374151', cursor: 'pointer', fontSize: 13, borderLeft: active ? '2px solid #2563eb' : '2px solid transparent', overflow: 'hidden', boxSizing: 'border-box' }}
+                  className="session-item">
                   <MessageSquare size={13} style={{ flexShrink: 0 }} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.name}</span>
-                </button>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.name}</span>
+                  <button
+                    title="删除对话"
+                    onClick={e => {
+                      e.stopPropagation()
+                      if (!confirm(`删除对话「${session.name}」？`)) return
+                      deleteChatSession(session.id)
+                      setChatSessions(prev => {
+                        const next = prev.filter(s => s.id !== session.id)
+                        if (activeSubModule === session.id) setActiveSubModule(next[0]?.id || '')
+                        return next
+                      })
+                    }}
+                    style={{ flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 4, color: '#9ca3af', display: 'flex', alignItems: 'center', opacity: 0 }}
+                    className="session-delete-btn">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
               )
             })}
           </div>
@@ -264,7 +282,12 @@ export default function App() {
       return <TraceabilityView params={params} />
     }
     const sessionId = activeSubModule || chatSessions[0]?.id || 'default'
-    return <MESPage sessionId={sessionId} skipDataGeneration={true} onNavigateToTraceability={handleNavigateToTraceability} />
+    return <MESPage sessionId={sessionId} skipDataGeneration={true} onNavigateToTraceability={handleNavigateToTraceability}
+      onRenameSession={(name) => {
+        renameChatSession(sessionId, name)
+        setChatSessions(prev => prev.map(s => s.id === sessionId ? { ...s, name } : s))
+      }}
+    />
   }
 
   const topNavItems = [

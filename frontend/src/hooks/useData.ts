@@ -177,6 +177,15 @@ export function useData() {
     return { found: true, session: sorted[0] };
   }, []);
 
+  const deleteChatSession = useCallback(async (id: string): Promise<void> => {
+    saveSessions(loadSessions().filter(s => s.id !== id));
+    localStorage.removeItem(LS_MESSAGES_PREFIX + id);
+  }, []);
+
+  const renameChatSession = useCallback(async (id: string, name: string): Promise<void> => {
+    saveSessions(loadSessions().map(s => s.id === id ? { ...s, name } : s));
+  }, []);
+
   // ── dashboards ───────────────────────────────────────────────
   const createDashboard = useCallback(async (data: Pick<Dashboard, 'name' | 'description'>): Promise<Dashboard> => {
     const now = new Date().toISOString();
@@ -287,6 +296,8 @@ export function useData() {
     fetchChatSessions,
     createChatSession,
     fetchLatestChatSession,
+    deleteChatSession,
+    renameChatSession,
     // dashboards
     dashboards,
     createDashboard,
