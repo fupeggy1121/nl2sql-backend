@@ -236,7 +236,7 @@ export function UnifiedChat({
     try {
       await addChatMessage(sessionId, userMessage);
 
-      const response = await nl2sqlApi.explainQuery(content);
+      const response = await nl2sqlApi.explainQuery(content, sessionId);
       
       if (!response.success) {
         throw new Error(response.error || 'Failed to process query.');
