@@ -43,7 +43,7 @@ def _build_mysql_connect_kwargs() -> dict:
     user     = _get("USER",     "root")
     password = _get("PASSWORD", "")
     return dict(host=host, port=port, db=db, user=user, password=password,
-                connect_timeout=10, charset="utf8mb4")
+                connect_timeout=3, charset="utf8mb4")
 
 
 class MySQLExecutor:

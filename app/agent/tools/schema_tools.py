@@ -30,7 +30,7 @@ def _get_schema_metadata_via_mysql() -> dict:
             db=os.getenv("MYSQL_DB",         os.getenv("PROD_DB_NAME",     "cc_semi_mvp")),
             user=os.getenv("MYSQL_USER",     os.getenv("PROD_DB_USER",     "root")),
             password=os.getenv("MYSQL_PASSWORD", os.getenv("PROD_DB_PASSWORD", "")),
-            connect_timeout=10, charset="utf8mb4",
+            connect_timeout=3, charset="utf8mb4",
             cursorclass=pymysql.cursors.DictCursor
         )
         conn = pymysql.connect(**kwargs)

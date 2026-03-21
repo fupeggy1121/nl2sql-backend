@@ -139,7 +139,10 @@ class QueryExecutor:
                 if not self.pg_executor.conn:
                     if not self.pg_executor.connect():
                         logger.warning("DB direct connection failed, falling back to Supabase")
-                        return self._execute_via_supabase(sql)
+                        result = self._execute_via_supabase(sql)
+                        if not result.get('success') and 'db_connection_error' not in result:
+                            result['db_connection_error'] = True
+                        return result
 
                 # 执行 SQL 查询
                 logger.info(f"Executing SQL via direct DB: {sql}")
@@ -236,6 +239,7 @@ class QueryExecutor:
                 return {
                     'success': False,
                     'error': 'No database connection available (neither PostgreSQL nor Supabase)',
+                    'db_connection_error': True,
                     'data': []
                 }
             

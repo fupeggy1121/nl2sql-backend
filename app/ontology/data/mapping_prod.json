@@ -760,81 +760,42 @@
       "note": "载具逻辑分组表。carrier_info.bind_carrier_group 及 matrix_routerx_config_process.load_carrier_group_id / unload_carrier_group_id 均引用本表 id。carrier_modellings 为 JSON 字段，存储关联的 carrier_modelling id 列表。"
     },
     {
-      "logic_class": "semi:StationPassRecord",
-      "physical_table": null,
-      "primary_key": null,
-      "label_cn": "过站记录(抽象基类)",
-      "display_column": null,
-      "virtual": true,
-      "properties": {},
-      "key_columns": [],
-      "note": "抽象基类，不直接对应物理表。子类 ProcessPassRecord(加工过站) 和 MeasurementPassRecord(量测过站) 各有独立物理表，通过 station_type 字段区分。"
-    },
-    {
-      "logic_class": "semi:ProcessPassRecord",
-      "physical_table": "station_process_record",
-      "primary_key": "id",
-      "label_cn": "加工过站记录",
-      "display_column": "sublot_id",
-      "virtual": false,
-      "properties": {
-        "semi:hasInTime": "in_time",
-        "semi:hasOutTime": "out_time",
-        "semi:hasLoadTime": "load_time",
-        "semi:hasUnloadTime": "unload_time",
-        "semi:hasEquipmentSnapshot": "equipment_snapshot",
-        "semi:hasProcessParamRecord": "process_params"
-      },
-      "key_columns": [
-        "id",
-        "sublot_id",
-        "lot_id",
-        "station_id",
-        "equipment_id",
-        "in_time",
-        "out_time",
-        "load_time",
-        "unload_time",
-        "equipment_snapshot",
-        "process_params",
-        "operator_id",
-        "gmt_create"
-      ],
-      "note": "加工工序过站执行记录表（待创建迁移）。station_type='process'。每行对应一个子批次在一道加工工序的完整过站事件，是Wafer加工履历还原的基本单元。"
-    },
-    {
       "logic_class": "semi:MeasurementPassRecord",
-      "physical_table": "station_measurement_record",
+      "physical_table": "process_measure_data",
       "primary_key": "id",
-      "label_cn": "量测过站记录",
-      "display_column": "sublot_id",
+      "label_cn": "量测与制程参数过站记录",
+      "display_column": "wafer_id",
       "virtual": false,
       "properties": {
-        "semi:hasInTime": "in_time",
-        "semi:hasOutTime": "out_time",
-        "semi:hasLoadTime": "load_time",
-        "semi:hasUnloadTime": "unload_time",
-        "semi:hasEquipmentSnapshot": "equipment_snapshot",
-        "semi:hasMeasurementResult": "measurement_result",
-        "semi:hasSamplingRule": "sampling_rule"
+        "semi:hasWaferId": "wafer_id",
+        "semi:hasEquipmentId": "eqp_id",
+        "semi:hasEquipmentCode": "eqp_code",
+        "semi:hasParamModelId": "param_model_id",
+        "semi:hasParamGroupId": "param_group_id"
       },
       "key_columns": [
         "id",
-        "sublot_id",
+        "wafer_id",
         "lot_id",
-        "station_id",
-        "equipment_id",
-        "in_time",
-        "out_time",
-        "load_time",
-        "unload_time",
-        "equipment_snapshot",
-        "measurement_result",
-        "sampling_rule",
+        "sublot_id",
+        "param_model_id",
+        "param_group_id",
+        "eqp_id",
+        "eqp_code",
+        "param_value",
+        "measure_time",
         "operator_id",
         "gmt_create"
       ],
-      "note": "量测工序过站检验记录表（待创建迁移）。station_type='measurement'。包含抽检规则与逐片/聚合量测参数，表征当前工序阶段的质量属性快照。"
+      "note": "量测与制程参数过站记录表。覆盖两类数据来源：(1) 量测工序由检测设备自动采集的逐片参数值（process_measure_data，eqp_id 关联设备）；(2) 制程工序操作员根据工艺规范人工录入的制程参数（process_measure_data_raw）。均通过 param_model_id → param_model 获取参数语义，param_group_id → param_group 实现参数分组聚合。原 station_process_record / station_measurement_record 表已废弃（物理表不存在）。"
+    },
+    {
+      "logic_class": "semi:MeasurementEvent",
+      "physical_table": null,
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "label_cn": "量测参数录入事件类型",
+      "note": "Type层定义，表示 Wafer 经过量测站点时产生的量测/制程参数录入事件类型。作为 ProductionEvent 子类，触发 MeasurementPassRecord 行写入 process_measure_data（自动采集）或 process_measure_data_raw（人工录入）。每次事件以单片 Wafer × 单参数规格为粒度记录，与批次粒度的进站/出站事件互补。"
     },
     {
       "logic_class": "semi:ProductionEvent",
@@ -850,7 +811,7 @@
       "primary_key": "id",
       "label_cn": "生产事件记录（主表）",
       "display_column": "operation_type",
-      "filter_condition": "operation_type IN (1, 2, 12, 14, 16)",
+      "filter_condition": null,
       "virtual": false,
       "properties": {
         "semi:hasEventType": "operation_type",
@@ -876,7 +837,7 @@
         "gmt_create"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "批次谱系变更事件主日志。operation_type 为整数枚举，filter_condition 仅保留谱系变更类：1=拆批、2=并批、12=返工、14=拆父批、16=攒批。完整枚举见 value_mappings.semi:LotOperationType。物理层三联写：本表（主记录）+ matrix_routerx_operation_lot_batch_resume_log_detail（批次状态快照）+ matrix_routerx_operation_lot_batch_resume_wafer_detail_log（逐片Wafer迁移明细）。"
+      "note": "生产事件执行记录主表（抽象父类，所有 operation_type 均写入此表）。不设 filter_condition，子类各自符加 tableFilter。完整枚举见 value_mappings.semi:LotOperationType。物理层三联写：本表（主记录）+ matrix_routerx_operation_lot_batch_resume_log_detail（子批次状态快照，SublotOpSnapshot）+ matrix_routerx_operation_lot_batch_resume_wafer_detail_log（逐片Wafer明细，WaferTransitionRecord）。"
     },
     {
       "logic_class": "semi:SplitEvent",
@@ -1008,6 +969,181 @@
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
       "note": "批次释放操作执行记录，filter_condition = operation_type=5。解除批次暂存（status=80）状态，恢复批次可进站加工。"
+    },
+    {
+      "logic_class": "semi:NGRecordEvent",
+      "physical_table": null,
+      "label_cn": "不良录入事件类型",
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "note": "Type层定义，对应 LotOperationType operation_type=6（不良录入）的规则/类型模板。执行记录见 semi:NGRecordEventRecord。"
+    },
+    {
+      "logic_class": "semi:NGRecordEventRecord",
+      "physical_table": "matrix_routerx_operation_lot_batch_resume_log",
+      "primary_key": "id",
+      "label_cn": "不良录入操作执行记录",
+      "display_column": "lot_code",
+      "filter_condition": "operation_type = 6",
+      "virtual": false,
+      "properties": {
+        "semi:hasEventStartTime": "gmt_create",
+        "semi:hasLotCode": "lot_code",
+        "semi:hasProcessCode": "process_code",
+        "semi:hasOperatorId": "operator_id"
+      },
+      "key_columns": [
+        "id",
+        "lot_id",
+        "lot_code",
+        "process_id",
+        "process_code",
+        "process_name",
+        "operation_type",
+        "operator_id",
+        "station_id",
+        "gmt_create"
+      ],
+      "operation_type_ref": "value_mappings.semi:LotOperationType",
+      "note": "不良录入操作执行记录，filter_condition = operation_type=6。具体不良 Wafer 明细写入 matrix_routerx_operation_lot_batch_resume_wafer_detail_log（ng_code 字段）。不改变批次 status，不产生新批次。"
+    },
+    {
+      "logic_class": "semi:CheckInEvent",
+      "physical_table": null,
+      "label_cn": "批次进站事件类型",
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "note": "Type层定义，对应 LotOperationType operation_type=8（批次进站）的规则/类型模板。执行后 process_status 转为 40（加工中）。执行记录见 semi:CheckInEventRecord。"
+    },
+    {
+      "logic_class": "semi:CheckInEventRecord",
+      "physical_table": "matrix_routerx_operation_lot_batch_resume_log",
+      "primary_key": "id",
+      "label_cn": "批次进站操作记录",
+      "display_column": "lot_code",
+      "filter_condition": "operation_type = 8",
+      "virtual": false,
+      "properties": {
+        "semi:hasEventStartTime": "gmt_create",
+        "semi:hasLotCode": "lot_code",
+        "semi:hasProcessCode": "process_code",
+        "semi:hasProcessName": "process_name",
+        "semi:hasEquipmentId": "equipment_id",
+        "semi:hasOperatorId": "operator_id"
+      },
+      "key_columns": [
+        "id",
+        "lot_id",
+        "lot_code",
+        "process_id",
+        "process_code",
+        "process_name",
+        "operation_type",
+        "equipment_id",
+        "operator_id",
+        "station_id",
+        "before_state",
+        "after_state",
+        "gmt_create"
+      ],
+      "operation_type_ref": "value_mappings.semi:LotOperationType",
+      "note": "批次进站操作执行记录，filter_condition = operation_type=8。进站后 Sublot.process_status 转为 40（加工中）。station_id/equipment_id 记录进站工序与绑定设备。不产生新批次。"
+    },
+    {
+      "logic_class": "semi:CheckOutEvent",
+      "physical_table": null,
+      "label_cn": "批次出站事件类型",
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "note": "Type层定义，对应 LotOperationType operation_type=9（批次出站）的规则/类型模板。执行后 process_status 转为 10/20（待进站下道工序）。执行记录见 semi:CheckOutEventRecord。"
+    },
+    {
+      "logic_class": "semi:CheckOutEventRecord",
+      "physical_table": "matrix_routerx_operation_lot_batch_resume_log",
+      "primary_key": "id",
+      "label_cn": "批次出站操作记录",
+      "display_column": "lot_code",
+      "filter_condition": "operation_type = 9",
+      "virtual": false,
+      "properties": {
+        "semi:hasEventStartTime": "gmt_create",
+        "semi:hasLotCode": "lot_code",
+        "semi:hasProcessCode": "process_code",
+        "semi:hasProcessName": "process_name",
+        "semi:hasOperatorId": "operator_id"
+      },
+      "key_columns": [
+        "id",
+        "lot_id",
+        "lot_code",
+        "process_id",
+        "process_code",
+        "process_name",
+        "operation_type",
+        "operator_id",
+        "station_id",
+        "before_state",
+        "after_state",
+        "gmt_create"
+      ],
+      "operation_type_ref": "value_mappings.semi:LotOperationType",
+      "note": "批次出站操作执行记录，filter_condition = operation_type=9。出站后 Sublot.process_status 转为 10/20（待进站），批次流转至下道工序。与 CheckInEventRecord 成对出现，构成一次完整的过站周期。不产生新批次。"
+    },
+    {
+      "logic_class": "semi:SublotOpSnapshot",
+      "physical_table": "matrix_routerx_operation_lot_batch_resume_log_detail",
+      "primary_key": "id",
+      "label_cn": "子批次操作状态快照",
+      "display_column": "lot_code",
+      "virtual": false,
+      "properties": {
+        "semi:hasProcessId": "process_id",
+        "semi:hasProcessCode": "process_code",
+        "semi:hasCarrierCode": "carrier_code",
+        "semi:hasLotStatusBefore": "before_state",
+        "semi:hasLotStatusAfter": "after_state"
+      },
+      "key_columns": [
+        "id",
+        "resume_log_id",
+        "lot_id",
+        "lot_code",
+        "sublot_id",
+        "process_id",
+        "process_code",
+        "carrier_code",
+        "before_state",
+        "after_state",
+        "gmt_create"
+      ],
+      "note": "生产事件履历的子批次维度状态快照表。每条记录是某次生产事件（对应 resume_log_id FK 关联主表）作用后各子批次的状态截面：包含操作时所处工序（process_id/process_code）、绑定载具（carrier_code）及操作前后状态（before_state/after_state）。"
+    },
+    {
+      "logic_class": "semi:WaferTransitionRecord",
+      "physical_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
+      "primary_key": "id",
+      "label_cn": "Wafer 迁移明细记录",
+      "display_column": "wafer_code",
+      "virtual": false,
+      "properties": {
+        "semi:hasWaferId": "wafer_id",
+        "semi:hasWaferCode": "wafer_code",
+        "semi:hasCarrierCode": "carrier_code",
+        "semi:hasNGCode": "ng_code"
+      },
+      "key_columns": [
+        "id",
+        "resume_log_id",
+        "wafer_id",
+        "wafer_code",
+        "carrier_code",
+        "slot_no",
+        "from_lot_id",
+        "to_lot_id",
+        "ng_code",
+        "gmt_create"
+      ],
+      "note": "生产事件履历的 Wafer 粒度明细表。每条记录追踪一片 Wafer 在某次生产事件中的迁移状态：wafer_id/wafer_code 标识具体晶圆，carrier_code 记录所在载具槽位，ng_code 记录不良原因（不良录入操作时填写）。通过 resume_log_id FK 关联主事件记录（matrix_routerx_operation_lot_batch_resume_log），支持逰片血缘闭环。"
     },
     {
       "logic_class": "semi:WarehouseLocation",
@@ -1432,16 +1568,16 @@
       "note": "物料参数规格模型表，将参数定义（元数据）与规格约束合为一体。每行同时表达：(1)参数元数据（code/name/unit/value_type/group_name）；(2)物料绑定（rel_id=物料ID，rel_name=物料名称冗余）；(3)规格约束（value_spec JSON: {max,min,target,tolerance,decimalPlaces}，通过->>提取子字段）。rel_id为text类型软关联到material.id，join时需CAST或字符串匹配。"
     },
     {
-      "logic_class": "semi:ParameterRecord",
+      "logic_class": "semi:InboundInspectionRecord",
       "physical_table": "warehouse_batch_property_value",
       "primary_key": "id",
-      "label_cn": "批次参数观测记录",
+      "label_cn": "物料入库检验参数记录",
       "display_column": "property_value",
       "properties": {
         "semi:hasActualValue": "property_value",
         "semi:hasRecordSerialNo": "serial_no",
         "semi:observesParameter": "property_id",
-        "semi:hasParameterRecord": "inventory_id"
+        "semi:hasInspectionRecord": "inventory_id"
       },
       "key_columns": [
         "id",
@@ -1619,6 +1755,45 @@
   ],
   "relation_mappings": [
     {
+      "logic_relation": "semi:hasMeasurementRecord",
+      "description": "晶圆关联其在量测站点产生的逐片参数快照（1:N，wafer_id 外键）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_wafer",
+        "source_key": "wafer_id",
+        "target_table": "process_measure_data",
+        "target_key": "wafer_id"
+      },
+      "domain_class": "semi:Wafer",
+      "range_class": "semi:MeasurementPassRecord"
+    },
+    {
+      "logic_relation": "semi:actsOnWafer",
+      "description": "量测参数记录关联被量测的具体 Wafer 实例（N:1，wafer_id 外键）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "process_measure_data",
+        "source_key": "wafer_id",
+        "target_table": "matrix_routerx_operation_lot_wafer",
+        "target_key": "wafer_id"
+      },
+      "domain_class": "semi:MeasurementPassRecord",
+      "range_class": "semi:Wafer"
+    },
+    {
+      "logic_relation": "semi:actsOnLot",
+      "description": "量测参数记录关联该 Wafer 量测时所属的批次（N:1，lot_id 外键）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "process_measure_data",
+        "source_key": "lot_id",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "lot_id"
+      },
+      "domain_class": "semi:MeasurementPassRecord",
+      "range_class": "semi:ProductionLot"
+    },
+    {
       "logic_relation": "semi:containsInboundRequestDetail",
       "description": "入库申请单包含入库申请明细行（1:N）",
       "strategy": "ForeignKey",
@@ -1716,9 +1891,17 @@
       "strategy": "CompositeKey",
       "join_logic": {
         "source_table": "warehouse_output_record_bill_detail",
-        "source_keys": ["batch_no", "unique_code", "warehouse_id"],
+        "source_keys": [
+          "batch_no",
+          "unique_code",
+          "warehouse_id"
+        ],
         "target_table": "warehouse_inventory",
-        "target_keys": ["batch_no", "unique_code", "warehouse_id"],
+        "target_keys": [
+          "batch_no",
+          "unique_code",
+          "warehouse_id"
+        ],
         "note": "单件追踪型（unique_code非空）以unique_code+warehouse_id精确定位；批量计数型（unique_code为空）以batch_no+warehouse_id定位。"
       },
       "domain_class": "semi:OutboundEventRecord",
@@ -1745,9 +1928,17 @@
       "strategy": "CompositeKey",
       "join_logic": {
         "source_table": "warehouse_input_record_bill_detail",
-        "source_keys": ["batch_no", "unique_code", "warehouse_id"],
+        "source_keys": [
+          "batch_no",
+          "unique_code",
+          "warehouse_id"
+        ],
         "target_table": "warehouse_inventory",
-        "target_keys": ["batch_no", "unique_code", "warehouse_id"],
+        "target_keys": [
+          "batch_no",
+          "unique_code",
+          "warehouse_id"
+        ],
         "note": "入库单审批通过并执行入库后，warehouse_input_record_bill_detail中的每一行对应更新或新增warehouse_inventory中的一条在库快照记录，数量字段从count合并到quantity。"
       },
       "domain_class": "semi:InboundEventRecord",
@@ -2245,48 +2436,6 @@
       },
       "domain_class": "semi:ProductionLot",
       "range_class": "semi:ProductionLot"
-    },
-    {
-      "logic_relation": "semi:hasPassRecord",
-      "description": "Sublot 在某工序产生的过站执行记录（加工或量测），是Wafer履历追溯的基本事实单元",
-      "strategy": "ForeignKey",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot",
-        "source_key": "id",
-        "target_table": "station_process_record",
-        "target_key": "sublot_id",
-        "note": "station_process_record 与 station_measurement_record 均以 sublot_id 关联子批次。追溯时需 UNION 两表或按工序类型分别查询。"
-      },
-      "domain_class": "semi:Sublot",
-      "range_class": "semi:StationPassRecord"
-    },
-    {
-      "logic_relation": "semi:recordedAtStation",
-      "description": "过站记录对应的工艺站点，时间轴上的制造位置锚点",
-      "strategy": "ForeignKey",
-      "join_logic": {
-        "source_table": "station_process_record",
-        "source_key": "station_id",
-        "target_table": "matrix_routerx_config_process",
-        "target_key": "id",
-        "note": "station_measurement_record 使用相同的 station_id → matrix_routerx_config_process.id 关联。"
-      },
-      "domain_class": "semi:StationPassRecord",
-      "range_class": "semi:ProcessStation"
-    },
-    {
-      "logic_relation": "semi:processedByEquipment",
-      "description": "过站记录关联的执行设备实例，支持从设备维度反查加工批次",
-      "strategy": "ForeignKey",
-      "join_logic": {
-        "source_table": "station_process_record",
-        "source_key": "equipment_id",
-        "target_table": "equipment",
-        "target_key": "id",
-        "note": "station_measurement_record 使用相同的 equipment_id → equipment.id 关联。"
-      },
-      "domain_class": "semi:StationPassRecord",
-      "range_class": "semi:Equipment"
     },
     {
       "logic_relation": "semi:mergedFrom",

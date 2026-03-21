@@ -631,6 +631,15 @@ def _format_semantic_context(semantic_ctx: dict) -> str:
             for c in classes
         ]
         lines.append(f"涉及实体: {', '.join(class_strs)}")
+        # 同表多类 filter_condition — 必须加入 WHERE 子句，不可省略
+        for c in classes:
+            fc = c.get("filter_condition")
+            tbl = c.get("physical_table")
+            if fc and tbl:
+                lines.append(
+                    f"  ⚠ 【强制WHERE条件】{c['label_cn']}({tbl}) 必须加 WHERE/AND {fc}"
+                    f"（同表多类区分，缺少此条件会把其他类型的行也查出来）"
+                )
 
     # JOIN 条件
     joins = semantic_ctx.get("joins", [])

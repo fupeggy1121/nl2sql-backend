@@ -79,6 +79,7 @@ class IntentRecognizer:
         }
 
         # 写操作意图：最高优先级检测（变更/执行类操作，走 action_executor 分支）
+        # 注意：若上下文含"查询/历史/记录/统计"等读取信号，"进站/出站"应视为查询对象而非操作动词
         self._write_action_patterns = re.compile(
             r'拆(批|出|分)'
             r'|从.{0,30}(批次|Lot).{0,30}(拆|分出|析出)'
@@ -88,6 +89,17 @@ class IntentRecognizer:
             r'|(出站)'
             r'|(合批|攒批|并批)'
             r'|(返工)',
+            re.IGNORECASE
+        )
+        # 如果存在查询语境关键词，"进站/出站"应被视为查询对象而非写操作动词
+        self._query_context_patterns = re.compile(
+            r'查询|查看|查一下|列出|显示|统计|分析|历史|记录|最近|过去|多少'
+            r'|有哪些|是什么|是哪|几条|几次|报表|报告|汇总',
+            re.IGNORECASE
+        )
+        # 纯"进站/出站"写操作：仅含动作词但不含查询语境时才算写操作
+        self._checkin_action_patterns = re.compile(
+            r'(进站|入站|出站)',
             re.IGNORECASE
         )
 
@@ -146,8 +158,29 @@ class IntentRecognizer:
                 }
             
             # Step 3: LLM confirmation
-            llm_result = self._llm_based_match(user_input)
-            
+            try:
+                llm_result = self._llm_based_match(user_input)
+            except Exception as llm_err:
+                logger.warning(f"LLM matching error, using rule-only fallback: {llm_err}")
+                # Graceful fallback: return rule result with a slight confidence boost
+                return {
+                    'success': True,
+                    'intent': rule_result['intent'],
+                    'confidence': max(rule_result['confidence'], 0.70),
+                    'entities': rule_result['entities'],
+                    'query_type': 'LIST',
+                    'target_class_hints': [],
+                    'semantic_filters': [],
+                    'intent_slots': {},
+                    'clarifications': self._generate_clarifications(
+                        rule_result['intent'],
+                        rule_result['entities'],
+                        rule_result['confidence']
+                    ),
+                    'methodsUsed': ['rule'],
+                    'reasoning': ''
+                }
+
             logger.info(f"LLM match result: intent={llm_result['intent']}, "
                        f"confidence={llm_result['confidence']:.2f}")
             
@@ -196,12 +229,18 @@ class IntentRecognizer:
         scores = {}
 
         # ── 优先级 0：写操作意图（变更类，走 action_executor 分支）──
+        # 如果语句同时含"进/出站"和查询语境词（查询/历史/记录/统计等），视为历史查询，不走 action
         if self._write_action_patterns.search(text):
-            return {
-                'intent': 'write_action',
-                'confidence': 0.92,
-                'entities': self._extract_write_entities(text),
-            }
+            has_checkin_out = self._checkin_action_patterns.search(text)
+            has_query_context = self._query_context_patterns.search(text)
+            if has_checkin_out and has_query_context:
+                pass  # fall through to query intent matching
+            else:
+                return {
+                    'intent': 'write_action',
+                    'confidence': 0.92,
+                    'entities': self._extract_write_entities(text),
+                }
 
         # ── 最高优先级：问候 / 闲聊 / 助手介绍 ──
         # 这些输入不含任何业务查询意图，必须在所有其他规则之前判断

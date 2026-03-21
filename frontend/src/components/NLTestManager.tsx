@@ -110,9 +110,9 @@ const DEFAULT_CASES: TestCase[] = [
     intent: '统计状态可用的 carrier 数量',
     run_count: 2,
     expected: {
-      sql_contains:   ['COUNT', 'carrier'],
+      sql_contains:   ['COUNT', 'carrier_info'],
       sql_excludes:   [],
-      tables_present: ['carrier'],
+      tables_present: ['carrier_info'],
     },
   },
   {

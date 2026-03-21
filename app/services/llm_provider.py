@@ -6,7 +6,6 @@ LLM 提供者抽象层
 import logging
 import os
 from typing import Optional, Dict, Any
-import requests
 
 logger = logging.getLogger(__name__)
 
@@ -85,59 +84,50 @@ class OpenAICompatProvider(LLMProvider):
         if not self.api_key:
             raise RuntimeError(f"{self.provider_name} API key not configured")
 
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-            "temperature": 0.2,
-            "max_tokens": 1000,
-        }
-
         logger.info(f"Calling {self.provider_name} API (generate) model={self.model}")
         try:
-            resp = requests.post(
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json=payload,
+            import httpx
+            from openai import OpenAI
+            http_client = httpx.Client(verify=False)
+            client = OpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+                http_client=http_client,
                 timeout=30,
             )
-            if resp.status_code == 200:
-                data = resp.json()
-                if "choices" in data and data["choices"]:
-                    content = data["choices"][0]["message"]["content"].strip()
-                    usage = data.get("usage", {})
-                    input_tokens  = usage.get("prompt_tokens", 0)
-                    output_tokens = usage.get("completion_tokens", 0)
-                    total_tokens  = usage.get("total_tokens", input_tokens + output_tokens)
-                    logger.info(
-                        f"{self.provider_name} generate OK: {content[:80]}... "
-                        f"[tokens: in={input_tokens} out={output_tokens}]"
-                    )
-                    self._last_usage = {
-                        "input_tokens": input_tokens,
-                        "output_tokens": output_tokens,
-                        "total_tokens": total_tokens,
-                    }
-                    # 同时更新模块级变量，供节点层读取
-                    import app.services.llm_provider as _self_mod
-                    _self_mod._last_global_usage = dict(self._last_usage)
-                    return {
-                        "content": content,
-                        "input_tokens": input_tokens,
-                        "output_tokens": output_tokens,
-                        "total_tokens": total_tokens,
-                    }
-                raise RuntimeError(f"Invalid response from {self.provider_name} API")
-            raise RuntimeError(f"{self.provider_name} API error: {resp.status_code} - {resp.text}")
-        except requests.exceptions.Timeout:
-            raise RuntimeError(f"{self.provider_name} API timeout")
-        except requests.exceptions.RequestException as e:
+            resp = client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                max_tokens=1000,
+            )
+            content = resp.choices[0].message.content.strip()
+            usage = resp.usage
+            input_tokens  = usage.prompt_tokens if usage else 0
+            output_tokens = usage.completion_tokens if usage else 0
+            total_tokens  = usage.total_tokens if usage else (input_tokens + output_tokens)
+            logger.info(
+                f"{self.provider_name} generate OK: {content[:80]}... "
+                f"[tokens: in={input_tokens} out={output_tokens}]"
+            )
+            self._last_usage = {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": total_tokens,
+            }
+            # 同时更新模块级变量，供节点层读取
+            import app.services.llm_provider as _self_mod
+            _self_mod._last_global_usage = dict(self._last_usage)
+            return {
+                "content": content,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": total_tokens,
+            }
+        except Exception as e:
             raise RuntimeError(f"{self.provider_name} API request error: {e}")
 
     # ── NL → SQL ──

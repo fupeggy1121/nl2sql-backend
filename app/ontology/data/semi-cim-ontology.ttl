@@ -102,19 +102,16 @@ semi:EquipmentModel a owl:Class ;
     rdfs:comment "资产蓝图 (Blueprint)。定义了该型号设备的技术规格与物理极限，基于设备模型统一管理同型号设备的备件、额定寿命与厂商信息；采购依据：新增资产时直接继承模型的规格。" .
 
 # 生产履历追溯类群 (Traceability)
-semi:StationPassRecord a owl:Class ;
-    rdfs:label "过站记录" ;
-    rdfs:comment "Wafer（以批次/子批次为载体）在某道工序完成进出站全流程所产生的不可变历史记录，是履历追溯的基本事实单元。抽象基类，具体分为加工过站记录与量测过站记录。" .
-
-semi:ProcessPassRecord a owl:Class ;
-    rdfs:subClassOf semi:StationPassRecord ;
-    rdfs:label "加工过站记录" ;
-    rdfs:comment "Wafer经过加工工序时的执行记录：采集上下料时间、进出站时间、加工设备及制程参数快照（单片数据或聚合值）。每条记录对应一个子批次在一道加工工序的完整过站事件。" .
+# 注：StationPassRecord 抽象基类已废弃；进站/出站语义由 CheckInEventRecord / CheckOutEventRecord 承接。
+# ProcessPassRecord 已废弃（对应物理表不存在）；制程/量测参数录入统一由 MeasurementPassRecord 承接。
 
 semi:MeasurementPassRecord a owl:Class ;
-    rdfs:subClassOf semi:StationPassRecord ;
-    rdfs:label "量测过站记录" ;
-    rdfs:comment "Wafer经过量测工序时的检验记录：包含量测设备信息、抽检规则、逐片或聚合量测参数（取最大/最小/平均值表征批次质量属性）。表征该批次在当前阶段的质量状态快照。" .
+    rdfs:subClassOf
+        [ a owl:Restriction ;
+          owl:onProperty semi:isInstanceOfEvent ;
+          owl:allValuesFrom semi:MeasurementEvent ] ;
+    rdfs:label "量测与制程参数过站记录" ;
+    rdfs:comment "Wafer 在某个工艺站点执行量测或制程参数采集后产生的逐片参数快照记录。参数采集的直接主体是 Wafer（wafer_id 全局唯一不变），sublot_id / lot_id 是采集时刻记录的调度管理上下文快照字段，反映该 Wafer 当时所属的子批次/批次，不代表 Sublot 或 Lot 拥有此记录——拆批/并批后这些字段仍保留拆批前的归属信息用于追溯。核心关联：(1) hasMeasurementRecord（反向，Wafer→本记录）：wafer_id 是参数事实的物理锚点；(2) isInstanceOfEvent → semi:MeasurementEvent；(3) actsOnWafer → 被量测的具体晶圆实例（冗余对象属性，与 hasMeasurementRecord 方向互补）；(4) actsOnLot → 量测时所属批次（lot_id 快照字段，对象属性）；(5) recordedAtStation → 量测工艺站点（station_id，可选）；(6) processedByEquipment → 量测设备（eqp_id，人工录入时为空）。查询批次维度量测数据时直接对 process_measure_data.sublot_id / lot_id 过滤，完整语义路径为 Sublot ← belongsToSublot ← Wafer → hasMeasurementRecord。物理主映射：process_measure_data（eqp_id 非空）；制程参数人工录入：process_measure_data_raw（eqp_id 为空）。参数语义注释：param_model_id → param_model；参数分组：param_group_id → param_group。" .
 
 semi:ProductionEvent a owl:Class ;
     rdfs:subClassOf semi:Action ;
@@ -124,7 +121,7 @@ semi:ProductionEvent a owl:Class ;
 semi:ProductionEventRecord a owl:Class ;
     rdfs:label "生产事件记录（抽象父类）" ;
     semi:isAbstract "true"^^xsd:boolean ;
-    rdfs:comment "【抽象父类，不直接实例化】生产事件执行记录的抽象父类，类比 semi:WarehouseEventRecord（库存管理事件记录抽象父类）的角色。是 ProductionEvent（事件类型）与 ProductionLot（批次）的关联中间类。主映射表：matrix_routerx_operation_lot_batch_resume_log；关联从表：_detail（批次状态快照）和 _wafer_detail_log（逐片Wafer明细）。每条记录对应一次具体操作，记录操作人、时间戳、状态变更及输入/输出批次。具体子类：SplitEventRecord（拆批）/ HoldEventRecord（扣留）/ ReleaseEventRecord（释放）等，各子类与 ProductionLot 的关联语义不同，详见子类 rdfs:comment。" .
+    rdfs:comment "【抽象父类，不直接实例化】生产事件执行记录的抽象父类。主映射表：matrix_routerx_operation_lot_batch_resume_log（所有 operation_type 均写入此表）；关联从表：_detail（子批次操作状态快照，SublotOpSnapshot）和 _wafer_detail_log（逐片 Wafer 迁移明细，WaferTransitionRecord）。每条记录对应一次具体操作，记录操作人、时间戳、状态变更及输入/输出批次。全量子类：SplitEventRecord（1-拆批）/ HoldEventRecord（4-扣留）/ ReleaseEventRecord（5-释放）/ NGRecordEventRecord（6-不良录入）/ CheckInEventRecord（8-进站）/ CheckOutEventRecord（9-出站）。各子类与 ProductionLot 的关联语义不同，详见子类 rdfs:comment。" .
 
 ### ==========================================
 ### 2. 核心有机关联 (Object Properties)
@@ -273,19 +270,42 @@ semi:hasParentLot a owl:ObjectProperty ;
 # 2.6 生产履历追溯对象属性 (Traceability Object Properties)
 
 semi:hasPassRecord a owl:ObjectProperty ;
-    rdfs:domain semi:Sublot ; rdfs:range semi:StationPassRecord ;
-    rdfs:label "子批次过站记录" ;
-    rdfs:comment "子批次在某道工序产生的过站执行记录（加工或量测），是Wafer生产履历的基本事实节点。反向关联：station_pass_record.sublot_id → matrix_routerx_operation_lot.id。" .
+    rdfs:domain semi:Sublot ; rdfs:range semi:ProductionEventRecord ;
+    rdfs:label "子批次生产事件记录" ;
+    rdfs:comment "子批次在某道工序产生的生产事件执行记录（进站/出站/不良录入等），是 Wafer 生产履历的基本事实节点。对应 CheckInEventRecord(op=8)/CheckOutEventRecord(op=9) 等。反向关联：matrix_routerx_operation_lot_batch_resume_log WHERE sublot_id 或 lot_id 关联。" .
+
+semi:hasMeasurementRecord a owl:ObjectProperty ;
+    rdfs:domain semi:Wafer ;
+    rdfs:range semi:MeasurementPassRecord ;
+    rdfs:label "晶圆量测参数记录" ;
+    rdfs:comment "晶圆在某站点执行量测后产生的逐片参数快照（MeasurementPassRecord）。关联键：process_measure_data.wafer_id → semi:Wafer，wafer_id 是参数采集的直接主体锚点，全程不变。process_measure_data 中的 sublot_id / lot_id 是采集时刻的调度管理上下文快照字段，不代表 Sublot/Lot 拥有量测记录，拆批后这些字段仍然记录的是拆批前的归属信息。批次维度查询量测数据使用 process_measure_data.sublot_id 过滤（利用快照字段），完整语义路径为：Sublot ← belongsToSublot ← Wafer → hasMeasurementRecord → MeasurementPassRecord。与 hasPassRecord 互补：hasPassRecord 追踪进出站事件流，hasMeasurementRecord 追踪量测参数快照集。" .
+
+semi:actsOnWafer a owl:ObjectProperty ;
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (semi:MeasurementPassRecord semi:NGRecordEventRecord semi:SplitEventRecord)
+    ] ;
+    rdfs:range semi:Wafer ;
+    rdfs:label "操作/量测涉及的 Wafer" ;
+    rdfs:comment "本次量测或操作涉及的具体晶圆实例。在量测场景（MeasurementPassRecord）中通过 wafer_id 精确定位被量测晶圆；在不良录入（NGRecordEventRecord）中记录被标记不良的晶圆；在拆批（SplitEventRecord）中记录被迁移晶圆。支持从任意维度对 Wafer 进行逐片血缘闭环追溯。" .
 
 semi:recordedAtStation a owl:ObjectProperty ;
-    rdfs:domain semi:StationPassRecord ; rdfs:range semi:ProcessStation ;
-    rdfs:label "过站所在工序" ;
-    rdfs:comment "该过站记录对应的工艺站点，是在时间轴上定位Wafer所处制造位置的锚点。" .
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (semi:ProductionEventRecord semi:MeasurementPassRecord)
+    ] ;
+    rdfs:range semi:ProcessStation ;
+    rdfs:label "事件/记录所在工序" ;
+    rdfs:comment "该记录对应的工艺站点（process_id / station_id）。ProductionEventRecord 场景：在时间轴上定位批次所处制造位置的锚点；MeasurementPassRecord 场景：量测工序站点（station_id 字段，可通过 param_model 的 station 反推）。" .
 
 semi:processedByEquipment a owl:ObjectProperty ;
-    rdfs:domain semi:StationPassRecord ; rdfs:range semi:Equipment ;
-    rdfs:label "过站使用设备" ;
-    rdfs:comment "执行本次加工或量测的具体设备实例。与Equipment的关联构成'Wafer-工序-设备'三元组，支持从设备维度反查'某台设备何时加工了哪些批次'。" .
+    rdfs:domain [
+        a owl:Class ;
+        owl:unionOf (semi:ProductionEventRecord semi:MeasurementPassRecord)
+    ] ;
+    rdfs:range semi:Equipment ;
+    rdfs:label "事件/记录使用设备" ;
+    rdfs:comment "执行本次加工或量测的具体设备实例。ProductionEventRecord 场景：equipment_id FK 关联设备；MeasurementPassRecord 场景：process_measure_data.eqp_id 关联量测设备，制程参数人工录入（process_measure_data_raw）时 eqp_id 为空。支持从设备维度反查'某台设备何时处理/量测了哪些批次'。"  .
 
 semi:mergedFrom a owl:ObjectProperty ;
     rdfs:domain semi:ProductionLot ; rdfs:range semi:ProductionLot ;
@@ -300,20 +320,24 @@ semi:reworkedAs a owl:ObjectProperty ;
 semi:isInstanceOfEvent a owl:ObjectProperty ;
     rdfs:domain [
         a owl:Class ;
-        owl:unionOf (semi:SplitEventRecord semi:HoldEventRecord semi:ReleaseEventRecord)
+        owl:unionOf (semi:SplitEventRecord semi:HoldEventRecord semi:ReleaseEventRecord
+                     semi:NGRecordEventRecord semi:CheckInEventRecord semi:CheckOutEventRecord
+                     semi:MeasurementPassRecord)
     ] ;
     rdfs:range semi:ProductionEvent ;
     rdfs:label "事件实例记录" ;
-    rdfs:comment "该执行记录对应的事件类型（如SPLIT、MERGE、REWORK等ProductionEvent实例），关联record到event类型定义。各子类通过 owl:allValuesFrom 约束将 range 精化为对应 XxxEvent 子类：SplitEventRecord→SplitEvent / HoldEventRecord→HoldEvent / ReleaseEventRecord→ReleaseEvent。" .
+    rdfs:comment "该执行记录对应的事件类型（ProductionEvent 子类实例），关联 record → event 类型定义。各子类通过 owl:allValuesFrom 约束将 range 精化为对应 XxxEvent 子类：SplitEventRecord→SplitEvent / HoldEventRecord→HoldEvent / ReleaseEventRecord→ReleaseEvent / NGRecordEventRecord→NGRecordEvent / CheckInEventRecord→CheckInEvent / CheckOutEventRecord→CheckOutEvent。" .
 
 semi:actsOnLot a owl:ObjectProperty ;
     rdfs:domain [
         a owl:Class ;
-        owl:unionOf (semi:SplitEventRecord semi:HoldEventRecord semi:ReleaseEventRecord)
+        owl:unionOf (semi:SplitEventRecord semi:HoldEventRecord semi:ReleaseEventRecord
+                     semi:NGRecordEventRecord semi:CheckInEventRecord semi:CheckOutEventRecord
+                     semi:MeasurementPassRecord)
     ] ;
     rdfs:range semi:ProductionLot ;
     rdfs:label "作用批次" ;
-    rdfs:comment "事件执行时的输入/主体批次（matrix_routerx_operation_lot_batch_resume_log.lot_code）。SplitEventRecord：actsOnLot 为源批次（被拆的父批次）；HoldEventRecord：actsOnLot 为被扣留批次；ReleaseEventRecord：actsOnLot 为被释放批次。" .
+    rdfs:comment "事件执行时的输入/主体批次（matrix_routerx_operation_lot_batch_resume_log.lot_code）。各子类关联语义：SplitEventRecord→源批次；HoldEventRecord/ReleaseEventRecord→被扣留/释放批次；NGRecordEventRecord→被标记不良批次；CheckInEventRecord/CheckOutEventRecord→进/出站批次。" .
 
 semi:producesLot a owl:ObjectProperty ;
     rdfs:domain semi:SplitEventRecord ; rdfs:range semi:ProductionLot ;
@@ -326,9 +350,10 @@ semi:producesSublot a owl:ObjectProperty ;
     rdfs:comment "谱系变更事件（拆批/并批/返工）执行后，为产出批次同步创建的初始 Sublot 实例。与 producesLot 一一对应（新批次在拆批时只有一个初始子批次）。stateTransitionFunction 依赖此属性更新被迁移晶圆的 belongsToSublot 指针，保证 Wafer→belongsToSublot→atStation 路径在拆批后仍然连通。物理层对应 matrix_routerx_operation_lot 中与新批次绑定的初始记录行。" .
 
 semi:affectsWafer a owl:ObjectProperty ;
+    owl:equivalentProperty semi:actsOnWafer ;
     rdfs:domain semi:SplitEventRecord ; rdfs:range semi:Wafer ;
-    rdfs:label "操作涉及的Wafer" ;
-    rdfs:comment "事件执行时涉及的具体晶圆实例。在拆批场景中记录被从源批次迁移到新批次的晶圆；在量测场景中记录抽检晶圆；在返工场景中记录受返工影响的晶圆。支持从事件维度反查 Wafer 粒度的生产履历，实现逐片血缘闭环。物理层对应三联日志表中的 wafer_detail_log 明细行。" .
+    rdfs:label "（兼容别名）操作涉及的Wafer" ;
+    rdfs:comment "【别名属性，语义等同于 semi:actsOnWafer】保留用于向后兼容 SplitEventRecord 的拆批逐片Wafer迁移场景。推荐使用 semi:actsOnWafer。" .
 
 # 2.7 载具层级关联 (Carrier Hierarchy)
 semi:belongsToGroup a owl:ObjectProperty ;
@@ -766,52 +791,14 @@ semi:hasAfterState a owl:DatatypeProperty ;
     rdfs:label "操作后状态" ;
     rdfs:comment "对应 after_state 字段。" .
 
-# 3.14 过站记录数据属性 (StationPassRecord 及其子类)
+# 3.14 量测与制程参数过站记录数据属性 (MeasurementPassRecord)
+# 对应物理表：process_measure_data（量测设备自动采集）+ process_measure_data_raw（人工录入）
 
-# 3.14.1 过站记录公共属性 (StationPassRecord)
-semi:hasInTime a owl:DatatypeProperty ;
-    rdfs:domain semi:StationPassRecord ;
-    rdfs:range xsd:dateTime ;
-    rdfs:label "进站时间" ;
-    rdfs:comment "子批次进入工序加工区的时间戳，对应 in_time / enter_time 字段。" .
-
-semi:hasOutTime a owl:DatatypeProperty ;
-    rdfs:domain semi:StationPassRecord ;
-    rdfs:range xsd:dateTime ;
-    rdfs:label "出站时间" ;
-    rdfs:comment "子批次完成工序离开加工区的时间戳，对应 out_time / exit_time 字段。" .
-
-semi:hasLoadTime a owl:DatatypeProperty ;
-    rdfs:domain semi:StationPassRecord ;
-    rdfs:range xsd:dateTime ;
-    rdfs:label "上料时间" ;
-    rdfs:comment "操作员完成上料（将载具放置到设备进料口）的时间戳。" .
-
-semi:hasUnloadTime a owl:DatatypeProperty ;
-    rdfs:domain semi:StationPassRecord ;
-    rdfs:range xsd:dateTime ;
-    rdfs:label "下料时间" ;
-    rdfs:comment "操作员完成下料（从设备取出载具）的时间戳。" .
-
-semi:hasEquipmentSnapshot a owl:DatatypeProperty ;
-    rdfs:domain semi:StationPassRecord ;
-    rdfs:range xsd:string ;
-    rdfs:label "设备状态快照" ;
-    rdfs:comment "过站时刻的设备关键状态快照（JSON），作为因果追溯的设备侧证据链节点，可进一步关联设备履历表展开细节。" .
-
-# 3.14.2 加工过站记录专属属性 (ProcessPassRecord)
-semi:hasProcessParamRecord a owl:DatatypeProperty ;
-    rdfs:domain semi:ProcessPassRecord ;
-    rdfs:range xsd:string ;
-    rdfs:label "加工制程参数记录" ;
-    rdfs:comment "加工设备采集的关键制程参数快照（JSON），可能是单片逐片数据或批次聚合值（均值/极值等）。是分析工艺漂移和设备异常的核心数据源。" .
-
-# 3.14.3 量测过站记录专属属性 (MeasurementPassRecord)
 semi:hasMeasurementResult a owl:DatatypeProperty ;
     rdfs:domain semi:MeasurementPassRecord ;
     rdfs:range xsd:string ;
     rdfs:label "量测结果数据" ;
-    rdfs:comment "量测工序采集的质量参数（JSON），含逐片数据及统计聚合值（最大/最小/平均/标准差），表征当前阶段批次整体质量属性。" .
+    rdfs:comment "量测工序采集的质量参数（JSON），含逐片数据及统计聚合值（最大/最小/平均/标准差），表征当前阶段批次整体质量属性。对应 process_measure_data 表中的参数值字段。" .
 
 semi:hasSamplingRule a owl:DatatypeProperty ;
     rdfs:domain semi:MeasurementPassRecord ;
@@ -1009,6 +996,93 @@ semi:ReleaseEventRecord a owl:Class ;
     rdfs:label "批次释放记录" ;
     semi:tableFilter "operation_type = 5" ;
     rdfs:comment "批次释放操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 5。【关联语义】actsOnLot → 被扣留待释放的批次（操作主体，即被释放的 ProductionLot；该批次 WIPStatus 执行后从 Hold 恢复为 Run 或 IDLE）；⚠ 该操作不产生新批次（producesLot 不适用）。WIPStatus 的转变由推导逻辑决定：释放后不再满足激活扣留条件（EXISTS HoldEventRecord 且无 ReleaseEventRecord），WIPStatus 恢复为 process_status 决定的 Run 或 IDLE。区别于拆批：拆批有明确的 actsOnLot（源批次）→ producesLot（新析出批次）谱系关系；释放/扣留操作均为单批次状态变更，不涉及批次谱系生成。" .
+
+# 5.7 不良录入事件 (NGRecordEvent)
+semi:NGRecordEvent a owl:Class ;
+    rdfs:subClassOf semi:ProductionEvent ;
+    rdfs:label "不良录入事件类型" ;
+    rdfs:comment "定义 Wafer 不良录入（NG Record）操作的规则/类型模板。对应 operation_type=6。在批次进站加工或量测后，操作员对检出的不良晶圆标记不良原因码（ng_code）；不良录入不改变批次整体 status，仅在 wafer 维度（_wafer_detail_log）写入 ng_code 标记。执行记录见 semi:NGRecordEventRecord。" ;
+    semi:preCondition "Lot.process_status IN (40,50) AND Lot.status NOT IN (80)" ;
+    semi:inputSchema "{ lotId: string, waferList: [{waferId: string, ngCode: string}] }" ;
+    semi:apiBinding "MES_CORE_SERVICE.executeNGRecord" .
+
+# 5.8 不良录入执行记录 (NGRecordEventRecord)
+semi:NGRecordEventRecord a owl:Class ;
+    rdfs:subClassOf semi:ProductionEventRecord ,
+        [ a owl:Restriction ;
+          owl:onProperty semi:isInstanceOfEvent ;
+          owl:allValuesFrom semi:NGRecordEvent ] ;
+    rdfs:label "不良录入记录" ;
+    semi:tableFilter "operation_type = 6" ;
+    rdfs:comment "不良录入操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 6。【关联语义】actsOnLot → 被标记不良的批次；affectsWafer → 具体被标记的晶圆实例列表。不良明细写入 _wafer_detail_log（ng_code 字段）。不改变批次 status，不产生新批次（producesLot 不适用）。" .
+
+# 5.9 批次进站事件 (CheckInEvent)
+semi:CheckInEvent a owl:Class ;
+    rdfs:subClassOf semi:ProductionEvent ;
+    rdfs:label "批次进站事件类型" ;
+    rdfs:comment "定义批次进站（Check-In）操作的规则/类型模板。对应 operation_type=8。批次（以子批次/Sublot 为单位）进入某道工序开始加工或量测的动作，记录进站时间、绑定设备。执行后 process_status 变为 40（In-Process/加工中）。执行记录见 semi:CheckInEventRecord。" ;
+    semi:preCondition "Lot.process_status IN (10,20,30) AND Lot.status == 50" ;
+    semi:inputSchema "{ sublotId: string, stationId: string, equipmentId?: string }" ;
+    semi:transformationLogic "UPDATE Sublot SET atStation = ?stationId, process_status = 40; INSERT CheckInEventRecord(operation_type=8, lot_id, sublot_id, station_id, equipment_id, gmt_create=NOW())" ;
+    semi:apiBinding "MES_CORE_SERVICE.executeCheckIn" ;
+    semi:postCondition "Sublot.process_status == 40" .
+
+# 5.10 批次进站执行记录 (CheckInEventRecord)
+semi:CheckInEventRecord a owl:Class ;
+    rdfs:subClassOf semi:ProductionEventRecord ,
+        [ a owl:Restriction ;
+          owl:onProperty semi:isInstanceOfEvent ;
+          owl:allValuesFrom semi:CheckInEvent ] ;
+    rdfs:label "批次进站记录" ;
+    semi:tableFilter "operation_type = 8" ;
+    rdfs:comment "批次进站操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 8。【关联语义】actsOnLot → 进站的批次（操作主体）；执行后 Sublot.atStation 指向目标工序站点，process_status 转变为 40（加工中）。不产生新批次（producesLot 不适用）。区别于 CheckOutEventRecord：进站标志着工序处理的开始，出站标志着完成并流转下道。station_id/equipment_id 字段记录进站工序与绑定设备。" .
+
+# 5.11 批次出站事件 (CheckOutEvent)
+semi:CheckOutEvent a owl:Class ;
+    rdfs:subClassOf semi:ProductionEvent ;
+    rdfs:label "批次出站事件类型" ;
+    rdfs:comment "定义批次出站（Check-Out）操作的规则/类型模板。对应 operation_type=9。批次完成当前工序加工/量测后确认出站，记录出站时间；执行后 process_status 变为 10/20（待进站下道工序），Sublot.atStation 更新（或进入完结态）。执行记录见 semi:CheckOutEventRecord。" ;
+    semi:preCondition "Lot.process_status == 40" ;
+    semi:inputSchema "{ sublotId: string, stationId: string }" ;
+    semi:transformationLogic "UPDATE Sublot SET process_status = 10; INSERT CheckOutEventRecord(operation_type=9, lot_id, sublot_id, station_id, gmt_create=NOW())" ;
+    semi:apiBinding "MES_CORE_SERVICE.executeCheckOut" ;
+    semi:postCondition "Sublot.process_status IN (10,20)" .
+
+# 5.12 批次出站执行记录 (CheckOutEventRecord)
+semi:CheckOutEventRecord a owl:Class ;
+    rdfs:subClassOf semi:ProductionEventRecord ,
+        [ a owl:Restriction ;
+          owl:onProperty semi:isInstanceOfEvent ;
+          owl:allValuesFrom semi:CheckOutEvent ] ;
+    rdfs:label "批次出站记录" ;
+    semi:tableFilter "operation_type = 9" ;
+    rdfs:comment "批次出站操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 9。【关联语义】actsOnLot → 出站的批次（操作主体）；执行后 Sublot.process_status 转变为 10/20（待进站），批次流转至下道工序。不产生新批次（producesLot 不适用）。与 CheckInEventRecord 成对出现：一次完整的过站周期 = 一条 CheckInEventRecord（op=8）+ 一条 CheckOutEventRecord（op=9）。station_id 字段记录本道出站工序。" .
+
+### ==========================================
+### 5.13 子批次操作状态快照 (SublotOpSnapshot)
+### 5.14 Wafer 迁移明细记录 (WaferTransitionRecord)
+### ==========================================
+### 物理层三联写说明：
+###   所有 ProductionEventRecord 子类在写入主表 _resume_log 的同时，
+###   关联从表按操作类型写入相应明细：
+###   - _resume_log_detail（SublotOpSnapshot）：记录该操作前后批次/子批次状态变更；
+###     carrier_code / process_id / process_code 记录该时刻批次所处载具与工序。
+###   - _wafer_detail_log（WaferTransitionRecord）：记录受操作影响的逐片 Wafer；
+###     拆批时记录被迁移晶圆；不良录入时记录被标记 ng_code 的晶圆。
+
+semi:SublotOpSnapshot a owl:Class ;
+    rdfs:label "子批次操作状态快照" ;
+    rdfs:comment "批次操作履历的子批次/批次维度快照，对应物理从表 matrix_routerx_operation_lot_batch_resume_log_detail。每条记录是某次生产事件（对应 _resume_log 主表一行）作用后各子批次的状态截面：包含操作时所处工序（process_id/process_code）、绑定载具（carrier_code）及操作前后状态（before_state/after_state）。通过 FK resume_log.id → _detail.resume_log_id 与主事件记录关联。" .
+
+semi:WaferTransitionRecord a owl:Class ;
+    rdfs:label "Wafer 迁移明细记录" ;
+    rdfs:comment "批次操作履历的 Wafer 粒度明细，对应物理从表 matrix_routerx_operation_lot_batch_resume_wafer_detail_log。每条记录追踪一片 Wafer 在某次生产事件中的迁移状态：wafer_id/wafer_code 标识具体晶圆，carrier_code 记录所在载具槽位，ng_code 记录不良原因（不良录入操作时填写）。通过 FK resume_log.id → _wafer_detail_log.resume_log_id 与主事件记录关联，支持从事件维度反查逐片血缘闭环。" .
+
+# 5.15 量测事件类型 (MeasurementEvent)
+semi:MeasurementEvent a owl:Class ;
+    rdfs:subClassOf semi:ProductionEvent ;
+    rdfs:label "量测参数录入事件" ;
+    rdfs:comment "定义量测或制程参数录入操作的事件类型模板。Wafer 经过量测站点时，通过量测设备（eqp_id）或操作员人工录入，针对每片 Wafer 的每个参数规格（param_model_id）产生一条 MeasurementPassRecord。与进站/出站事件的区别：进站/出站操作以批次为粒度写入 resume_log，量测录入以单片 Wafer × 单参数为粒度写入 process_measure_data。" .
 
 ### ==========================================
 ### 6. 操作类型枚举 (NamedIndividuals)
@@ -1423,8 +1497,8 @@ semi:hasBillTime a owl:DatatypeProperty ;
 ### Section 10  物料质量参数体系（规格-观测模式）
 ### ==========================================
 # 设计模式：两层结构
-#   第一层  semi:MaterialParameterSpec — 物料参数规格模型（参数元数据 + 物料绑定 + 规格约束合一）
-#   第二层  semi:ParameterRecord       — 参数观测记录（物料批次实例 × 参数规格 → 实测值）
+#   第一层  semi:MaterialParameterSpec  — 物料参数规格模型（参数元数据 + 物料绑定 + 规格约束合一）
+#   第二层  semi:InboundInspectionRecord — 物料入库检验参数记录（物料批次实例 × 参数规格 → 实测值）
 #
 # 说明：参数定义（Parameter Definition）与规格约束（Spec Constraint）在产品设计中共用同一张表
 # property_model，不存在独立的参数定义主表。每行 property_model 同时承载：
@@ -1433,19 +1507,19 @@ semi:hasBillTime a owl:DatatypeProperty ;
 #   ③ 规格约束（value_spec JSON: {max, min, target, tolerance, decimalPlaces}）
 #
 # 物理映射：
-#   MaterialParameterSpec → property_model
-#   ParameterRecord       → warehouse_batch_property_value
+#   MaterialParameterSpec  → property_model
+#   InboundInspectionRecord → warehouse_batch_property_value
 ### ==========================================
 
 # 10.1 物料参数规格模型 (MaterialParameterSpec)
 semi:MaterialParameterSpec a owl:Class ;
     rdfs:label "物料参数规格模型" ;
-    rdfs:comment "将参数定义与物料规格约束合并为一个内聚对象。每条记录同时表达三层语义：(1) 参数元数据：该参数叫什么（name）、编码（code）、单位（unit）、值类型（value_type）、所属分组（group_name）；(2) 物料绑定：该参数属于哪个（些）物料模型（rel_id → material.id, rel_name 为物料名称冗余）；(3) 规格约束：对于绑定物料，该参数的合格范围（value_spec JSON: {max, min, target, tolerance, decimalPlaces}）。通过 semi:hasParameterSpec 对象属性从 semi:Material 导航到其参数规格集合；通过 semi:observesParameter 从 semi:ParameterRecord 反向引用。物理映射：property_model 表。" .
+    rdfs:comment "将参数定义与物料规格约束合并为一个内聚对象。每条记录同时表达三层语义：(1) 参数元数据：该参数叫什么（name）、编码（code）、单位（unit）、值类型（value_type）、所属分组（group_name）；(2) 物料绑定：该参数属于哪个（些）物料模型（rel_id → material.id, rel_name 为物料名称冗余）；(3) 规格约束：对于绑定物料，该参数的合格范围（value_spec JSON: {max, min, target, tolerance, decimalPlaces}）。通过 semi:hasParameterSpec 对象属性从 semi:Material 导航到其参数规格集合；通过 semi:hasInspectionRecord 从 semi:InboundInspectionRecord 反向引用。物理映射：property_model 表。" .
 
-# 10.2 参数观测记录 (ParameterRecord)
-semi:ParameterRecord a owl:Class ;
-    rdfs:label "参数观测记录" ;
-    rdfs:comment "具体物料批次实例（semi:MaterialBatch）在入库或来料检验采集流程中产生的实际参数测量记录。每条记录是独立的测量事实断言：'批次 B 针对参数规格 S 的实测值是 V_actual'。通过 semi:observesParameter 关联到 semi:MaterialParameterSpec（property_id FK），可直接获取该参数的规格约束（max/min/target）用于自动合格判定。当物料启用了逐件唯一码管理（hasUniqueCodeMgmt=true）时，serial_no 精确到单件，否则粒度为批次整体。物理映射：warehouse_batch_property_value（property_id × inventory_id × batch_no × serial_no × property_value）。" .
+# 10.2 物料入库检验参数记录 (InboundInspectionRecord)
+semi:InboundInspectionRecord a owl:Class ;
+    rdfs:label "物料入库检验参数记录" ;
+    rdfs:comment "具体物料批次实例（semi:MaterialBatch）在入库或来料检验采集流程中产生的实际参数测量记录。每条记录是独立的测量事实断言：'批次 B 针对参数规格 S 的实测值是 V_actual'。通过 semi:observesParameter 关联到 semi:MaterialParameterSpec（property_id FK），可直接获取该参数的规格约束（max/min/target）用于自动合格判定。当物料启用了逐件唯一码管理（hasUniqueCodeMgmt=true）时，serial_no 精确到单件，否则粒度为批次整体。物理映射：warehouse_batch_property_value（property_id × inventory_id × batch_no × serial_no × property_value）。注意：此类专用于物料仓库管理域的入库检验参数，与生产过站的量测/制程参数（semi:MeasurementPassRecord → process_measure_data）是两个独立的业务域，请勿混用。" .
 
 ### ==========================================
 # 10.3 参数体系对象属性
@@ -1456,13 +1530,13 @@ semi:hasParameterSpec a owl:ObjectProperty ;
     rdfs:label "物料参数规格集" ;
     rdfs:comment "物料模型拥有的参数规格模型集合（1:N）。physical join: material.id = property_model.rel_id（rel_id 为 text 类型，存储物料 ID）。" .
 
-semi:hasParameterRecord a owl:ObjectProperty ;
-    rdfs:domain semi:MaterialBatch ; rdfs:range semi:ParameterRecord ;
-    rdfs:label "批次参数观测记录集" ;
-    rdfs:comment "物料批次实例拥有的实测参数记录集合（1:N）。physical: warehouse_batch_property_value.inventory_id → warehouse_inventory.id（MaterialBatch）。" .
+semi:hasInspectionRecord a owl:ObjectProperty ;
+    rdfs:domain semi:MaterialBatch ; rdfs:range semi:InboundInspectionRecord ;
+    rdfs:label "批次入库检验参数记录集" ;
+    rdfs:comment "物料批次实例在线边仓入库检验流程中产生的实测参数记录集合（1:N）。physical: warehouse_batch_property_value.inventory_id → warehouse_inventory.id（MaterialBatch）。" .
 
 semi:observesParameter a owl:ObjectProperty ;
-    rdfs:domain semi:ParameterRecord ; rdfs:range semi:MaterialParameterSpec ;
+    rdfs:domain semi:InboundInspectionRecord ; rdfs:range semi:MaterialParameterSpec ;
     rdfs:label "关联的参数规格模型" ;
     rdfs:comment "该条实测记录所对应的参数规格模型，同时携带参数元数据和该物料的规格约束（合格上下限）。physical: warehouse_batch_property_value.property_id → property_model.id。" .
 
@@ -1525,15 +1599,15 @@ semi:hasTolerance a owl:DatatypeProperty ;
     rdfs:label "允差" ;
     rdfs:comment "以目标值为基准的对称允差范围（target ± tolerance）。物理：property_model.value_spec->>'$.tolerance'。" .
 
-# ParameterRecord 数据属性
+# InboundInspectionRecord 数据属性
 semi:hasActualValue a owl:DatatypeProperty ;
-    rdfs:domain semi:ParameterRecord ;
+    rdfs:domain semi:InboundInspectionRecord ;
     rdfs:range xsd:string ;
     rdfs:label "实测值" ;
     rdfs:comment "采集到的实际参数测量值（以 xsd:string 兼容数值和文本枚举两种值类型）。物理：warehouse_batch_property_value.property_value。" .
 
 semi:hasRecordSerialNo a owl:DatatypeProperty ;
-    rdfs:domain semi:ParameterRecord ;
+    rdfs:domain semi:InboundInspectionRecord ;
     rdfs:range xsd:string ;
     rdfs:label "记录件号" ;
     rdfs:comment "逐件测量时关联到的单件唯一码（对应 MaterialBatch.hasBoxNo）。当物料启用了 hasUniqueCodeMgmt=true 时填写，表示该测量值属于批次中的某一具体单件；批次整体测量时为空。物理：warehouse_batch_property_value.serial_no。" .
