@@ -452,7 +452,7 @@ A: intent=chat, query_type=LIST, target_class_hints=[], semantic_filters=[],
         "dimension_by": "聚合维度或 null",
         "metric": "聚合指标或 null",
         "sort_order": "DESC|ASC|null",
-        "limit_n": 3,
+        "limit_n": null,
         "filter_hints": [],
         "reasoning": "槽填充推理说明"
     }},
