@@ -181,8 +181,81 @@ CLASS_SYNONYMS: dict = {
         "synonyms": [
             "批次操作记录", "生产事件记录", "操作日志",
             "批次日志", "批次事件日志", "批次历史记录",
+            "所有操作记录", "全部事件记录", "所有过站记录",
             "production_event_log", "resume_log",
             "operationlog", "eventrecord",
+        ],
+    },
+
+    "semi:CheckInEventRecord": {
+        "label_cn": "批次进站记录",
+        "synonyms": [
+            "进站记录", "进站历史", "进站操作记录", "进站日志",
+            "入站记录", "入站历史", "check-in记录", "checkin记录",
+            "进站事件", "进站事件记录", "批次进站",
+            "checkinrecord", "checkineventrecord",
+        ],
+    },
+
+    "semi:CheckOutEventRecord": {
+        "label_cn": "批次出站记录",
+        "synonyms": [
+            "出站记录", "出站历史", "出站操作记录", "出站日志",
+            "check-out记录", "checkout记录",
+            "出站事件", "出站事件记录", "批次出站",
+            "checkoutrecord", "checkouteventrecord",
+        ],
+    },
+
+    "semi:MeasurementPassRecord": {
+        "label_cn": "量测与制程参数记录",
+        "synonyms": [
+            "量测记录", "量测数据", "量测结果", "量测参数",
+            "制程参数", "制程参数记录", "参数采集记录",
+            "measurement记录", "参数过站", "量测过站",
+            "measurementpassrecord", "process_measure_data",
+            "量测参数记录", "制程参数采集",
+        ],
+    },
+
+    "semi:HoldEventRecord": {
+        "label_cn": "批次扣留记录",
+        "synonyms": [
+            "扣留记录", "hold记录", "批次扣留", "扣留操作记录",
+            "扣留历史", "扣留日志", "holdeventrecord",
+        ],
+    },
+
+    "semi:ReleaseEventRecord": {
+        "label_cn": "批次释放记录",
+        "synonyms": [
+            "释放记录", "release记录", "批次释放", "取消扣留记录",
+            "释放操作记录", "释放历史", "releaseeventrecord",
+        ],
+    },
+
+    "semi:NGRecordEventRecord": {
+        "label_cn": "不良录入记录",
+        "synonyms": [
+            "不良录入", "不良记录", "NG记录", "不良标记记录",
+            "不良操作记录", "报废记录", "不良晶圆记录",
+            "ngrecord", "ng录入", "ngrecordeventrecord",
+        ],
+    },
+
+    "semi:MergeEventRecord": {
+        "label_cn": "并批记录",
+        "synonyms": [
+            "并批记录", "合批记录", "并批操作记录", "并批历史",
+            "merge记录", "mergeeventrecord",
+        ],
+    },
+
+    "semi:AccumulateEventRecord": {
+        "label_cn": "攒批记录",
+        "synonyms": [
+            "攒批记录", "攒批操作记录", "攒批历史",
+            "accumulate记录", "accumulateeventrecord",
         ],
     },
 
@@ -265,7 +338,7 @@ CLASS_SYNONYMS: dict = {
         "label_cn": "生产动作/操作",
         "synonyms": [
             "动作", "操作", "生产事件", "action", "event",
-            "工艺操作", "生产记录", "过站记录", "加工记录",
+            "工艺操作", "加工记录",
             "alarm", "告警", "生产日志",
         ],
     },

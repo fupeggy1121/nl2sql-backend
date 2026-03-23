@@ -368,6 +368,19 @@ class IntentRecognizer:
 - 物料 / Material → semi:Material
 - 辅料 / Auxiliary → semi:Auxiliary
 
+## 生产事件记录域术语对照
+- 过站记录 / 进出站记录 / 所有操作记录 / 批次历史 / 所有事件记录 → semi:ProductionEventRecord（父类，含所有子类型）
+- 进站记录 / 进站历史 / 入站记录 / 进站操作记录 → semi:CheckInEventRecord
+- 出站记录 / 出站历史 / 出站操作记录 → semi:CheckOutEventRecord
+- 拆批记录 / 拆批历史 / 拆批操作 → semi:SplitEventRecord
+- 并批记录 / 合批记录 → semi:MergeEventRecord
+- 攒批记录 / 批次合并记录 → semi:AccumulateEventRecord
+- 扣留记录 / hold记录 → semi:HoldEventRecord
+- 释放记录 / release记录 / 取消扣留记录 → semi:ReleaseEventRecord
+- 不良录入 / NG记录 / 不良记录 → semi:NGRecordEventRecord
+- 量测记录 / 量测数据 / 量测参数 / 制程参数 / 参数采集记录 → semi:MeasurementPassRecord
+⚠ 注意区分："过站记录"特指进站/出站事件（CheckIn/CheckOut），不是量测参数记录（MeasurementPassRecord）
+
 ## 仓库管理域（WMS）术语对照
 - 入库 / 入库记录 / 入库明细 / 物料入库 / 入库数量 → semi:InboundEventRecord
 - 入库单 / 入库记录单 / 入库凭证 → semi:InboundBill
@@ -435,6 +448,21 @@ A: intent=query_quality, query_type=TREND, target_class_hints=["semi:ProductionL
 Q: "你好"
 A: intent=chat, query_type=LIST, target_class_hints=[], semantic_filters=[],
    intent_slots={{"subject":null,"action":null,"dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"闲聊，无业务查询意图"}}
+
+Q: "查询批次A001的所有过站记录"
+A: intent=direct_query, query_type=LIST, target_class_hints=["semi:CheckInEventRecord","semi:CheckOutEventRecord"],
+   semantic_filters=[{{"attribute":"lot_code","semantic_value":"A001"}}],
+   intent_slots={{"subject":"过站记录","action":"查询列表","dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":["批次=A001"],"reasoning":"过站记录=进站+出站事件，不是量测参数记录；lot_code过滤A001"}}
+
+Q: "查询批次LT-2024的进站记录"
+A: intent=direct_query, query_type=LIST, target_class_hints=["semi:CheckInEventRecord"],
+   semantic_filters=[{{"attribute":"lot_code","semantic_value":"LT-2024"}}],
+   intent_slots={{"subject":"进站记录","action":"查询列表","dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":["批次=LT-2024"],"reasoning":"进站记录→CheckInEventRecord（operation_type=8）"}}
+
+Q: "查询批次LT-2024的量测记录"
+A: intent=direct_query, query_type=LIST, target_class_hints=["semi:MeasurementPassRecord"],
+   semantic_filters=[{{"attribute":"lot_code","semantic_value":"LT-2024"}}],
+   intent_slots={{"subject":"量测记录","action":"查询列表","dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":["批次=LT-2024"],"reasoning":"量测记录→MeasurementPassRecord，与过站进出站记录不同"}}
 
 ## 当前用户输入
 "{text}"
