@@ -268,24 +268,14 @@ semi:hasParentLot a owl:ObjectProperty ;
     rdfs:label "父批次(溯源)" .
 
 # 2.6 生产履历追溯对象属性 (Traceability Object Properties)
-
-semi:hasPassRecord a owl:ObjectProperty ;
-    rdfs:domain [
-        a owl:Class ;
-        owl:unionOf (semi:ProductionLot semi:Sublot)
-    ] ;
-    rdfs:range [
-        a owl:Class ;
-        owl:unionOf (semi:CheckInEventRecord semi:CheckOutEventRecord)
-    ] ;
-    rdfs:label "批次/子批次进出站事件记录" ;
-    rdfs:comment "批次或子批次在某道工序产生的进站/出站事件执行记录，是 WIP 生产履历追溯的基本事实节点。domain 扩展为 union(ProductionLot, Sublot)：lot_id（批次粒度）和 sublot_id（子批次粒度）均可导航。range 精化为 union(CheckInEventRecord op=8, CheckOutEventRecord op=9)：仅限进/出站类型，其他事件类型（不良录入、扣留等）通过 actsOnLot 反向查询。反向关联字段：matrix_routerx_operation_lot_batch_resume_log.lot_id 或 sublot_id。与 hasMeasurementRecord 互补：hasPassRecord 追踪进出站事件流，hasMeasurementRecord 追踪量测参数快照集。" .
+# 注：hasPassRecord 已移除——其语义等价于 actsOnLot 的反向查询加类型过滤
+# （CheckInEventRecord/CheckOutEventRecord WHERE lot_id=?），保留单一正向路径以避免 LLM 歧义。
 
 semi:hasMeasurementRecord a owl:ObjectProperty ;
     rdfs:domain semi:Wafer ;
     rdfs:range semi:MeasurementPassRecord ;
     rdfs:label "晶圆量测参数记录" ;
-    rdfs:comment "晶圆在某站点执行量测后产生的逐片参数快照（MeasurementPassRecord）。关联键：process_measure_data.wafer_id → semi:Wafer，wafer_id 是参数采集的直接主体锚点，全程不变。process_measure_data 中的 sublot_id / lot_id 是采集时刻的调度管理上下文快照字段，不代表 Sublot/Lot 拥有量测记录，拆批后这些字段仍然记录的是拆批前的归属信息。批次维度查询量测数据使用 process_measure_data.sublot_id 过滤（利用快照字段），完整语义路径为：Sublot ← belongsToSublot ← Wafer → hasMeasurementRecord → MeasurementPassRecord。与 hasPassRecord 互补：hasPassRecord 追踪进出站事件流，hasMeasurementRecord 追踪量测参数快照集。" .
+    rdfs:comment "晶圆在某站点执行量测后产生的逐片参数快照（MeasurementPassRecord）。关联键：process_measure_data.wafer_id → semi:Wafer，wafer_id 是参数采集的直接主体锚点，全程不变。process_measure_data 中的 sublot_id / lot_id 是采集时刻的调度管理上下文快照字段，不代表 Sublot/Lot 拥有量测记录，拆批后这些字段仍然记录的是拆批前的归属信息。批次维度查询量测数据使用 process_measure_data.sublot_id 过滤（利用快照字段），完整语义路径为：Sublot ← belongsToSublot ← Wafer → hasMeasurementRecord → MeasurementPassRecord。进出站事件查询通过 CheckInEventRecord/CheckOutEventRecord WHERE lot_id=? 正向导航，无需反向属性。" .
 
 semi:actsOnWafer a owl:ObjectProperty ;
     rdfs:domain [
