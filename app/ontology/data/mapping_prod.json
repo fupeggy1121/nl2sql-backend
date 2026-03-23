@@ -1090,6 +1090,45 @@
       "note": "批次出站操作执行记录，filter_condition = operation_type=9。出站后 Sublot.process_status 转为 10/20（待进站），批次流转至下道工序。与 CheckInEventRecord 成对出现，构成一次完整的过站周期。不产生新批次。"
     },
     {
+      "logic_class": "semi:MergeEvent",
+      "physical_table": null,
+      "label_cn": "并批事件类型",
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "note": "Type层定义，对应 LotOperationType operation_type=2（并批）的规则/类型模板。作为 ProductionEvent 子类。将已拆分的子批次重新归并回父批次，是谱系操作（is_genealogy_event=True）。执行后源批次完结，所有 Wafer 归属迁移至目标批次。执行记录见 semi:MergeEventRecord。"
+    },
+    {
+      "logic_class": "semi:MergeEventRecord",
+      "physical_table": "matrix_routerx_operation_lot_batch_resume_log",
+      "primary_key": "id",
+      "label_cn": "并批操作执行记录",
+      "display_column": "lot_code",
+      "filter_condition": "operation_type = 2",
+      "virtual": false,
+      "properties": {
+        "semi:hasEventStartTime": "gmt_create",
+        "semi:hasLotCode": "lot_code",
+        "semi:hasProductCode": "product_code",
+        "semi:hasProcessCode": "process_code",
+        "semi:hasProcessName": "process_name",
+        "semi:hasOperatorId": "operator_id",
+        "semi:mergesIntoLotCode": "output_lot_code"
+      },
+      "key_columns": [
+        "id",
+        "lot_id",
+        "lot_code",
+        "output_lot_id",
+        "output_lot_code",
+        "process_id",
+        "process_code",
+        "process_name",
+        "operator_id",
+        "gmt_create"
+      ],
+      "note": "并批执行记录。lot_code=源批次；output_lot_code=目标(父)批次。_wafer_detail_log 记录逐片Wafer归属迁移明细。"
+    },
+    {
       "logic_class": "semi:SublotOpSnapshot",
       "physical_table": "matrix_routerx_operation_lot_batch_resume_log_detail",
       "primary_key": "id",
@@ -1779,6 +1818,38 @@
       },
       "domain_class": "semi:MeasurementPassRecord",
       "range_class": "semi:Wafer"
+    },
+    {
+      "logic_relation": "semi:actsOnWafer",
+      "description": "生产事件执行记录关联逐片Wafer明细（Split/Merge/CheckIn/CheckOut/NGRecord的wafer粒度关联）",
+      "strategy": "JoinVia",
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_batch_resume_log",
+        "source_key": "id",
+        "via_table": "matrix_routerx_operation_lot_batch_resume_log_wafer_detail_log",
+        "via_source_key": "resume_log_id",
+        "via_target_key": "wafer_id",
+        "target_table": "matrix_routerx_operation_lot_wafer",
+        "target_key": "wafer_id",
+        "note": "通过 _wafer_detail_log 中间表关联：resume_log_id → 主事件记录，wafer_id → Wafer实例。适用于 operation_type IN (1,2,6,8,9)。"
+      },
+      "domain_class": "semi:ProductionEventRecord",
+      "range_class": "semi:Wafer"
+    },
+    {
+      "logic_relation": "semi:mergesIntoLot",
+      "description": "并批操作的目标(接收方)批次，通过 output_lot_id 关联 ProductionLot",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_batch_resume_log",
+        "source_key": "output_lot_id",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "id",
+        "filter_condition": "operation_type = 2",
+        "note": "仅适用于 MergeEventRecord (operation_type=2)；output_lot_id 指向目标(父)批次。"
+      },
+      "domain_class": "semi:MergeEventRecord",
+      "range_class": "semi:ProductionLot"
     },
     {
       "logic_relation": "semi:actsOnLot",
