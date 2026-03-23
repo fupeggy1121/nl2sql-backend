@@ -763,7 +763,7 @@
       "logic_class": "semi:MeasurementPassRecord",
       "physical_table": "process_measure_data",
       "primary_key": "id",
-      "label_cn": "量测与制程参数过站记录",
+      "label_cn": "量测与制程参数记录",
       "display_column": "wafer_id",
       "virtual": false,
       "properties": {
@@ -1088,6 +1088,47 @@
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
       "note": "批次出站操作执行记录，filter_condition = operation_type=9。出站后 Sublot.process_status 转为 10/20（待进站），批次流转至下道工序。与 CheckInEventRecord 成对出现，构成一次完整的过站周期。不产生新批次。"
+    },
+    {
+      "logic_class": "semi:AccumulateEvent",
+      "physical_table": null,
+      "label_cn": "攒批事件类型",
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "note": "Type层定义，对应 LotOperationType operation_type=16（攒批）的规则/类型模板。作为 ProductionEvent 子类。将多个属于相同产品型号的独立 ProductionLot 合并，生成全新 ProductionLot + Sublot，是谱系操作（is_genealogy_event=True）。区别于 MergeEvent（并批）：攒批产出全新批次，并批归回已存在的父批次。执行记录见 semi:AccumulateEventRecord。"
+    },
+    {
+      "logic_class": "semi:AccumulateEventRecord",
+      "physical_table": "matrix_routerx_operation_lot_batch_resume_log",
+      "primary_key": "id",
+      "label_cn": "攒批操作执行记录",
+      "display_column": "lot_code",
+      "filter_condition": "operation_type = 16",
+      "virtual": false,
+      "properties": {
+        "semi:hasEventStartTime": "gmt_create",
+        "semi:hasLotCode": "lot_code",
+        "semi:hasProductCode": "product_code",
+        "semi:hasProcessCode": "process_code",
+        "semi:hasProcessName": "process_name",
+        "semi:hasOperatorId": "operator_id",
+        "semi:producesLotCode": "output_lot_code"
+      },
+      "key_columns": [
+        "id",
+        "lot_id",
+        "lot_code",
+        "output_lot_id",
+        "output_lot_code",
+        "product_id",
+        "product_code",
+        "process_id",
+        "process_code",
+        "process_name",
+        "operator_id",
+        "gmt_create"
+      ],
+      "note": "攒批执行记录。⚠ 物理多行模型：每个源批次对应一行（lot_code=源批次，output_lot_code=新批次），同一次攒批操作的多行共享相同 output_lot_id 和 gmt_create/operator_id。查询所有被攒入某新批次的源批次：WHERE output_lot_code=? AND operation_type=16。"
     },
     {
       "logic_class": "semi:MergeEvent",
