@@ -111,7 +111,7 @@ semi:MeasurementPassRecord a owl:Class ;
           owl:onProperty semi:isInstanceOfEvent ;
           owl:allValuesFrom semi:MeasurementEvent ] ;
     rdfs:label "量测与制程参数过站记录" ;
-    rdfs:comment "Wafer 在某个工艺站点执行量测或制程参数采集后产生的逐片参数快照记录。参数采集的直接主体是 Wafer（wafer_id 全局唯一不变），sublot_id / lot_id 是采集时刻记录的调度管理上下文快照字段，反映该 Wafer 当时所属的子批次/批次，不代表 Sublot 或 Lot 拥有此记录——拆批/并批后这些字段仍保留拆批前的归属信息用于追溯。核心关联：(1) hasMeasurementRecord（反向，Wafer→本记录）：wafer_id 是参数事实的物理锚点；(2) isInstanceOfEvent → semi:MeasurementEvent；(3) actsOnWafer → 被量测的具体晶圆实例（冗余对象属性，与 hasMeasurementRecord 方向互补）；(4) actsOnLot → 量测时所属批次（lot_id 快照字段，对象属性）；(5) recordedAtStation → 量测工艺站点（station_id，可选）；(6) processedByEquipment → 量测设备（eqp_id，人工录入时为空）。查询批次维度量测数据时直接对 process_measure_data.sublot_id / lot_id 过滤，完整语义路径为 Sublot ← belongsToSublot ← Wafer → hasMeasurementRecord。物理主映射：process_measure_data（eqp_id 非空）；制程参数人工录入：process_measure_data_raw（eqp_id 为空）。参数语义注释：param_model_id → param_model；参数分组：param_group_id → param_group。" .
+    rdfs:comment "Wafer 在某个工艺站点执行量测或制程参数采集后产生的逐片参数快照记录。参数采集的直接主体是 Wafer（wafer_id 全局唯一不变），sublot_id / lot_id 是采集时刻记录的调度管理上下文快照字段，反映该 Wafer 当时所属的子批次/批次，不代表 Sublot 或 Lot 拥有此记录——拆批/并批后这些字段仍保留拆批前的归属信息用于追溯。核心关联：(1) hasMeasurementRecord（反向，Wafer→本记录）：wafer_id 是参数事实的物理锚点；(2) isInstanceOfEvent → semi:MeasurementEvent；(3) recordsMeasurementOf → 被量测的具体晶圆实例（本记录→Wafer，与 hasMeasurementRecord 互为逆向，关联键 wafer_id）；(4) recordedAtStation → 量测工艺站点（station_id，可选）；(5) processedByEquipment → 量测设备（eqp_id，人工录入时为空）。查询批次维度量测数据时直接对 process_measure_data.sublot_id / lot_id 过滤，完整语义路径为 Sublot ← belongsToSublot ← Wafer → hasMeasurementRecord。物理主映射：process_measure_data（eqp_id 非空）；制程参数人工录入：process_measure_data_raw（eqp_id 为空）。参数语义注释：param_model_id → param_model；参数分组：param_group_id → param_group。" .
 
 semi:ProductionEvent a owl:Class ;
     rdfs:subClassOf semi:Action ;
@@ -277,7 +277,14 @@ semi:hasMeasurementRecord a owl:ObjectProperty ;
     rdfs:domain semi:Wafer ;
     rdfs:range semi:MeasurementPassRecord ;
     rdfs:label "晶圆量测参数记录" ;
-    rdfs:comment "晶圆在某站点执行量测后产生的逐片参数快照（MeasurementPassRecord）。关联键：process_measure_data.wafer_id → semi:Wafer，wafer_id 是参数采集的直接主体锚点，全程不变。process_measure_data 中的 sublot_id / lot_id 是采集时刻的调度管理上下文快照字段，不代表 Sublot/Lot 拥有量测记录，拆批后这些字段仍然记录的是拆批前的归属信息。批次维度查询量测数据使用 process_measure_data.sublot_id 过滤（利用快照字段），完整语义路径为：Sublot ← belongsToSublot ← Wafer → hasMeasurementRecord → MeasurementPassRecord。进出站事件查询通过 CheckInEventRecord/CheckOutEventRecord WHERE lot_id=? 正向导航，无需反向属性。" .
+    rdfs:comment "晶圆在某站点执行量测后产生的逐片参数快照（MeasurementPassRecord）。关联键：process_measure_data.wafer_id → semi:Wafer，wafer_id 是参数采集的直接主体锚点，全程不变。process_measure_data 中的 sublot_id / lot_id 是采集时刻的调度管理上下文快照字段，不代表 Sublot/Lot 拥有量测记录，拆批后这些字段仍然记录的是拆批前的归属信息。批次维度查询量测数据使用 process_measure_data.sublot_id 过滤（利用快照字段），完整语义路径为：Sublot ← belongsToSublot ← Wafer → hasMeasurementRecord → MeasurementPassRecord。逆向属性 semi:recordsMeasurementOf（MeasurementPassRecord→Wafer）提供从参数记录出发的正向导航路径。" .
+
+semi:recordsMeasurementOf a owl:ObjectProperty ;
+    rdfs:domain semi:MeasurementPassRecord ;
+    rdfs:range semi:Wafer ;
+    owl:inverseOf semi:hasMeasurementRecord ;
+    rdfs:label "量测记录关联的晶圆" ;
+    rdfs:comment "量测/制程参数记录（MeasurementPassRecord）反向关联被采集参数的晶圆实例（Wafer）。关联键：process_measure_data.wafer_id → matrix_routerx_operation_lot_wafer.wafer_id。是 semi:hasMeasurementRecord 的逆向属性（owl:inverseOf）。支持从参数记录出发正向导航至 Wafer，再通过 Wafer 的属性链追溯 Sublot/Lot 归属。" .
 
 semi:actsOnSublot a owl:ObjectProperty ;
     rdfs:domain semi:ProductionEventRecord ;

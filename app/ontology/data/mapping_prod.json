@@ -1971,17 +1971,17 @@
       "range_class": "semi:ProductionLot"
     },
     {
-      "logic_relation": "semi:actsOnLot",
-      "description": "量测参数记录关联该 Wafer 量测时所属的批次（N:1，lot_id 外键）",
+      "logic_relation": "semi:recordsMeasurementOf",
+      "description": "量测/制程参数记录关联被采集参数的晶圆实例（MPR→Wafer，hasMeasurementRecord 的逆向）",
       "strategy": "ForeignKey",
       "join_logic": {
         "source_table": "process_measure_data",
-        "source_key": "lot_id",
-        "target_table": "matrix_routerx_operation_lot",
-        "target_key": "lot_id"
+        "source_key": "wafer_id",
+        "target_table": "matrix_routerx_operation_lot_wafer",
+        "target_key": "wafer_id"
       },
       "domain_class": "semi:MeasurementPassRecord",
-      "range_class": "semi:ProductionLot"
+      "range_class": "semi:Wafer"
     },
     {
       "logic_relation": "semi:containsInboundRequestDetail",

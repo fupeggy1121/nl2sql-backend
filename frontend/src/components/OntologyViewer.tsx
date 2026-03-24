@@ -545,11 +545,13 @@ export default function OntologyViewer() {
           </h2>
           {graphData?.stats && (
             <div style={styles.statsRow}>
-              <span style={styles.stat}>
+              <span style={styles.stat} title="OWL本体文件中定义的类总数（含抽象类、虚拟类）">
                 类: <b style={styles.statValue}>{graphData.stats.classes}</b>
+                <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: 2 }}>(OWL定义)</span>
               </span>
-              <span style={styles.stat}>
+              <span style={styles.stat} title="OWL本体文件中定义的对象属性总数">
                 关系: <b style={styles.statValue}>{graphData.stats.relations}</b>
+                <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: 2 }}>(OWL定义)</span>
               </span>
               <span style={styles.stat}>
                 数据属性: <b style={styles.statValue}>{graphData.stats.data_properties}</b>

@@ -231,10 +231,9 @@ class IntentRecognizer:
         # ── 优先级 0：写操作意图（变更类，走 action_executor 分支）──
         # 如果语句同时含"进/出站"和查询语境词（查询/历史/记录/统计等），视为历史查询，不走 action
         if self._write_action_patterns.search(text):
-            has_checkin_out = self._checkin_action_patterns.search(text)
             has_query_context = self._query_context_patterns.search(text)
-            if has_checkin_out and has_query_context:
-                pass  # fall through to query intent matching
+            if has_query_context:
+                pass  # 含查询语境词（查询/记录/历史/统计等）→ 是对历史记录的查询，走 query 分支
             else:
                 return {
                     'intent': 'write_action',
