@@ -152,7 +152,9 @@ def intent_router_node(state: AgentState) -> dict:
     ):
         # 检查 semantic_filters 和 filter_hints 中是否已有批次/lot标识符
         _filter_hints_list = intent_data.get("intent_slots", {}).get("filter_hints", [])
-        _sem_filters_str = " ".join(str(f) for f in semantic_filters)
+        # 注意：此处直接从 intent_data 读取，semantic_filters 变量在此处尚未赋值
+        _sem_filters_raw = intent_data.get("semantic_filters", [])
+        _sem_filters_str = " ".join(str(f) for f in _sem_filters_raw)
         _hint_str = " ".join(str(h) for h in _filter_hints_list)
         _lot_keywords = ("lot", "batch", "批次", "lot_code", "sublot", "sub_lot", "工单")
         _has_lot_filter = any(kw in (_sem_filters_str + _hint_str).lower() for kw in _lot_keywords)
