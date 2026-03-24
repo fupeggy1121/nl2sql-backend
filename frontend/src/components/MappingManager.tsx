@@ -1045,13 +1045,15 @@ function RelationMappingsTab() {
           <tbody className="divide-y divide-gray-100">
             {loading && <tr><td colSpan={6} className="py-8 text-center text-gray-400">加载中...</td></tr>}
             {!loading && items.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-gray-400">暂无数据 — 运行 generate_relation_mappings.py --merge 导入草稿</td></tr>}
-            {items.map(item => (
-              <React.Fragment key={item.logic_relation}>
+            {items.map((item, idx) => {
+              const rowKey = `${item.logic_relation}::${item.domain_class || idx}`;
+              return (
+              <React.Fragment key={rowKey}>
                 <tr className={`hover:bg-gray-50 transition-colors ${item.confidence === 'medium' ? 'bg-yellow-50/30' : ''}`}>
                   <td className="pl-3">
-                    <button onClick={() => setExpandedRow(expandedRow === item.logic_relation ? null : item.logic_relation)}
+                    <button onClick={() => setExpandedRow(expandedRow === rowKey ? null : rowKey)}
                       className="text-gray-400 hover:text-gray-600">
-                      {expandedRow === item.logic_relation ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      {expandedRow === rowKey ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </button>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-blue-700">{item.logic_relation}</td>
@@ -1069,17 +1071,18 @@ function RelationMappingsTab() {
                     </div>
                   </td>
                 </tr>
-                {expandedRow === item.logic_relation && (
+                {expandedRow === rowKey && (
                   <tr className="bg-gray-50">
                     <td colSpan={6} className="px-8 pb-4 pt-2">
                       <pre className="text-xs text-gray-600 bg-white border border-gray-200 rounded-lg p-3 overflow-x-auto">
                         {JSON.stringify(item.join_logic, null, 2)}
                       </pre>
+                      {item.domain_class && <div className="mt-2 text-xs text-gray-400">domain: {item.domain_class} → range: {item.range_class}</div>}
                     </td>
                   </tr>
                 )}
               </React.Fragment>
-            ))}
+            );})
           </tbody>
         </table>
       </div>
