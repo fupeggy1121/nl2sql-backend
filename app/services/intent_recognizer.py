@@ -466,7 +466,7 @@ A: intent=direct_query, query_type=LIST, target_class_hints=["semi:MeasurementPa
 
 Q: "查一下那个批次的数据"
 A: intent=need_clarification, query_type=LIST, target_class_hints=[], semantic_filters=[],
-   clarification_question="请问您想查哪个批次？另外您想查看的是：进出站记录、量测参数，还是批次基本信息？",
+   clarification_question="请问您想查询的是哪个批次号？（例如：LT-2024-001）",
    intent_slots={{"subject":null,"action":null,"dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"缺少批次号和查询类型，无法生成SQL"}}
 
 ## 何时使用 need_clarification

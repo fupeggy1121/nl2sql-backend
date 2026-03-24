@@ -43,8 +43,24 @@ function loadMessages(sessionId: string): Message[] {
   }
 }
 
+const MAX_MESSAGES_PER_SESSION = 50;
+
 function saveMessages(sessionId: string, messages: Message[]): void {
-  localStorage.setItem(LS_MESSAGES_PREFIX + sessionId, JSON.stringify(messages));
+  // Strip large debug fields (pipeline_trace, queryResult) before persisting
+  const slim = messages.slice(-MAX_MESSAGES_PER_SESSION).map((m) => {
+    const { pipeline_trace, queryResult, ...rest } = m as any;
+    return rest;
+  });
+  try {
+    localStorage.setItem(LS_MESSAGES_PREFIX + sessionId, JSON.stringify(slim));
+  } catch {
+    // Quota exceeded — retry with only the last 10 messages
+    try {
+      localStorage.setItem(LS_MESSAGES_PREFIX + sessionId, JSON.stringify(slim.slice(-10)));
+    } catch {
+      // Give up silently; UI remains functional even without persistence
+    }
+  }
 }
 
 function loadReports(): SavedReport[] {

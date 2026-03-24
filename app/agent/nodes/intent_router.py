@@ -128,8 +128,7 @@ def intent_router_node(state: AgentState) -> dict:
         raw_intent = "need_clarification"
         if not intent_data.get("clarification_question"):
             intent_data["clarification_question"] = (
-                f"您的问题我不太确定是哪类查询，"
-                "能否告诉我您想查的是：进出站记录、量测参数、批次信息还是其他内容？"
+                "请问您想查询的是哪个批次号？（例如：LT-2024-001）"
             )
 
     route = INTENT_ROUTE_MAP.get(raw_intent, "query")
