@@ -828,16 +828,25 @@
         "lot_code",
         "output_lot_id",
         "output_lot_code",
+        "product_id",
+        "product_code",
+        "product_name",
+        "process_id",
+        "process_code",
+        "process_name",
         "operation_type",
-        "operator_id",
-        "before_state",
-        "after_state",
         "station_id",
         "equipment_id",
+        "operator_id",
+        "create_user_id",
+        "create_user",
+        "before_state",
+        "after_state",
+        "extra",
         "gmt_create"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "生产事件执行记录主表（抽象父类，所有 operation_type 均写入此表）。不设 filter_condition，子类各自符加 tableFilter。完整枚举见 value_mappings.semi:LotOperationType。物理层三联写：本表（主记录）+ matrix_routerx_operation_lot_batch_resume_log_detail（子批次状态快照，SublotOpSnapshot）+ matrix_routerx_operation_lot_batch_resume_wafer_detail_log（逐片Wafer明细，WaferTransitionRecord）。"
+      "note": "生产事件执行记录主表（抽象父类，所有 operation_type 均写入此表）。不设 filter_condition，子类各自附加 tableFilter。完整枚举见 value_mappings.semi:LotOperationType。物理层三联写：本表（主记录）+ _detail（affectsSublot 关系的物理载体，sublot_id FK + 快照字段 carrier_code/before_state/after_state）+ _wafer_detail_log（affectsWafer 关系的物理载体，wafer_id FK + 迁移字段 from_lot_id/to_lot_id/ng_code）。"
     },
     {
       "logic_class": "semi:SplitEvent",
@@ -869,16 +878,25 @@
         "lot_code",
         "output_lot_id",
         "output_lot_code",
+        "product_id",
+        "product_code",
+        "product_name",
+        "process_id",
+        "process_code",
+        "process_name",
         "operation_type",
-        "operator_id",
-        "before_state",
-        "after_state",
         "station_id",
         "equipment_id",
+        "operator_id",
+        "create_user_id",
+        "create_user",
+        "before_state",
+        "after_state",
+        "extra",
         "gmt_create"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "拆批操作执行记录，filter_condition = operation_type=1 隔离拆批行。物理层三联写：本表（主记录）+ matrix_routerx_operation_lot_batch_resume_log_detail（批次状态快照）+ matrix_routerx_operation_lot_batch_resume_wafer_detail_log（逐片Wafer迁移明细）。"
+      "note": "拆批操作执行记录，filter_condition = operation_type=1。output_lot_id/output_lot_code 指向新产出批次（producesLot）。是谱系操作（affectsWafer 有逐片迁移明细）。"
     },
     {
       "logic_class": "semi:HoldEvent",
@@ -910,6 +928,8 @@
         "id",
         "lot_id",
         "lot_code",
+        "output_lot_id",
+        "output_lot_code",
         "product_id",
         "product_code",
         "product_name",
@@ -917,13 +937,18 @@
         "process_code",
         "process_name",
         "operation_type",
-        "extra",
+        "station_id",
+        "equipment_id",
+        "operator_id",
         "create_user_id",
         "create_user",
+        "before_state",
+        "after_state",
+        "extra",
         "gmt_create"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "批次扣留操作执行记录，filter_condition = operation_type=4。批次被扣留后 matrix_routerx_operation_lot.status 变为 80（Staged/暂存）。extra 字段可包含预扣留站点信息（preHoldProcessId/preHoldProcessCode），用于指定批次到达未来某工序时自动触发扣留。"
+      "note": "批次扣留操作执行记录，filter_condition = operation_type=4。批次被扣留后 matrix_routerx_operation_lot.status 变为 80（Staged/暂存）。extra 字段可包含预扣留站点信息（preHoldProcessId/preHoldProcessCode）。本操作不产出新批次，output_lot_id 为 null。create_user_id/create_user 为提交扣留的操作员（非 operator_id）。"
     },
     {
       "logic_class": "semi:ReleaseEvent",
@@ -955,6 +980,8 @@
         "id",
         "lot_id",
         "lot_code",
+        "output_lot_id",
+        "output_lot_code",
         "product_id",
         "product_code",
         "product_name",
@@ -962,13 +989,18 @@
         "process_code",
         "process_name",
         "operation_type",
-        "extra",
+        "station_id",
+        "equipment_id",
+        "operator_id",
         "create_user_id",
         "create_user",
+        "before_state",
+        "after_state",
+        "extra",
         "gmt_create"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "批次释放操作执行记录，filter_condition = operation_type=5。解除批次暂存（status=80）状态，恢复批次可进站加工。"
+      "note": "批次释放操作执行记录，filter_condition = operation_type=5。解除批次暂存（status=80）状态，恢复批次可进站加工。本操作不产出新批次，output_lot_id 为 null。create_user_id/create_user 为提交释放的操作员。"
     },
     {
       "logic_class": "semi:NGRecordEvent",
@@ -996,16 +1028,27 @@
         "id",
         "lot_id",
         "lot_code",
+        "output_lot_id",
+        "output_lot_code",
+        "product_id",
+        "product_code",
+        "product_name",
         "process_id",
         "process_code",
         "process_name",
         "operation_type",
-        "operator_id",
         "station_id",
+        "equipment_id",
+        "operator_id",
+        "create_user_id",
+        "create_user",
+        "before_state",
+        "after_state",
+        "extra",
         "gmt_create"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "不良录入操作执行记录，filter_condition = operation_type=6。具体不良 Wafer 明细写入 matrix_routerx_operation_lot_batch_resume_wafer_detail_log（ng_code 字段）。不改变批次 status，不产生新批次。"
+      "note": "不良录入操作执行记录，filter_condition = operation_type=6。具体不良 Wafer 明细通过 affectsWafer 关系记录于 _wafer_detail_log（ng_code 字段标注不良类型）。不改变批次 status，不产出新批次，output_lot_id 为 null。"
     },
     {
       "logic_class": "semi:CheckInEvent",
@@ -1035,19 +1078,27 @@
         "id",
         "lot_id",
         "lot_code",
+        "output_lot_id",
+        "output_lot_code",
+        "product_id",
+        "product_code",
+        "product_name",
         "process_id",
         "process_code",
         "process_name",
         "operation_type",
+        "station_id",
         "equipment_id",
         "operator_id",
-        "station_id",
+        "create_user_id",
+        "create_user",
         "before_state",
         "after_state",
+        "extra",
         "gmt_create"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "批次进站操作执行记录，filter_condition = operation_type=8。进站后 Sublot.process_status 转为 40（加工中）。station_id/equipment_id 记录进站工序与绑定设备。不产生新批次。"
+      "note": "批次进站操作执行记录，filter_condition = operation_type=8。进站后 Sublot.process_status 转为 40（加工中）。station_id/equipment_id 记录进站工序与绑定设备。不产出新批次，output_lot_id 为 null。"
     },
     {
       "logic_class": "semi:CheckOutEvent",
@@ -1076,18 +1127,27 @@
         "id",
         "lot_id",
         "lot_code",
+        "output_lot_id",
+        "output_lot_code",
+        "product_id",
+        "product_code",
+        "product_name",
         "process_id",
         "process_code",
         "process_name",
         "operation_type",
-        "operator_id",
         "station_id",
+        "equipment_id",
+        "operator_id",
+        "create_user_id",
+        "create_user",
         "before_state",
         "after_state",
+        "extra",
         "gmt_create"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "批次出站操作执行记录，filter_condition = operation_type=9。出站后 Sublot.process_status 转为 10/20（待进站），批次流转至下道工序。与 CheckInEventRecord 成对出现，构成一次完整的过站周期。不产生新批次。"
+      "note": "批次出站操作执行记录，filter_condition = operation_type=9。出站后 Sublot.process_status 转为 10/20（待进站），批次流转至下道工序。与 CheckInEventRecord 成对出现，构成一次完整的过站周期。不产出新批次，output_lot_id 为 null。"
     },
     {
       "logic_class": "semi:AccumulateEvent",
@@ -1122,13 +1182,22 @@
         "output_lot_code",
         "product_id",
         "product_code",
+        "product_name",
         "process_id",
         "process_code",
         "process_name",
+        "operation_type",
+        "station_id",
+        "equipment_id",
         "operator_id",
+        "create_user_id",
+        "create_user",
+        "before_state",
+        "after_state",
+        "extra",
         "gmt_create"
       ],
-      "note": "攒批执行记录。⚠ 物理多行模型：每个源批次对应一行（lot_code=源批次，output_lot_code=新批次），同一次攒批操作的多行共享相同 output_lot_id 和 gmt_create/operator_id。查询所有被攒入某新批次的源批次：WHERE output_lot_code=? AND operation_type=16。"
+      "note": "攒批执行记录。⚠ 物理多行模型：每个源批次对应一行（lot_code=源批次，output_lot_code=新批次），同一次攒批操作的多行共享相同 output_lot_id 和 gmt_create/operator_id。查询所有被攒入某新批次的源批次：WHERE output_lot_code=? AND operation_type=16。是谱系操作（affectsWafer 有逐片迁移明细）。"
     },
     {
       "logic_class": "semi:MergeEvent",
@@ -1161,28 +1230,32 @@
         "lot_code",
         "output_lot_id",
         "output_lot_code",
+        "product_id",
+        "product_code",
+        "product_name",
         "process_id",
         "process_code",
         "process_name",
+        "operation_type",
+        "station_id",
+        "equipment_id",
         "operator_id",
+        "create_user_id",
+        "create_user",
+        "before_state",
+        "after_state",
+        "extra",
         "gmt_create"
       ],
-      "note": "并批执行记录。lot_code=源批次；output_lot_code=目标(父)批次。_wafer_detail_log 记录逐片Wafer归属迁移明细。"
+      "note": "并批执行记录。lot_code=源批次；output_lot_id/output_lot_code=目标(父)批次（mergesIntoLot 关系）。是谱系操作（affectsWafer 有逐片迁移明细记录所有 Wafer 从源批次迁移到目标批次的明细）。"
     },
     {
       "logic_class": "semi:SublotOpSnapshot",
       "physical_table": "matrix_routerx_operation_lot_batch_resume_log_detail",
       "primary_key": "id",
-      "label_cn": "子批次操作状态快照",
-      "display_column": "lot_code",
-      "virtual": false,
-      "properties": {
-        "semi:hasProcessId": "process_id",
-        "semi:hasProcessCode": "process_code",
-        "semi:hasCarrierCode": "carrier_code",
-        "semi:hasLotStatusBefore": "before_state",
-        "semi:hasLotStatusAfter": "after_state"
-      },
+      "label_cn": "子批次操作状态快照（关系实现表）",
+      "virtual": true,
+      "virtual_kind": "detail_snapshot",
       "key_columns": [
         "id",
         "resume_log_id",
@@ -1196,21 +1269,15 @@
         "after_state",
         "gmt_create"
       ],
-      "note": "生产事件履历的子批次维度状态快照表。每条记录是某次生产事件（对应 resume_log_id FK 关联主表）作用后各子批次的状态截面：包含操作时所处工序（process_id/process_code）、绑定载具（carrier_code）及操作前后状态（before_state/after_state）。"
+      "note": "【关系实现表，非独立本体类】semi:affectsSublot（ProductionEventRecord→Sublot）的物理JoinVia中间表。resume_log_id FK 关联主事件记录；sublot_id FK 关联被影响的子批次实例。快照字段 carrier_code/process_code/before_state/after_state 记录事件执行时刻的子批次上下文状态，是事件执行时子批次的时序截面，不代表当前状态。不单独暴露为本体类，通过 affectsSublot 关系的 JoinVia 路径访问。"
     },
     {
       "logic_class": "semi:WaferTransitionRecord",
       "physical_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
       "primary_key": "id",
-      "label_cn": "Wafer 迁移明细记录",
-      "display_column": "wafer_code",
-      "virtual": false,
-      "properties": {
-        "semi:hasWaferId": "wafer_id",
-        "semi:hasWaferCode": "wafer_code",
-        "semi:hasCarrierCode": "carrier_code",
-        "semi:hasNGCode": "ng_code"
-      },
+      "label_cn": "Wafer 迁移明细记录（关系实现表）",
+      "virtual": true,
+      "virtual_kind": "detail_snapshot",
       "key_columns": [
         "id",
         "resume_log_id",
@@ -1223,7 +1290,7 @@
         "ng_code",
         "gmt_create"
       ],
-      "note": "生产事件履历的 Wafer 粒度明细表。每条记录追踪一片 Wafer 在某次生产事件中的迁移状态：wafer_id/wafer_code 标识具体晶圆，carrier_code 记录所在载具槽位，ng_code 记录不良原因（不良录入操作时填写）。通过 resume_log_id FK 关联主事件记录（matrix_routerx_operation_lot_batch_resume_log），支持逰片血缘闭环。"
+      "note": "【关系实现表，非独立本体类】semi:actsOnWafer（ProductionEventRecord→Wafer）的物理JoinVia中间表。resume_log_id FK 关联主事件记录；wafer_id FK 关联被影响的Wafer实例。迁移字段 from_lot_id/to_lot_id 记录 Wafer 的批次归属变化（谱系操作时）；ng_code 记录不良原因（NGRecordEvent时）；carrier_code/slot_no 记录事件时刻 Wafer 所在载具槽位。不单独暴露为本体类，通过 actsOnWafer 关系的 JoinVia 路径访问。"
     },
     {
       "logic_class": "semi:WarehouseLocation",
@@ -1846,6 +1913,24 @@
       },
       "domain_class": "semi:Wafer",
       "range_class": "semi:MeasurementPassRecord"
+    },
+    {
+      "logic_relation": "semi:affectsSublot",
+      "description": "生产事件执行记录关联被影响的子批次（通过 _detail 从表，携带快照属性 carrier_code/before_state/after_state）",
+      "strategy": "JoinVia",
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_batch_resume_log",
+        "source_key": "id",
+        "via_table": "matrix_routerx_operation_lot_batch_resume_log_detail",
+        "via_source_key": "resume_log_id",
+        "via_target_key": "sublot_id",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "id",
+        "snapshot_columns": ["carrier_code", "process_code", "before_state", "after_state"],
+        "note": "通过 _detail 中间表关联：resume_log_id→主事件记录，sublot_id→子批次实例（matrix_routerx_operation_lot WHERE parent_id!=0）。快照列 carrier_code/process_code/before_state/after_state 记录事件执行时刻的子批次上下文，属于 _detail 表的属性，非当前状态。适用于全部 operation_type。"
+      },
+      "domain_class": "semi:ProductionEventRecord",
+      "range_class": "semi:Sublot"
     },
     {
       "logic_relation": "semi:actsOnWafer",

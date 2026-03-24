@@ -277,16 +277,22 @@ semi:hasMeasurementRecord a owl:ObjectProperty ;
     rdfs:label "晶圆量测参数记录" ;
     rdfs:comment "晶圆在某站点执行量测后产生的逐片参数快照（MeasurementPassRecord）。关联键：process_measure_data.wafer_id → semi:Wafer，wafer_id 是参数采集的直接主体锚点，全程不变。process_measure_data 中的 sublot_id / lot_id 是采集时刻的调度管理上下文快照字段，不代表 Sublot/Lot 拥有量测记录，拆批后这些字段仍然记录的是拆批前的归属信息。批次维度查询量测数据使用 process_measure_data.sublot_id 过滤（利用快照字段），完整语义路径为：Sublot ← belongsToSublot ← Wafer → hasMeasurementRecord → MeasurementPassRecord。进出站事件查询通过 CheckInEventRecord/CheckOutEventRecord WHERE lot_id=? 正向导航，无需反向属性。" .
 
+semi:affectsSublot a owl:ObjectProperty ;
+    rdfs:domain semi:ProductionEventRecord ;
+    rdfs:range semi:Sublot ;
+    rdfs:label "操作影响的子批次" ;
+    rdfs:comment "生产事件执行记录关联被影响的子批次实例（1:N，每个事件可影响多个子批次）。物理JoinVia路径：_resume_log.id → _detail.resume_log_id → _detail.sublot_id → matrix_routerx_operation_lot.id（parent_id!=0）。_detail 中间表同时携带事件执行时刻的子批次状态快照（carrier_code/process_code/before_state/after_state），是该时刻子批次上下文的时序截面，不代表当前状态。适用于全部 operation_type。注：_detail 表不作为独立本体类，其语义由本关系属性完整表达。" .
+
 semi:actsOnWafer a owl:ObjectProperty ;
     rdfs:domain [
         a owl:Class ;
-        owl:unionOf (semi:MeasurementPassRecord semi:NGRecordEventRecord semi:SplitEventRecord
+        owl:unionOf (semi:NGRecordEventRecord semi:SplitEventRecord
                      semi:MergeEventRecord semi:AccumulateEventRecord
                      semi:CheckInEventRecord semi:CheckOutEventRecord)
     ] ;
     rdfs:range semi:Wafer ;
-    rdfs:label "操作/量测涉及的 Wafer" ;
-    rdfs:comment "本次量测或操作涉及的具体晶圆实例。各子类语义：MeasurementPassRecord→被量测晶圆（wafer_id 精确定位）；NGRecordEventRecord→被标记不良的晶圆；SplitEventRecord→被迁移出源批次的晶圆（lot/sublot 归属变更）；MergeEventRecord→被重新归属到目标批次的晶圆；AccumulateEventRecord→被攒入新批次的晶圆（来自各源批次，lot/sublot 归属均更新至新批次）；CheckInEventRecord/CheckOutEventRecord→参与进/出站操作的晶圆（逐片站点记录）。物理对应：_wafer_detail_log（EventRecord 子类）或 process_measure_data.wafer_id（MeasurementPassRecord）。⚠ HoldEventRecord/ReleaseEventRecord 无 wafer 粒度记录，不在此属性 domain 内。" .
+    rdfs:label "操作涉及的 Wafer" ;
+    rdfs:comment "生产事件执行记录关联被影响的具体晶圆实例（1:N）。物理JoinVia路径：_resume_log.id → _wafer_detail_log.resume_log_id → _wafer_detail_log.wafer_id → matrix_routerx_operation_lot_wafer.wafer_id。各子类语义：NGRecordEventRecord→被标记不良的晶圆；SplitEventRecord→被迁移出源批次的晶圆（lot/sublot 归属变更）；MergeEventRecord→被重新归属到目标批次的晶圆；AccumulateEventRecord→被攒入新批次的晶圆；CheckInEventRecord/CheckOutEventRecord→参与进/出站操作的晶圆（逐片站点记录）。_wafer_detail_log 同时携带 from_lot_id/to_lot_id/ng_code/carrier_code/slot_no 作为关系属性。⚠ HoldEventRecord/ReleaseEventRecord 无 wafer 粒度记录，不在此属性 domain 内。注：量测参数记录(MeasurementPassRecord)通过 hasMeasurementRecord 反向属性关联 Wafer，不通过本属性。" .
 
 semi:recordedAtStation a owl:ObjectProperty ;
     rdfs:domain [
@@ -1115,24 +1121,25 @@ semi:AccumulateEventRecord a owl:Class ;
     rdfs:comment "攒批操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 16。⚠ 物理层多行模型：每个源批次对应一行记录（lot_code=源批次，output_lot_code=新批次），同一次攒批操作的多行共享相同的 output_lot_id 和 gmt_create/operator_id。核心关联：(1) isInstanceOfEvent → semi:AccumulateEvent；(2) actsOnLot → 各源批次（每行一个，同产品型号）；(3) producesLot → 新生成的 ProductionLot（output_lot_code，所有行相同）；(4) producesSublot → 新批次对应的初始 Sublot；(5) actsOnWafer → 被攒入新批次的晶圆实例列表（_wafer_detail_log 逐片明细）。谱系操作：执行后所有源批次完结，wafer 归属迁移至新批次/子批次。" .
 
 ### ==========================================
-### 5.13 子批次操作状态快照 (SublotOpSnapshot)
-### 5.14 Wafer 迁移明细记录 (WaferTransitionRecord)
+### 5.13（已重构）_detail 中间表（原 SublotOpSnapshot）
+### 5.14（已重构）_wafer_detail_log 中间表（原 WaferTransitionRecord）
 ### ==========================================
-### 物理层三联写说明：
+### 物理层三联写说明（更新）：
 ###   所有 ProductionEventRecord 子类在写入主表 _resume_log 的同时，
 ###   关联从表按操作类型写入相应明细：
-###   - _resume_log_detail（SublotOpSnapshot）：记录该操作前后批次/子批次状态变更；
-###     carrier_code / process_id / process_code 记录该时刻批次所处载具与工序。
-###   - _wafer_detail_log（WaferTransitionRecord）：记录受操作影响的逐片 Wafer；
-###     拆批时记录被迁移晶圆；不良录入时记录被标记 ng_code 的晶圆。
+###   - _detail：semi:affectsSublot 关系的物理中间表
+###     （resume_log_id → sublot_id；快照字段：carrier_code/process_code/before_state/after_state）
+###   - _wafer_detail_log：semi:actsOnWafer 关系的物理中间表
+###     （resume_log_id → wafer_id；快照字段：from_lot_id/to_lot_id/ng_code/carrier_code/slot_no）
+###   两张从表是对象属性关系的实现载体，不作为独立本体类建模。
 
-semi:SublotOpSnapshot a owl:Class ;
-    rdfs:label "子批次操作状态快照" ;
-    rdfs:comment "批次操作履历的子批次/批次维度快照，对应物理从表 matrix_routerx_operation_lot_batch_resume_log_detail。每条记录是某次生产事件（对应 _resume_log 主表一行）作用后各子批次的状态截面：包含操作时所处工序（process_id/process_code）、绑定载具（carrier_code）及操作前后状态（before_state/after_state）。通过 FK resume_log.id → _detail.resume_log_id 与主事件记录关联。" .
+# semi:SublotOpSnapshot — 已降级为关系实现表 (virtual_kind: detail_snapshot)
+# 语义由 semi:affectsSublot ObjectProperty 完整表达，不再作为可查询类存在。
+# 物理表：matrix_routerx_operation_lot_batch_resume_log_detail
 
-semi:WaferTransitionRecord a owl:Class ;
-    rdfs:label "Wafer 迁移明细记录" ;
-    rdfs:comment "批次操作履历的 Wafer 粒度明细，对应物理从表 matrix_routerx_operation_lot_batch_resume_wafer_detail_log。每条记录追踪一片 Wafer 在某次生产事件中的迁移状态：wafer_id/wafer_code 标识具体晶圆，carrier_code 记录所在载具槽位，ng_code 记录不良原因（不良录入操作时填写）。通过 FK resume_log.id → _wafer_detail_log.resume_log_id 与主事件记录关联，支持从事件维度反查逐片血缘闭环。" .
+# semi:WaferTransitionRecord — 已降级为关系实现表 (virtual_kind: detail_snapshot)
+# 语义由 semi:actsOnWafer ObjectProperty 完整表达，不再作为可查询类存在。
+# 物理表：matrix_routerx_operation_lot_batch_resume_wafer_detail_log
 
 # 5.15 量测事件类型 (MeasurementEvent)
 semi:MeasurementEvent a owl:Class ;
