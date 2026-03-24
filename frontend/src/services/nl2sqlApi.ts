@@ -94,6 +94,8 @@ export interface UnifiedQueryResponse {
   success: boolean;
   session_id?: string;          // 后端返回的会话ID，前端应保存用于后续追问
   is_followup?: boolean;         // 是否为追问（后端自动检测）
+  type?: string;                 // 'clarification' | undefined
+  clarification_question?: string; // 仅 type=clarification 时存在
   query_plan?: QueryPlan;
   query_result?: QueryResult;
   pipeline_trace?: PipelineTraceStep[];  // 管道追踪（可展开查看完整流水线）

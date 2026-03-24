@@ -250,6 +250,22 @@ export function UnifiedChat({
         throw new Error(response.error || 'Failed to process query.');
       }
 
+// ── Clarification 分支：后端意图模糊，需要向用户反问 ──
+if (response.type === 'clarification' && response.clarification_question) {
+  setStep('clarify');
+  const clarificationMessage: Message = {
+    id: (Date.now() + 1).toString(),
+    type: 'assistant',
+    content: response.clarification_question,
+    timestamp: new Date(),
+    pipeline_trace: response.pipeline_trace,
+  };
+  setMessages((prev) => [...prev, clarificationMessage]);
+  await addChatMessage(sessionId, clarificationMessage);
+  setIsProcessing(false);
+  return;
+}
+
 const queryPlan = response.query_plan;
 if (!queryPlan) {
   const errorMessage: Message = {

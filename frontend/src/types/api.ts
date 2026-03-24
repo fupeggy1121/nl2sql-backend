@@ -48,6 +48,8 @@ export interface PipelineStep {
 export interface ProcessResponse {
   success: boolean
   session_id: string
+  type?: string                     // 'clarification' | undefined
+  clarification_question?: string   // 仅 type=clarification 时存在
   query_plan: QueryPlan
   query_result?: QueryResult
   pipeline_trace: PipelineStep[]
