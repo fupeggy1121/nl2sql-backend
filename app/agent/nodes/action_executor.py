@@ -89,6 +89,18 @@ def _load_event_spec(event_class_uri: str) -> Dict[str, str]:
 # 辅助：preCondition 校验
 # ─────────────────────────────────────────────
 
+def _get_mysql():
+    """获取 MySQLExecutor 连接，失败时返回 None。"""
+    try:
+        from app.services.mysql_executor import MySQLExecutor
+        ex = MySQLExecutor()
+        if ex.connect():
+            return ex
+    except Exception as e:
+        logger.warning(f"[action_executor] MySQL connect failed: {e}")
+    return None
+
+
 def _check_precondition(precondition: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """
     执行 preCondition SQL 校验。
@@ -96,30 +108,29 @@ def _check_precondition(precondition: str, params: Dict[str, Any]) -> Dict[str, 
     TTL preCondition 示例:
         "ParentLot.status == 'WAIT' && ParentLot.waferCount > 1"
 
-    当前实现：将 preCondition 转换为 SQL 查询验证批次状态。
+    当前实现：将 preCondition 转换为参数化 SQL 查询验证批次状态。
     """
     lot_id = params.get("parentLotId") or params.get("lotId")
     if not lot_id:
         return {"passed": False, "reason": "缺少 parentLotId 参数"}
 
-    try:
-        from app.services.query_executor import QueryExecutor
-        executor = QueryExecutor()
+    db = _get_mysql()
+    if db is None:
+        logger.warning("[action_executor] preCondition: DB 不可用，降级通过")
+        return {"passed": True, "warning": "preCondition SQL skip: DB unavailable"}
 
-        # 校验批次存在且状态为 WAIT（status 对应数值由 mapping 决定，此处用字符串兜底）
-        sql = f"""
-            SELECT id, current_lot_code, status, wafer_count
-            FROM matrix_routerx_lot
-            WHERE current_lot_code = '{lot_id}'
-            LIMIT 1
-        """
-        result = executor.execute(sql)
-        rows = result.get("data", [])
+    try:
+        # 参数化查询，防止 SQL 注入
+        rows = db.execute_query(
+            "SELECT id, current_lot_code, status, wafer_count "
+            "FROM matrix_routerx_lot "
+            "WHERE current_lot_code = %s LIMIT 1",
+            (lot_id,),
+        )
         if not rows:
             return {"passed": False, "reason": f"批次 {lot_id} 不存在"}
 
         row = rows[0]
-        # status: WAIT 通常对应 10 或 'WAIT'
         status = str(row.get("status", "")).upper()
         wafer_count = int(row.get("wafer_count") or 0)
 
@@ -147,8 +158,9 @@ def _check_precondition(precondition: str, params: Dict[str, Any]) -> Dict[str, 
 
     except Exception as e:
         logger.warning(f"[action_executor] preCondition SQL error: {e}")
-        # DB 不可用时降级为通过（由 API 层做最终校验）
         return {"passed": True, "warning": f"preCondition SQL skip: {e}"}
+    finally:
+        db.close()
 
 
 # ─────────────────────────────────────────────
@@ -166,88 +178,94 @@ def _write_event_record(
     session_id: str = "",
 ) -> Dict[str, Any]:
     """
-    三联写入 SplitEventRecord：
-      ① matrix_routerx_operation_lot_batch_resume_log         — 主事件行
-      ② matrix_routerx_operation_lot_batch_resume_log_detail  — 拆批前后批次状态快照
+    三联写入 SplitEventRecord（MySQL，列名对齐实际物理 schema）：
+      ① matrix_routerx_operation_lot_batch_resume_log              — 主事件行
+      ② matrix_routerx_operation_lot_batch_resume_log_detail       — 拆批前后子批次快照
+         FK: batch_resume_log_id → 主表.id
+         extra JSON: {isSource: true/false, sourceLotCode, targetLotCode}
       ③ matrix_routerx_operation_lot_batch_resume_wafer_detail_log — 逐片 Wafer 迁移明细
+         FK: batch_resume_detail_log_id → detail 表.id
 
-    当前实现：写入 Supabase（与现有日志表对齐）。
-    若表不存在或写入失败，记录 WARNING 后继续（API 已成功，不回滚）。
+    若写入失败，记录 WARNING 后继续（MES API 已成功，不回滚）。
     """
-    results: Dict[str, Any] = {"log_id": None, "detail_id": None, "wafer_detail_ids": []}
-    now = datetime.now(timezone.utc).isoformat()
+    import json as _json
+
+    results: Dict[str, Any] = {"log_id": None, "detail_src_id": None, "detail_tgt_id": None, "wafer_detail_ids": []}
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    op_int = _EVENT_TYPE_INT_MAP.get(event_type.upper(), 1)
     log_id = str(uuid.uuid4())
 
-    try:
-        from app.services.supabase_client import SupabaseClient
-        sb = SupabaseClient()
+    db = _get_mysql()
+    if db is None:
+        logger.warning("[action_executor] 三联写入跳过：MySQL 不可用")
+        return results
 
+    try:
         # ① 主事件行
-        op_int = _EVENT_TYPE_INT_MAP.get(event_type.upper(), event_type)
-        log_row = {
-            "id": log_id,
-            "lot_code": lot_id,
-            "output_lot_code": new_lot_id,
-            "operation_type": op_int,
-            "operator_id": operator_id,
-            "before_state": before_state,
-            "after_state": after_state,
-            "session_id": session_id,
-            "gmt_create": now,
-        }
-        resp = sb.client.table("matrix_routerx_operation_lot_batch_resume_log").insert(log_row).execute()
+        db.execute_query(
+            "INSERT INTO matrix_routerx_operation_lot_batch_resume_log "
+            "(id, lot_code, output_lot_code, operation_type, operator_id, "
+            " before_state, after_state, gmt_create) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (log_id, lot_id, new_lot_id, op_int, operator_id,
+             before_state, after_state, now),
+        )
         results["log_id"] = log_id
-        logger.info(f"[action_executor] ① matrix_routerx_operation_lot_batch_resume_log 写入: {log_id}")
-
+        logger.info(f"[action_executor] ① resume_log 写入: {log_id}")
     except Exception as e:
-        logger.warning(f"[action_executor] matrix_routerx_operation_lot_batch_resume_log 写入失败（非致命）: {e}")
+        logger.warning(f"[action_executor] ① resume_log 写入失败（非致命）: {e}")
 
-    try:
-        from app.services.supabase_client import SupabaseClient
-        sb = SupabaseClient()
+    # ② 子批次快照：源侧（isSource=true）+ 目标侧（isSource=false）
+    detail_src_id = str(uuid.uuid4())
+    detail_tgt_id = str(uuid.uuid4())
+    for detail_id, is_source, sub_lot_code in [
+        (detail_src_id, True,  lot_id),
+        (detail_tgt_id, False, new_lot_id),
+    ]:
+        extra = _json.dumps({
+            "isSource": is_source,
+            "sourceLotCode": lot_id,
+            "targetLotCode": new_lot_id,
+        }, ensure_ascii=False)
+        try:
+            db.execute_query(
+                "INSERT INTO matrix_routerx_operation_lot_batch_resume_log_detail "
+                "(id, batch_resume_log_id, sub_lot_code, extra, gmt_create) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (detail_id, log_id, sub_lot_code, extra, now),
+            )
+            logger.info(f"[action_executor] ② resume_log_detail 写入: {detail_id} isSource={is_source}")
+        except Exception as e:
+            logger.warning(f"[action_executor] ② resume_log_detail 写入失败（非致命）: {e}")
+    results["detail_src_id"] = detail_src_id
+    results["detail_tgt_id"] = detail_tgt_id
 
-        # ② 批次状态快照
-        detail_id = str(uuid.uuid4())
-        detail_row = {
-            "id": detail_id,
-            "log_id": log_id,
-            "source_lot_code": lot_id,
-            "new_lot_code": new_lot_id,
-            "before_state": before_state,
-            "after_state": after_state,
-            "gmt_create": now,
-        }
-        sb.client.table("matrix_routerx_operation_lot_batch_resume_log_detail").insert(detail_row).execute()
-        results["detail_id"] = detail_id
-        logger.info(f"[action_executor] ② matrix_routerx_operation_lot_batch_resume_log_detail 写入: {detail_id}")
+    # ③ 逐片 Wafer 明细：每片写 2 行（source side + target side），
+    #    每行的 batch_resume_detail_log_id 分别指向源/目标 detail 行
+    wafer_detail_ids = []
+    for wcode in wafer_list:
+        for detail_id, is_source in [(detail_src_id, True), (detail_tgt_id, False)]:
+            wid = str(uuid.uuid4())
+            extra = _json.dumps({"isSource": is_source}, ensure_ascii=False)
+            try:
+                db.execute_query(
+                    "INSERT INTO matrix_routerx_operation_lot_batch_resume_wafer_detail_log "
+                    "(id, batch_resume_detail_log_id, sub_lot_code, wafer_type, extra, gmt_create) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    (wid, detail_id,
+                     lot_id if is_source else new_lot_id,
+                     "S" if is_source else "T",
+                     extra, now),
+                )
+                wafer_detail_ids.append(wid)
+            except Exception as e:
+                logger.warning(f"[action_executor] ③ wafer_detail_log 写入失败（{wcode} isSource={is_source}）: {e}")
 
-    except Exception as e:
-        logger.warning(f"[action_executor] matrix_routerx_operation_lot_batch_resume_log_detail 写入失败（非致命）: {e}")
+    if wafer_detail_ids:
+        logger.info(f"[action_executor] ③ wafer_detail_log 写入: {len(wafer_detail_ids)} 行（{len(wafer_list)} 片 × 2）")
+    results["wafer_detail_ids"] = wafer_detail_ids
 
-    try:
-        from app.services.supabase_client import SupabaseClient
-        sb = SupabaseClient()
-
-        # ③ 逐片 Wafer 明细
-        wafer_rows = []
-        for wcode in wafer_list:
-            wafer_rows.append({
-                "id": str(uuid.uuid4()),
-                "log_id": log_id,
-                "wafer_code": wcode,
-                "source_lot_code": lot_id,
-                "target_lot_code": new_lot_id,
-                "operation_type": _EVENT_TYPE_INT_MAP.get(event_type.upper(), event_type),
-                "gmt_create": now,
-            })
-        if wafer_rows:
-            sb.client.table("matrix_routerx_operation_lot_batch_resume_wafer_detail_log").insert(wafer_rows).execute()
-            results["wafer_detail_ids"] = [r["id"] for r in wafer_rows]
-            logger.info(f"[action_executor] ③ matrix_routerx_operation_lot_batch_resume_wafer_detail_log 写入: {len(wafer_rows)} 行")
-
-    except Exception as e:
-        logger.warning(f"[action_executor] matrix_routerx_operation_lot_batch_resume_wafer_detail_log 写入失败（非致命）: {e}")
-
+    db.close()
     return results
 
 
@@ -258,27 +276,31 @@ def _write_event_record(
 def _sync_wafer_state(new_lot_id: str, wafer_list: List[str]) -> bool:
     """
     执行 stateTransitionFunction：
-        UPDATE Wafer SET belongsToLot = newLotId WHERE wafer_code IN waferList
+        UPDATE Wafer SET lot_id = newLotId WHERE wafer_code IN (waferList)
 
     注意：MES API 调用成功后通常已在 MES DB 侧执行了状态变更。
-    此处为 NL2SQL 侧只读DB（只读副本）的最终一致性同步，失败不阻断主流程。
+    此处为 NL2SQL 侧 DB 的最终一致性同步，失败不阻断主流程。
     """
     if not wafer_list:
         return True
+    db = _get_mysql()
+    if db is None:
+        logger.warning("[action_executor] stateSync 跳过：MySQL 不可用")
+        return False
     try:
-        from app.services.supabase_client import SupabaseClient
-        sb = SupabaseClient()
-        codes_str = "','".join(wafer_list)
-        # Supabase client ORM 更新
-        sb.client.table("matrix_routerx_operation_lot_wafer") \
-            .update({"lot_id": new_lot_id}) \
-            .in_("wafer_code", wafer_list) \
-            .execute()
+        placeholders = ", ".join(["%s"] * len(wafer_list))
+        db.execute_query(
+            f"UPDATE matrix_routerx_operation_lot_wafer "
+            f"SET lot_id = %s WHERE wafer_code IN ({placeholders})",
+            (new_lot_id, *wafer_list),
+        )
         logger.info(f"[action_executor] stateSync: {len(wafer_list)} wafers → lot {new_lot_id}")
         return True
     except Exception as e:
         logger.warning(f"[action_executor] stateSync failed (non-fatal): {e}")
         return False
+    finally:
+        db.close()
 
 
 # ─────────────────────────────────────────────
@@ -286,19 +308,23 @@ def _sync_wafer_state(new_lot_id: str, wafer_list: List[str]) -> bool:
 # ─────────────────────────────────────────────
 
 def _check_postcondition(new_lot_id: str, prev_qty: int, split_count: int) -> Dict[str, Any]:
-    """执行 postCondition 校验：新批次存在 + 源批次数量已正确扣减"""
+    """执行 postCondition 校验：新批次存在（参数化查询防注入）"""
+    db = _get_mysql()
+    if db is None:
+        return {"passed": True, "warning": "postCondition SQL skip: DB unavailable"}
     try:
-        from app.services.query_executor import QueryExecutor
-        executor = QueryExecutor()
-        sql = f"SELECT id FROM matrix_routerx_lot WHERE current_lot_code = '{new_lot_id}' LIMIT 1"
-        result = executor.execute(sql)
-        rows = result.get("data", [])
+        rows = db.execute_query(
+            "SELECT id FROM matrix_routerx_lot WHERE current_lot_code = %s LIMIT 1",
+            (new_lot_id,),
+        )
         if not rows:
             return {"passed": False, "reason": f"postCondition: 新批次 {new_lot_id} 在 DB 中未找到"}
         return {"passed": True, "new_lot_id": new_lot_id}
     except Exception as e:
         logger.warning(f"[action_executor] postCondition SQL error: {e}")
         return {"passed": True, "warning": f"postCondition SQL skip: {e}"}
+    finally:
+        db.close()
 
 
 # ─────────────────────────────────────────────

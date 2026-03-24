@@ -91,6 +91,29 @@ def response_builder_node(state: AgentState) -> dict:
             },
             "visualization": visualization,
         }
+    elif intent == "action":
+        # ── 写操作执行响应 (Phase E) ──
+        action_result = state.get("action_result", {})
+        action_error = state.get("action_error", "")
+        if action_error:
+            response = {
+                "success": False,
+                "type": "action",
+                "error": action_error,
+                "message": action_error,
+                "query_time_ms": round(elapsed_ms, 1),
+            }
+        else:
+            # 优先使用 action_executor 已组装好的 response，补充耗时字段
+            pre_built = state.get("response", {})
+            response = {
+                "success": True,
+                "type": "action",
+                "message": pre_built.get("message", "✅ 操作执行成功"),
+                "action": pre_built.get("action", action_result.get("eventType", "")),
+                "data": action_result,
+                "query_time_ms": round(elapsed_ms, 1),
+            }
     elif intent == "clarification":
         # ── 澄清反问响应 ──
         question = state.get("clarification_question", "")
