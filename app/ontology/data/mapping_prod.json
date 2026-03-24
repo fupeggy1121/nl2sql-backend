@@ -1849,19 +1849,6 @@
     },
     {
       "logic_relation": "semi:actsOnWafer",
-      "description": "量测参数记录关联被量测的具体 Wafer 实例（N:1，wafer_id 外键）",
-      "strategy": "ForeignKey",
-      "join_logic": {
-        "source_table": "process_measure_data",
-        "source_key": "wafer_id",
-        "target_table": "matrix_routerx_operation_lot_wafer",
-        "target_key": "wafer_id"
-      },
-      "domain_class": "semi:MeasurementPassRecord",
-      "range_class": "semi:Wafer"
-    },
-    {
-      "logic_relation": "semi:actsOnWafer",
       "description": "生产事件执行记录关联逐片Wafer明细（Split/Merge/CheckIn/CheckOut/NGRecord的wafer粒度关联）",
       "strategy": "JoinVia",
       "join_logic": {
