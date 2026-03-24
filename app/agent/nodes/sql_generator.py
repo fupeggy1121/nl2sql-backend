@@ -687,7 +687,10 @@ def _format_semantic_context(semantic_ctx: dict) -> str:
         for f in filters:
             cond = f.get("physical_condition")
             if cond:
-                lines.append(f"  {f.get('description', '')}: {cond}")
+                lines.append(
+                    f"  ⚠ 【强制WHERE条件】 {f.get('description', '')}: "
+                    f"必须在WHERE子句中直接使用 {cond}"
+                )
             elif f.get("physical_values"):
                 vals = ", ".join(f"'{v}'" for v in f["physical_values"])
                 tbl = f.get("applies_to_table", "?")

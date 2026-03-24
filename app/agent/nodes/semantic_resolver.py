@@ -197,6 +197,7 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
                     # 在所有值域中查找与 (applies_to_table ∈ physical_tables, applies_to_column = attr) 匹配的映射
                     resolved_vm = None
                     resolved_domain = None
+                    # 第一轮：精确匹配列名（intent LLM 识别的 attribute 与 value_mapping applies_to_column 一致）
                     for domain in mapping.list_value_domains():
                         vm = mapping.map_value(domain, sv)
                         if (vm and vm.applies_to_column == attr
@@ -204,6 +205,20 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
                             resolved_vm = vm
                             resolved_domain = domain
                             break
+                    # 第二轮：宽松匹配（仅验证 applies_to_table；intent LLM 常混淆列名，
+                    # 如把 sub_status 写成 status，但语义值 key 是正确的）
+                    if resolved_vm is None:
+                        for domain in mapping.list_value_domains():
+                            vm = mapping.map_value(domain, sv)
+                            if vm and vm.applies_to_table in physical_tables_set:
+                                logger.info(
+                                    f"[semantic_resolver] P3-bridge 列名修正: "
+                                    f"intent attr='{attr}' → 正确列='{vm.applies_to_column}' "
+                                    f"(domain={domain}, sv={sv}, table={vm.applies_to_table})"
+                                )
+                                resolved_vm = vm
+                                resolved_domain = domain
+                                break
 
                     if resolved_vm:
                         pc = resolved_vm.physical_condition

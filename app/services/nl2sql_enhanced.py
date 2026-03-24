@@ -227,6 +227,7 @@ class EnhancedNL2SQLConverter:
    - 【指标定义】中的公式是计算逻辑的唯一权威来源，必须使用其 formula、anchor_table 和 auto_filter
    - 【涉及实体】中列出的所有维度类都是 GROUP BY 的依据，所有维度必须同时出现在 SELECT 和 GROUP BY 中
    - 【业务规则约束】中的路径示例仅为 JOIN 路径参考片段，禁止直接照搬，必须按当前查询的实际维度和指标重新组合
+   - 【语义过滤】中标有 ⚠ 【强制WHERE条件】 的每一行，冒号后的表达式（如 `carrier_info.sub_status = 0`）是 WHERE 子句的唯一权威值，必须完整照搬到 WHERE/AND 子句，禁止推断或替换为其他表达式
    - 如查询同时包含多个指标（如"在制品数量"+"良率"），为每个指标分别使用其定义的公式和路径，合并到同一 SELECT
 
 【输出要求】
