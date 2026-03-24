@@ -124,6 +124,18 @@ def query_planner_node(state: AgentState) -> dict:
     except Exception as _slot_err:
         logger.debug(f"[query_planner] intent_slots enrichment skipped: {_slot_err}")
 
+    # 安全守卫：用户明确说"所有"/"全部"/"all"时，清除 LLM 可能幻觉出的 limit
+    # （LLM 有时会对无批次过滤的宽泛查询臆造一个小 limit，导致截断结果）
+    import re as _re_planner
+    if query_plan.get("limit") and _re_planner.search(
+        r'所有|全部|\ball\b', effective_input, _re_planner.IGNORECASE
+    ):
+        logger.info(
+            f"[query_planner] User said '所有/全部/all' but LLM set "
+            f"limit={query_plan['limit']} — clearing hallucinated limit"
+        )
+        query_plan["limit"] = None
+
     logger.info(f"[query_planner] Plan: table={query_plan['table']}, "
                 f"metrics={query_plan['metrics']}")
 

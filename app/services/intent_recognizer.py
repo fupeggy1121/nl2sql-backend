@@ -411,6 +411,7 @@ class IntentRecognizer:
 - metric       : SELECT 聚合指标（聚合时必填），如 "入库数量" / "库存数量" / "批次数"
 - sort_order   : 排序方向 "DESC" | "ASC"（无排序要求时填 null）
 - limit_n      : 取前N条的整数（如 Top3 → 3，无限制时填 null）
+  ⚠ 用户说"所有"/"全部"/"all"时 limit_n 必须填 null，禁止猜测一个小数值
 - filter_hints : 过滤条件列表（自然语言），如 ["状态=已完成", "时间范围=本月", "仓库=仓库01"]
 - reasoning    : 槽填充的简短推理说明
 
@@ -469,9 +470,16 @@ A: intent=need_clarification, query_type=LIST, target_class_hints=[], semantic_f
    clarification_question="请问您想查询的是哪个批次号？（例如：LT-2024-001）",
    intent_slots={{"subject":null,"action":null,"dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"缺少批次号和查询类型，无法生成SQL"}}
 
+Q: "查询批次的所有进站记录"
+A: intent=need_clarification, query_type=LIST, target_class_hints=["semi:CheckInEventRecord"], semantic_filters=[],
+   clarification_question="请问您想查询哪个批次的进站记录？请提供批次号（例如：LT-2024-001）",
+   intent_slots={{"subject":"进站记录","action":"查询列表","dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"进站记录类型明确（CheckInEventRecord），但缺少批次号过滤，不宜全表扫描"}}
+
 ## 何时使用 need_clarification
-仅在以下情况使用：查询对象完全不明确（无批次号/设备/工序）且查询类型也未知，置信度 < 0.65。
-⚠ 不要滥用——大多数业务问题即使信息不完整也可以先尝试生成 SQL。
+以下任一情况使用：
+1. 查询对象完全不明确（无批次号/设备/工序）且查询类型也未知，置信度 < 0.65
+2. 查询类型明确是事件记录类（CheckInEventRecord/CheckOutEventRecord/MeasurementPassRecord 等），但没有指定批次号/lot_code 过滤条件（全表扫描风险）
+⚠ 不要滥用——主数据查询（Carrier/Equipment/ProcessStation/Inventory 等）即使无过滤也可直接生成 SQL。
 
 ## 当前用户输入
 "{text}"

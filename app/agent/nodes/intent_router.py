@@ -116,7 +116,7 @@ def intent_router_node(state: AgentState) -> dict:
     confidence = intent_data.get("confidence", 1.0)
     target_hints = intent_data.get("target_class_hints", [])
 
-    # 被动澄清触发：置信度低 且 未匹配到任何类（LLM 没有主动发起澄清时的兜底）
+    # 被动澄清触发1：置信度低 且 未匹配到任何类（LLM 没有主动发起澄清时的兜底）
     if (
         raw_intent not in ("chat", "knowledge_qa", "explain", "write_action", "need_clarification")
         and confidence < _CLARIFICATION_CONFIDENCE_THRESHOLD
@@ -130,6 +130,42 @@ def intent_router_node(state: AgentState) -> dict:
             intent_data["clarification_question"] = (
                 "请问您想查询的是哪个批次号？（例如：LT-2024-001）"
             )
+
+    # 被动澄清触发2：已知事件记录类，但缺少批次/标识符过滤条件
+    # 没有批次号的事件记录查询会扫全表（可能数百万行），必须先问清楚
+    _EVENT_RECORD_CLASSES = {
+        "semi:ProductionEventRecord",
+        "semi:CheckInEventRecord",
+        "semi:CheckOutEventRecord",
+        "semi:MeasurementPassRecord",
+        "semi:SplitEventRecord",
+        "semi:MergeEventRecord",
+        "semi:AccumulateEventRecord",
+        "semi:HoldEventRecord",
+        "semi:ReleaseEventRecord",
+        "semi:NGRecordEventRecord",
+    }
+    if (
+        raw_intent not in ("need_clarification", "chat", "knowledge_qa", "explain", "write_action")
+        and target_hints
+        and all(h in _EVENT_RECORD_CLASSES for h in target_hints)
+    ):
+        # 检查 semantic_filters 和 filter_hints 中是否已有批次/lot标识符
+        _filter_hints_list = intent_data.get("intent_slots", {}).get("filter_hints", [])
+        _sem_filters_str = " ".join(str(f) for f in semantic_filters)
+        _hint_str = " ".join(str(h) for h in _filter_hints_list)
+        _lot_keywords = ("lot", "batch", "批次", "lot_code", "sublot", "sub_lot", "工单")
+        _has_lot_filter = any(kw in (_sem_filters_str + _hint_str).lower() for kw in _lot_keywords)
+        if not _has_lot_filter:
+            logger.info(
+                f"[intent_router] Event-record class(es) {target_hints} "
+                "without lot/batch filter → clarification"
+            )
+            raw_intent = "need_clarification"
+            if not intent_data.get("clarification_question"):
+                intent_data["clarification_question"] = (
+                    "请问您想查询哪个批次的记录？请提供批次号（例如：LT-2024-001）"
+                )
 
     route = INTENT_ROUTE_MAP.get(raw_intent, "query")
 
