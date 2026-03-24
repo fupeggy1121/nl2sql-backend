@@ -12,7 +12,7 @@ OWL TTL 是语义契约，relation_mappings 是物理实现，
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
 
 from rdflib import Graph as RDFGraph, Namespace, URIRef
 from rdflib.namespace import OWL, RDF, RDFS
@@ -58,10 +58,12 @@ def _resolve_domain_range(rdf_graph: RDFGraph, prop_uri: URIRef, pred: URIRef) -
     return results
 
 
-def _parse_ttl_object_properties(ttl_path: str) -> Dict[str, Dict[str, List[str]]]:
+def _parse_ttl_object_properties(
+    ttl_path: str,
+) -> tuple:  # (Dict[str, Dict[str, List[str]]], RDFGraph)
     """
-    解析 TTL，返回:
-      {
+    解析 TTL，返回 (props, graph)。
+      props: {
         "semi:belongsToLot": {
             "domain": ["semi:Wafer"],
             "range":  ["semi:ProductionLot"]
@@ -69,6 +71,7 @@ def _parse_ttl_object_properties(ttl_path: str) -> Dict[str, Dict[str, List[str]
         ...
       }
     range 可能为空列表（modifiesStateVector）或多元素列表（unionOf）。
+    graph: 已解析的 RDFGraph，供 _build_class_ancestors 复用。
     """
     g = RDFGraph()
     g.parse(ttl_path, format="turtle")
@@ -79,7 +82,37 @@ def _parse_ttl_object_properties(ttl_path: str) -> Dict[str, Dict[str, List[str]
             "domain": _resolve_domain_range(g, prop_uri, RDFS.domain),
             "range":  _resolve_domain_range(g, prop_uri, RDFS.range),
         }
-    return props
+    return props, g
+
+
+def _build_class_ancestors(rdf_graph: RDFGraph) -> Dict[str, Set[str]]:
+    """
+    解析 rdfs:subClassOf，计算传递性祖先集。
+    返回 {short_class_name: set_of_all_ancestor_short_names}。
+    例：semi:CheckInEventRecord → {semi:ProductionEventRecord, semi:Action, ...}
+    """
+    direct_parents: Dict[str, List[str]] = {}
+    for subclass, _, superclass in rdf_graph.triples((None, RDFS.subClassOf, None)):
+        if isinstance(subclass, URIRef) and isinstance(superclass, URIRef):
+            sub, sup = _short(subclass), _short(superclass)
+            direct_parents.setdefault(sub, []).append(sup)
+
+    memo: Dict[str, Set[str]] = {}
+
+    def _get_ancestors(cls: str) -> Set[str]:
+        if cls in memo:
+            return memo[cls]
+        parents: Set[str] = set(direct_parents.get(cls, []))
+        all_anc: Set[str] = set(parents)
+        for p in parents:
+            all_anc |= _get_ancestors(p)
+        memo[cls] = all_anc
+        return all_anc
+
+    for cls in list(direct_parents):
+        _get_ancestors(cls)
+
+    return memo
 
 
 def validate_relation_mappings(
@@ -105,7 +138,8 @@ def validate_relation_mappings(
     List[str]
         校验问题描述列表（strict=False 时使用）；strict=True 且有问题时抛异常
     """
-    ttl_props = _parse_ttl_object_properties(ttl_path)
+    ttl_props, ttl_graph = _parse_ttl_object_properties(ttl_path)
+    class_ancestors = _build_class_ancestors(ttl_graph)
     issues: List[str] = []
 
     all_rels = dict(mapping._relation_map)
@@ -135,13 +169,26 @@ def validate_relation_mappings(
             issues.append(msg)
             logger.warning(msg)
         elif mapping_domain and ttl_domain and mapping_domain not in ttl_domain:
-            msg = (
-                f"[DOMAIN_MISMATCH] {logic_rel}: "
-                f"mapping.domain_class={mapping_domain!r}"
-                f" vs TTL domain={ttl_domain}"
+            # Allow if mapping_domain is an OWL superclass of every class in TTL domain
+            # (mapping uses abstract parent; TTL declares precise subclass union)
+            is_superclass = all(
+                mapping_domain in class_ancestors.get(ttl_cls, set())
+                for ttl_cls in ttl_domain
             )
-            issues.append(msg)
-            logger.warning(msg)
+            if is_superclass:
+                logger.debug(
+                    f"[DOMAIN_SUPERCLASS_OK] {logic_rel}: "
+                    f"mapping.domain_class={mapping_domain!r} is OWL superclass of "
+                    f"TTL domain={ttl_domain}"
+                )
+            else:
+                msg = (
+                    f"[DOMAIN_MISMATCH] {logic_rel}: "
+                    f"mapping.domain_class={mapping_domain!r}"
+                    f" vs TTL domain={ttl_domain}"
+                )
+                issues.append(msg)
+                logger.warning(msg)
 
         # ── 3. range_class 比对 ────────────────────────────────────────────
         mapping_range_raw: Optional[Union[str, List[str]]] = getattr(rm, "range_class", None)

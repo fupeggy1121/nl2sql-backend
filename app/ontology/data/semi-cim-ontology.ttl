@@ -250,14 +250,16 @@ semi:anchoredAtStation a owl:ObjectProperty ;
 
 # 2.5 动作驱动与跳转 (Action Logic)
 semi:hasInput a owl:ObjectProperty ;
-    rdfs:domain semi:ProductionEvent ; rdfs:range semi:ProductionLot ;
+    rdfs:domain semi:ProductionEvent ;
+    rdfs:range [ a owl:Class ; owl:unionOf (semi:ProductionLot semi:Wafer) ] ;
     rdfs:label "动作输入" ;
-    rdfs:comment "本次操作的输入批次（ProductionLot）。domain 为 semi:ProductionEvent（事件类型），不继承自抽象父类 Action。具体执行记录中的批次关联见 semi:ProductionEventRecord.actsOnLot。" .
+    rdfs:comment "本次操作的输入对象（ProductionLot 或 Wafer）。domain 为 semi:ProductionEvent（事件类型），不继承自抽象父类 Action。具体执行记录中的批次关联见 semi:ProductionEventRecord.actsOnLot。" .
 
 semi:hasOutput a owl:ObjectProperty ;
-    rdfs:domain semi:ProductionEvent ; rdfs:range semi:ProductionLot ;
+    rdfs:domain semi:ProductionEvent ;
+    rdfs:range [ a owl:Class ; owl:unionOf (semi:ProductionLot semi:Wafer) ] ;
     rdfs:label "动作输出" ;
-    rdfs:comment "本次操作产生的输出批次（ProductionLot）。domain 为 semi:ProductionEvent（事件类型），不继承自抽象父类 Action。具体执行记录中的批次关联见 semi:ProductionEventRecord.producesLot。" .
+    rdfs:comment "本次操作产生的输出对象（ProductionLot 或 Wafer）。domain 为 semi:ProductionEvent（事件类型），不继承自抽象父类 Action。具体执行记录中的批次关联见 semi:ProductionEventRecord.producesLot。" .
 
 semi:modifiesStateVector a owl:ObjectProperty ;
     rdfs:domain semi:Action ; rdfs:label "修改状态向量" ;
@@ -327,7 +329,7 @@ semi:isInstanceOfEvent a owl:ObjectProperty ;
         a owl:Class ;
         owl:unionOf (semi:SplitEventRecord semi:MergeEventRecord semi:AccumulateEventRecord
                      semi:HoldEventRecord semi:ReleaseEventRecord semi:NGRecordEventRecord
-                     semi:CheckInEventRecord semi:CheckOutEventRecord semi:MeasurementPassRecord)
+                     semi:CheckInEventRecord semi:CheckOutEventRecord)
     ] ;
     rdfs:range semi:ProductionEvent ;
     rdfs:label "事件实例记录" ;
@@ -338,7 +340,7 @@ semi:actsOnLot a owl:ObjectProperty ;
         a owl:Class ;
         owl:unionOf (semi:SplitEventRecord semi:MergeEventRecord semi:AccumulateEventRecord
                      semi:HoldEventRecord semi:ReleaseEventRecord semi:NGRecordEventRecord
-                     semi:CheckInEventRecord semi:CheckOutEventRecord semi:MeasurementPassRecord)
+                     semi:CheckInEventRecord semi:CheckOutEventRecord)
     ] ;
     rdfs:range semi:ProductionLot ;
     rdfs:label "作用批次" ;
@@ -1412,6 +1414,22 @@ semi:outboundFromLocation a owl:ObjectProperty ;
     rdfs:domain semi:OutboundEventRecord ; rdfs:range semi:WarehouseLocation ;
     rdfs:label "出库源库位" ;
     rdfs:comment "本次出库操作的源存储库位。" .
+
+# 8.5b 批次位置与库存更新关联属性
+semi:storedAtLocation a owl:ObjectProperty ;
+    rdfs:domain semi:MaterialBatch ; rdfs:range semi:WarehouseLocation ;
+    rdfs:label "批次当前库位" ;
+    rdfs:comment "物料批次实例存放在哪个库位（warehouse_inventory.warehouse_id → warehouse_model.id）。建立批次实例←→库位之间的空间位置关系，支持'某批次在哪个库位'和'某库位有哪些批次'双向查询。" .
+
+semi:recordsBatch a owl:ObjectProperty ;
+    rdfs:domain semi:OutboundEventRecord ; rdfs:range semi:MaterialBatch ;
+    rdfs:label "出库明细关联物料批次" ;
+    rdfs:comment "出库明细行通过 batch_no/unique_code+warehouse_id 软关联到 warehouse_inventory 批次快照行（semi:MaterialBatch）。支持出库操作←→批次实例之间的语义连接，支持批次追溯和出库历史查询。" .
+
+semi:updatesInventory a owl:ObjectProperty ;
+    rdfs:domain semi:InboundEventRecord ; rdfs:range semi:Inventory ;
+    rdfs:label "入库明细更新库存快照" ;
+    rdfs:comment "入库记录明细生成后同步更新 warehouse_inventory 库存快照行（semi:Inventory.quantity 字段）。物理映射：warehouse_input_record_bill_detail 通过 batch_no/unique_code+warehouse_id 定位 warehouse_inventory 行。" .
 
 # 8.6 入库单-明细包含关系
 semi:containsInboundDetail a owl:ObjectProperty ;
