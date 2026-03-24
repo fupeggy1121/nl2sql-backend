@@ -31,8 +31,9 @@ from app.agent.nodes import (
     chart_generator_node,
     response_builder_node,
     memory_saver_node,
-    rag_chat_node,          # Phase D 新增
-    action_executor_node,   # Phase E 新增
+    rag_chat_node,            # Phase D 新增
+    action_executor_node,     # Phase E 新增
+    clarification_node,       # Clarification 新增
 )
 
 logger = logging.getLogger(__name__)
@@ -45,17 +46,19 @@ def _route_by_intent(state: AgentState) -> str:
     """条件边：根据意图路由到不同分支"""
     intent = state.get("intent", "query")
     if intent == "query":
-        return "semantic_resolver"   # Phase 3: 先经语义解析
+        return "semantic_resolver"      # Phase 3: 先经语义解析
     elif intent == "chat":
-        return "rag_chat"        # Phase D: 路由到 RAG 问答节点
+        return "rag_chat"               # Phase D: 路由到 RAG 问答节点
     elif intent == "action":
-        return "action_executor"  # Phase E: 写操作执行节点
+        return "action_executor"        # Phase E: 写操作执行节点
+    elif intent == "clarification":
+        return "clarification_node"     # Clarification: 意图模糊，反问用户
     elif intent == "alert":
-        return "response_builder"  # Phase 后续
+        return "response_builder"       # Phase 后续
     elif intent == "schedule":
-        return "response_builder"  # Phase 后续
+        return "response_builder"       # Phase 后续
     else:
-        return "semantic_resolver"   # Phase 3: 默认也经语义解析
+        return "semantic_resolver"      # Phase 3: 默认也经语义解析
 
 
 def _route_after_execution(state: AgentState) -> str:
@@ -160,8 +163,9 @@ def build_agent_graph() -> StateGraph:
     graph.add_node("chart_generator", chart_generator_node)
     graph.add_node("response_builder", response_builder_node)
     graph.add_node("memory_saver", memory_saver_node)         # Phase C
-    graph.add_node("rag_chat", rag_chat_node)                 # Phase D 新增
-    graph.add_node("action_executor", action_executor_node)   # Phase E 新增
+    graph.add_node("rag_chat", rag_chat_node)                   # Phase D 新增
+    graph.add_node("action_executor", action_executor_node)     # Phase E 新增
+    graph.add_node("clarification_node", clarification_node)    # Clarification 新增
 
     # ── 入口: memory_loader ──
     graph.set_entry_point("memory_loader")
@@ -174,12 +178,16 @@ def build_agent_graph() -> StateGraph:
         "intent_router",
         _route_by_intent,
         {
-            "semantic_resolver": "semantic_resolver",  # Phase 3: query → 语义解析
-            "rag_chat": "rag_chat",                 # Phase D: chat → rag_chat
-            "action_executor": "action_executor",    # Phase E: write → action_executor
+            "semantic_resolver": "semantic_resolver",     # Phase 3: query → 语义解析
+            "rag_chat": "rag_chat",                       # Phase D: chat → rag_chat
+            "action_executor": "action_executor",         # Phase E: write → action_executor
+            "clarification_node": "clarification_node",  # Clarification: 反问用户
             "response_builder": "response_builder",
         },
     )
+
+    # ── 固定边: 澄清节点 → 响应构建（直接返回反问，不跑 query pipeline）──
+    graph.add_edge("clarification_node", "response_builder")
 
     # ── 固定边: 语义解析 → 查询规划（LLM 始终参与 SQL 生成，业务规则模板作为提示注入）──
     graph.add_edge("semantic_resolver", "query_planner")

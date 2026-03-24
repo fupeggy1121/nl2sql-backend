@@ -91,6 +91,16 @@ def response_builder_node(state: AgentState) -> dict:
             },
             "visualization": visualization,
         }
+    elif intent == "clarification":
+        # ── 澄清反问响应 ──
+        question = state.get("clarification_question", "")
+        response = {
+            "success": True,
+            "type": "clarification",
+            "clarification_question": question,
+            "message": question,
+            "query_time_ms": round(elapsed_ms, 1),
+        }
     else:
         # ── 其他意图（chat/alert/schedule）暂返回占位 ──
         response = {

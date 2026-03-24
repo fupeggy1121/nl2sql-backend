@@ -464,16 +464,26 @@ A: intent=direct_query, query_type=LIST, target_class_hints=["semi:MeasurementPa
    semantic_filters=[{{"attribute":"lot_code","semantic_value":"LT-2024"}}],
    intent_slots={{"subject":"量测记录","action":"查询列表","dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":["批次=LT-2024"],"reasoning":"量测记录→MeasurementPassRecord，与过站进出站记录不同"}}
 
+Q: "查一下那个批次的数据"
+A: intent=need_clarification, query_type=LIST, target_class_hints=[], semantic_filters=[],
+   clarification_question="请问您想查哪个批次？另外您想查看的是：进出站记录、量测参数，还是批次基本信息？",
+   intent_slots={{"subject":null,"action":null,"dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"缺少批次号和查询类型，无法生成SQL"}}
+
+## 何时使用 need_clarification
+仅在以下情况使用：查询对象完全不明确（无批次号/设备/工序）且查询类型也未知，置信度 < 0.65。
+⚠ 不要滥用——大多数业务问题即使信息不完整也可以先尝试生成 SQL。
+
 ## 当前用户输入
 "{text}"
 
 ## 输出要求
 必须返回合法 JSON，不允许有注释或 markdown 代码块：
 {{
-    "intent": "direct_query|query_production|query_quality|query_equipment|generate_report|compare_analysis|chat|knowledge_qa|explain|write_action",
+    "intent": "direct_query|query_production|query_quality|query_equipment|generate_report|compare_analysis|chat|knowledge_qa|explain|write_action|need_clarification",
     "query_type": "LIST|COUNT|AGGREGATE|TREND",
     "target_class_hints": ["semi:Carrier"],
     "semantic_filters": [{{"attribute": "status", "semantic_value": "Available"}}],
+    "clarification_question": "仅在 intent=need_clarification 时填写，其余填 null",
     "intent_slots": {{
         "subject": "查询主体（自然语言）或 null",
         "action": "查询列表|统计聚合|计数|趋势分析",

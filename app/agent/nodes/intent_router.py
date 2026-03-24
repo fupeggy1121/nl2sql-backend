@@ -23,11 +23,15 @@ INTENT_ROUTE_MAP = {
     "query_equipment": "query",
     "generate_report": "query",
     "compare_analysis": "query",
-    "chat": "chat",                    # Phase D: 路由到 rag_chat 节点
-    "knowledge_qa": "chat",            # Phase D: 知识问答
-    "explain": "chat",                 # Phase D: 解释说明类
-    "write_action": "action",          # Phase E: 写操作 → action_executor
+    "chat": "chat",                         # Phase D: 路由到 rag_chat 节点
+    "knowledge_qa": "chat",                 # Phase D: 知识问答
+    "explain": "chat",                      # Phase D: 解释说明类
+    "write_action": "action",               # Phase E: 写操作 → action_executor
+    "need_clarification": "clarification",  # Clarification: 意图模糊，需反问
 }
+
+# 触发澄清的置信度阈值
+_CLARIFICATION_CONFIDENCE_THRESHOLD = 0.7
 
 
 def intent_router_node(state: AgentState) -> dict:
@@ -107,8 +111,27 @@ def intent_router_node(state: AgentState) -> dict:
         if not is_followup:
             intent_cache.set(_cache_key, intent_data)
 
-    # 映射意图到路由
+    # 映射意图到路由（need_clarification 或低置信度兜底均触发澄清）
     raw_intent = intent_data.get("intent", "direct_query")
+    confidence = intent_data.get("confidence", 1.0)
+    target_hints = intent_data.get("target_class_hints", [])
+
+    # 被动澄清触发：置信度低 且 未匹配到任何类（LLM 没有主动发起澄清时的兜底）
+    if (
+        raw_intent not in ("chat", "knowledge_qa", "explain", "write_action", "need_clarification")
+        and confidence < _CLARIFICATION_CONFIDENCE_THRESHOLD
+        and not target_hints
+    ):
+        logger.info(
+            f"[intent_router] Low confidence ({confidence:.2f}) + no class hints → clarification"
+        )
+        raw_intent = "need_clarification"
+        if not intent_data.get("clarification_question"):
+            intent_data["clarification_question"] = (
+                f"您的问题我不太确定是哪类查询，"
+                "能否告诉我您想查的是：进出站记录、量测参数、批次信息还是其他内容？"
+            )
+
     route = INTENT_ROUTE_MAP.get(raw_intent, "query")
 
     logger.info(
