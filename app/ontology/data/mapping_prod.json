@@ -273,6 +273,7 @@
         "semi:hasMaintenanceCountdown": "maintenance_countdown",
         "semi:hasRemainingLife": "remaining_useful_life"
       },
+      "note": "载具状态字段说明（均为整数枚举，禁止生成字符串值）：① status（维护状态 semi:CarrierMaintenanceStatus）：1=保养中(Maintenance) / 2=可用(Available) / 3=待保养(PendingMaintenance)；② sub_status（装载状态 semi:CarrierLoadStatus）：0=空载/为空/空的(Empty) / 1=有料/非空(Loaded)。查询'空载具/为空的载具/空的载具'时过滤条件应为 sub_status = 0，不是 status = 'Empty'。查询'可用载具'时过滤条件应为 status = 2。两个字段独立：可用且空载 = status=2 AND sub_status=0。",
       "key_columns": [
         "id",
         "code",
@@ -3251,7 +3252,7 @@
     },
     "semi:CarrierLoadStatus": {
       "Empty": {
-        "description": "载具空载（无物料装载）",
+        "description": "载具空载（无物料装载），sub_status = 0",
         "physical_condition": "carrier_info.sub_status = 0",
         "applies_to_table": "carrier_info",
         "applies_to_column": "sub_status",
@@ -3262,7 +3263,14 @@
           "无物料",
           "无物料载具",
           "未装载",
-          "未装载载具"
+          "未装载载具",
+          "为空",
+          "空的",
+          "空的载具",
+          "载具为空",
+          "空闲载具",
+          "空片篮",
+          "空花篮"
         ]
       },
       "Loaded": {
