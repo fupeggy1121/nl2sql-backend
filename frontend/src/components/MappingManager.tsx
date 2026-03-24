@@ -1082,7 +1082,7 @@ function RelationMappingsTab() {
                   </tr>
                 )}
               </React.Fragment>
-            );})
+            );})}
           </tbody>
         </table>
       </div>

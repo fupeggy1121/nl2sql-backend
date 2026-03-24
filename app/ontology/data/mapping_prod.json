@@ -866,11 +866,7 @@
       "virtual": false,
       "properties": {
         "semi:hasEventStartTime": "gmt_create",
-        "semi:hasOperatorId": "operator_id",
-        "semi:hasLotStatusBefore": "before_state",
-        "semi:hasLotStatusAfter": "after_state",
-        "semi:hasLotCode": "lot_code",
-        "semi:producesLot": "output_lot_code"
+        "semi:hasOperatorId": "operator_id"
       },
       "key_columns": [
         "id",
@@ -896,7 +892,7 @@
         "gmt_create"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "拆批操作执行记录，filter_condition = operation_type=1。output_lot_id/output_lot_code 指向新产出批次（producesLot）。拆批专用子属性：splitsFromLot(源主批次)/splitsFromSublot(源子批次)/chooseSourceWafer(源wafer)/assignsWaferToLot(目标主批次wafer分配)/assignsWaferToSublot(目标子批次wafer分配)。谱系操作，_detail 通过 extra→isSource 区分源/目标侧，_wafer_detail_log 每个 wafer 写两行。"
+      "note": "拆批操作执行记录，filter_condition = operation_type=1。拆批专用子属性：splitsFromLot(源主批次)/splitsFromSublot(源子批次)/chooseSourceWafer(源wafer)/assignsWaferToLot(目标主批次wafer分配)/assignsWaferToSublot(目标子批次wafer分配)。谱系操作，_detail 通过 extra→isSource 区分源/目标侧，_wafer_detail_log 每个 wafer 写两行。"
     },
     {
       "logic_class": "semi:HoldEvent",
@@ -916,10 +912,6 @@
       "virtual": false,
       "properties": {
         "semi:hasEventStartTime": "gmt_create",
-        "semi:hasLotCode": "lot_code",
-        "semi:hasProductCode": "product_code",
-        "semi:hasProcessCode": "process_code",
-        "semi:hasProcessName": "process_name",
         "semi:hasOperatorId": "create_user_id",
         "semi:hasOperator": "create_user",
         "semi:hasExtraInfo": "extra"
@@ -968,10 +960,6 @@
       "virtual": false,
       "properties": {
         "semi:hasEventStartTime": "gmt_create",
-        "semi:hasLotCode": "lot_code",
-        "semi:hasProductCode": "product_code",
-        "semi:hasProcessCode": "process_code",
-        "semi:hasProcessName": "process_name",
         "semi:hasOperatorId": "create_user_id",
         "semi:hasOperator": "create_user",
         "semi:hasExtraInfo": "extra"
@@ -1020,8 +1008,6 @@
       "virtual": false,
       "properties": {
         "semi:hasEventStartTime": "gmt_create",
-        "semi:hasLotCode": "lot_code",
-        "semi:hasProcessCode": "process_code",
         "semi:hasOperatorId": "operator_id"
       },
       "key_columns": [
@@ -1068,10 +1054,6 @@
       "virtual": false,
       "properties": {
         "semi:hasEventStartTime": "gmt_create",
-        "semi:hasLotCode": "lot_code",
-        "semi:hasProcessCode": "process_code",
-        "semi:hasProcessName": "process_name",
-        "semi:hasEquipmentId": "equipment_id",
         "semi:hasOperatorId": "operator_id"
       },
       "key_columns": [
@@ -1118,9 +1100,6 @@
       "virtual": false,
       "properties": {
         "semi:hasEventStartTime": "gmt_create",
-        "semi:hasLotCode": "lot_code",
-        "semi:hasProcessCode": "process_code",
-        "semi:hasProcessName": "process_name",
         "semi:hasOperatorId": "operator_id"
       },
       "key_columns": [
@@ -1167,12 +1146,7 @@
       "virtual": false,
       "properties": {
         "semi:hasEventStartTime": "gmt_create",
-        "semi:hasLotCode": "lot_code",
-        "semi:hasProductCode": "product_code",
-        "semi:hasProcessCode": "process_code",
-        "semi:hasProcessName": "process_name",
-        "semi:hasOperatorId": "operator_id",
-        "semi:producesLotCode": "output_lot_code"
+        "semi:hasOperatorId": "operator_id"
       },
       "key_columns": [
         "id",
@@ -1217,12 +1191,7 @@
       "virtual": false,
       "properties": {
         "semi:hasEventStartTime": "gmt_create",
-        "semi:hasLotCode": "lot_code",
-        "semi:hasProductCode": "product_code",
-        "semi:hasProcessCode": "process_code",
-        "semi:hasProcessName": "process_name",
-        "semi:hasOperatorId": "operator_id",
-        "semi:mergesIntoLotCode": "output_lot_code"
+        "semi:hasOperatorId": "operator_id"
       },
       "key_columns": [
         "id",
@@ -1929,7 +1898,12 @@
         "via_target_key": "sub_lot_id",
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "id",
-        "snapshot_columns": ["sub_lot_code", "carrier_code", "process_code", "extra"],
+        "snapshot_columns": [
+          "sub_lot_code",
+          "carrier_code",
+          "process_code",
+          "extra"
+        ],
         "note": "通过 _detail 中间表关联：batch_resume_log_id→主事件记录，sub_lot_id→子批次实例（matrix_routerx_operation_lot WHERE parent_id!=0）。快照列 carrier_code/process_code 记录事件执行时刻的子批次上下文。extra(JSON) 含 isSource 标记：谱系操作时 isSource=true=源侧, false=目标侧。适用于全部 operation_type。"
       },
       "domain_class": "semi:ProductionEventRecord",
@@ -1949,7 +1923,12 @@
         "via2_target_key": "wafer_id",
         "target_table": "matrix_routerx_operation_lot_wafer",
         "target_key": "wafer_id",
-        "snapshot_columns": ["sub_lot_code", "carrier_code", "slot_no", "ng_code"],
+        "snapshot_columns": [
+          "sub_lot_code",
+          "carrier_code",
+          "slot_no",
+          "ng_code"
+        ],
         "note": "两跳JoinVia：_resume_log.id → _detail.batch_resume_log_id → _detail.id = _wafer_detail_log.batch_resume_detail_log_id → _wafer_detail_log.wafer_id → Wafer实例。谱系操作时每个 wafer 写两行（源侧+目标侧，分别关联不同 _detail 行）。"
       },
       "domain_class": "semi:ProductionEventRecord",
@@ -2738,7 +2717,11 @@
         "via_filter": "JSON_EXTRACT(extra, '$.isSource') = true",
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "id",
-        "snapshot_columns": ["sub_lot_code", "carrier_code", "process_code"],
+        "snapshot_columns": [
+          "sub_lot_code",
+          "carrier_code",
+          "process_code"
+        ],
         "note": "通过 _detail WHERE extra→isSource=true 过滤源侧子批次行，sub_lot_id 关联 Sublot 实例。"
       },
       "domain_class": "semi:SplitEventRecord",
@@ -2759,7 +2742,11 @@
         "via2_target_key": "wafer_id",
         "target_table": "matrix_routerx_operation_lot_wafer",
         "target_key": "wafer_id",
-        "snapshot_columns": ["sub_lot_code", "carrier_code", "slot_no"],
+        "snapshot_columns": [
+          "sub_lot_code",
+          "carrier_code",
+          "slot_no"
+        ],
         "note": "三跳路径：_resume_log → _detail(isSource=true) → _wafer_detail_log → Wafer。过滤源侧 _detail 行后，找到关联的 wafer 即为被选择拆出的晶圆。_wafer_detail_log.sub_lot_code 记录 wafer 原属子批次。"
       },
       "domain_class": "semi:SplitEventRecord",
@@ -2780,7 +2767,11 @@
         "via2_target_key": "wafer_id",
         "target_table": "matrix_routerx_operation_lot_wafer",
         "target_key": "wafer_id",
-        "snapshot_columns": ["sub_lot_code", "carrier_code", "slot_no"],
+        "snapshot_columns": [
+          "sub_lot_code",
+          "carrier_code",
+          "slot_no"
+        ],
         "note": "三跳路径：_resume_log → _detail(isSource=false) → _wafer_detail_log → Wafer。新主批次可通过 _detail.extra→targetLotCode 获取。_wafer_detail_log.sub_lot_code 记录 wafer 目标子批次。"
       },
       "domain_class": "semi:SplitEventRecord",
@@ -2801,7 +2792,11 @@
         "via2_target_key": "wafer_id",
         "target_table": "matrix_routerx_operation_lot_wafer",
         "target_key": "wafer_id",
-        "snapshot_columns": ["sub_lot_code", "carrier_code", "slot_no"],
+        "snapshot_columns": [
+          "sub_lot_code",
+          "carrier_code",
+          "slot_no"
+        ],
         "note": "路径同 assignsWaferToLot，但语义焦点在子批次维度。_detail(isSource=false).sub_lot_code 为目标子批次编号，_wafer_detail_log.sub_lot_code 同样记录了该 wafer 被分配到的目标子批次。支持按子批次粒度查询拆批后 wafer 的分配明细。"
       },
       "domain_class": "semi:SplitEventRecord",
