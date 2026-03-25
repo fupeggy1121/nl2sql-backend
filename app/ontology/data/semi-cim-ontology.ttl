@@ -395,7 +395,7 @@ semi:assignsWaferToSublot a owl:ObjectProperty ;
 semi:mergesIntoLot a owl:ObjectProperty ;
     rdfs:domain semi:MergeEventRecord ; rdfs:range semi:ProductionLot ;
     rdfs:label "并入目标批次" ;
-    rdfs:comment "并批操作的接收方/目标批次（原父批次）。并批后源批次（actsOnLot）下所有 Sublot 和 Wafer 的 lot_id 归属更新指向此目标批次。区别于 actsOnLot：actsOnLot 是操作的源批次（被消耗方），mergesIntoLot 是目标批次（接收方）。物理对应：matrix_routerx_operation_lot_batch_resume_log.output_lot_code / output_lot_id FK。" .
+    rdfs:comment "并批操作的接收方/目标批次（原父批次）。并批后源批次（actsOnLot）下所有 Sublot 和 Wafer 的 lot_id 归属更新指向此目标批次。区别于 actsOnLot：actsOnLot 是操作的源批次（被消耗方），mergesIntoLot 是目标批次（接收方）。⚠ output_lot_id 和 output_lot_code 列不存在于主表 matrix_routerx_operation_lot_batch_resume_log（物理扫描确认19列中无此字段），目标批次信息通过 _detail 中间表 extra JSON 字段推导，此关系不提供直接 FK JOIN 路径。" .
 
 # 2.7 载具层级关联 (Carrier Hierarchy)
 semi:belongsToGroup a owl:ObjectProperty ;
@@ -1007,7 +1007,7 @@ semi:SplitEventRecord a owl:Class ;
 semi:MergeEvent a owl:Class ;
     rdfs:subClassOf semi:ProductionEvent ;
     rdfs:label "并批事件类型" ;
-    rdfs:comment "定义并批（Merge）操作的规则/类型模板。对应 operation_type=2。将已拆分的子批次重新归并回其父批次：源批次（lot_id）下所有 Sublot 和 Wafer 的归属更新为目标批次（output_lot_id），源批次状态设为完结。⚠ 谱系操作（is_genealogy_event=True），执行后 DAG 中源节点归并为 Merge 汇聚节点。执行记录层见 semi:MergeEventRecord。" ;
+    rdfs:comment "定义并批（Merge）操作的规则/类型模板。对应 operation_type=2。将已拆分的子批次重新归并回其父批次：源批次（lot_id）下所有 Sublot 和 Wafer 的归属更新为目标批次，源批次状态设为完结。⚠ output_lot_id 列不存在于物理表 _resume_log（概念性引用），目标批次通过 _detail.extra 字段推导。⚠ 谱系操作（is_genealogy_event=True），执行后 DAG 中源节点归并为 Merge 汇聚节点。执行记录层见 semi:MergeEventRecord。" ;
     semi:preCondition "SourceLot.parent_id IS NOT NULL && SourceLot.status IN (50)" ;
     semi:inputSchema "{ sourceLotId: string, targetLotId: string }" ;
     semi:transformationLogic "UPDATE Wafer SET lot_id = targetLotId, sub_lot_id = newSublotId WHERE wafer.lot_id = sourceLotId; UPDATE ProductionLot SET status = Completed WHERE id = sourceLotId" ;
@@ -1162,7 +1162,7 @@ semi:AccumulateEventRecord a owl:Class ;
           owl:allValuesFrom semi:AccumulateEvent ] ;
     rdfs:label "攒批记录" ;
     semi:tableFilter "operation_type = 16" ;
-    rdfs:comment "攒批操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 16。⚠ 物理层多行模型：每个源批次对应一行记录（lot_code=源批次，output_lot_code=新批次），同一次攒批操作的多行共享相同的 output_lot_id 和 gmt_create/operator_id。核心关联：(1) isInstanceOfEvent → semi:AccumulateEvent；(2) actsOnLot → 各源批次（每行一个，同产品型号）；(3) producesLot → 新生成的 ProductionLot（output_lot_code，所有行相同）；(4) producesSublot → 新批次对应的初始 Sublot；(5) actsOnWafer → 被攒入新批次的晶圆实例列表（_wafer_detail_log 逐片明细）。谱系操作：执行后所有源批次完结，wafer 归属迁移至新批次/子批次。" .
+    rdfs:comment "攒批操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 16。⚠ 物理层多行模型：每个源批次对应一行记录（lot_code=源批次），同一次攒批操作的多行共享相同的 gmt_create/create_user_id（⚠ output_lot_id 列不存在于物理表，攒批产出的新批次信息通过 _detail.extra JSON 字段推导，禁止使用 output_lot_id 做 JOIN）。核心关联：(1) isInstanceOfEvent → semi:AccumulateEvent；(2) actsOnLot → 各源批次（每行一个，同产品型号）；(3) producesLot → 新生成的 ProductionLot（由 _detail.extra 推导）；(4) producesSublot → 新批次对应的初始 Sublot；(5) actsOnWafer → 被攒入新批次的晶圆实例列表（_wafer_detail_log 逐片明细）。谱系操作：执行后所有源批次完结，wafer 归属迁移至新批次/子批次。" .
 
 ### ==========================================
 ### 5.13（已重构）_detail 中间表（原 SublotOpSnapshot）

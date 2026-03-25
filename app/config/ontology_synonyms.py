@@ -181,7 +181,7 @@ CLASS_SYNONYMS: dict = {
         "synonyms": [
             "批次操作记录", "生产事件记录", "操作日志",
             "批次日志", "批次事件日志", "批次历史记录",
-            "所有操作记录", "全部事件记录", "所有过站记录",
+            "所有操作记录", "全部事件记录", "所有过站记录", "过站记录", "过站历史",
             "production_event_log", "resume_log",
             "operationlog", "eventrecord",
         ],

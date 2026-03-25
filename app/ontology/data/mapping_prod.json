@@ -1937,15 +1937,11 @@
     },
     {
       "logic_relation": "semi:mergesIntoLot",
-      "description": "并批操作的目标(接收方)批次，通过 output_lot_id 关联 ProductionLot",
-      "strategy": "ForeignKey",
+      "description": "并批操作的目标(接收方)批次（概念关系，output_lot_id 列不存在于物理表）",
+      "strategy": "Virtual",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_log",
-        "source_key": "output_lot_id",
-        "target_table": "matrix_routerx_operation_lot",
-        "target_key": "id",
-        "filter_condition": "operation_type = 2",
-        "note": "仅适用于 MergeEventRecord (operation_type=2)；output_lot_id 指向目标(父)批次。"
+        "note": "⚠ output_lot_id 列不存在于物理表 matrix_routerx_operation_lot_batch_resume_log（已确认扫描：19列中无此字段）。目标批次信息通过 _detail 中间表的 extra JSON 字段推导，无法直接 FK JOIN。此关系标记为 Virtual，禁止生成 log.output_lot_id = lot.id 格式的 JOIN 条件。查询并批目标批次请使用 _detail.extra 解析或 lot_code 字段匹配。"
       },
       "domain_class": "semi:MergeEventRecord",
       "range_class": "semi:ProductionLot"
@@ -2663,29 +2659,22 @@
     },
     {
       "logic_relation": "semi:producesLot",
-      "description": "事件执行后产生的输出批次，通过output_lot_id关联ProductionLot",
-      "strategy": "ForeignKey",
+      "description": "事件执行后产生的输出批次（概念关系，output_lot_id 列不存在于物理表）",
+      "strategy": "Virtual",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_log",
-        "source_key": "output_lot_id",
-        "target_table": "matrix_routerx_operation_lot",
-        "target_key": "id",
-        "note": "matrix_routerx_operation_lot_batch_resume_log.output_lot_id → matrix_routerx_operation_lot.id，拆批时产出批次与作用批次不同。"
+        "note": "⚠ output_lot_id 列不存在于物理表（已确认扫描）。拆批/攒批产出批次信息通过 _detail 中间表 extra JSON 字段推导，无法直接 FK JOIN。禁止生成 log.output_lot_id = lot.id 格式的 JOIN 条件。查询输入批次（源批次）请使用 lot_id 列（actsOnLot 关系）。"
       },
       "domain_class": "semi:ProductionEventRecord",
       "range_class": "semi:ProductionLot"
     },
     {
       "logic_relation": "semi:producesSublot",
-      "description": "拆批/谱系变更事件执行后，为产出批次同步创建的初始 Sublot 实例。与 producesLot 一一对应，维护 Wafer→belongsToSublot→Sublot→atStation 导航链",
-      "strategy": "ForeignKey",
+      "description": "拆批/谱系变更事件执行后，为产出批次同步创建的初始 Sublot 实例（概念关系，output_lot_id 列不存在于物理表）",
+      "strategy": "Virtual",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_log",
-        "source_key": "output_lot_id",
-        "target_table": "matrix_routerx_operation_lot_wafer_batch",
-        "target_key": "lot_id",
-        "filter_condition": "operation_type = 1",
-        "note": "output_lot_id 关联到新批次的初始 Sublot；filter_condition 锁定拆批行。"
+        "note": "⚠ output_lot_id 列不存在于物理表（已确认扫描）。产出 Sublot 信息通过 _detail 中间表推导，无法直接 FK JOIN。此关系标记为 Virtual，不用于 JoinGraph 路径推导。"
       },
       "domain_class": "semi:ProductionEventRecord",
       "range_class": "semi:Sublot"
@@ -3617,6 +3606,24 @@
           "批次完成",
           "加工完成"
         ]
+      },
+      "PassThrough": {
+        "name": "过站（进站+出站）",
+        "description": "批次过站记录（进站 operation_type=8 + 出站 operation_type=9）",
+        "physical_condition": "matrix_routerx_operation_lot_batch_resume_log.operation_type IN (8, 9)",
+        "applies_to_table": "matrix_routerx_operation_lot_batch_resume_log",
+        "applies_to_column": "operation_type",
+        "is_terminal": false,
+        "nl_triggers": [
+          "过站记录",
+          "过站历史",
+          "所有过站记录",
+          "过站操作",
+          "进出站记录",
+          "进出站操作",
+          "过站"
+        ],
+        "note": "过站 = 进站(CheckIn, op=8) + 出站(CheckOut, op=9) 的合集。查询'过站记录'时必须加 WHERE operation_type IN (8, 9) 而不是无过滤或使用单一 op 值。"
       }
     },
     "semi:LotWIPStatus": {
