@@ -189,20 +189,31 @@
       "properties": {
         "semi:hasEquipmentCode": "code",
         "semi:hasEquipmentName": "name",
-        "semi:hasState": "status",
-        "semi:isQualified": null
+        "semi:hasEquipmentSpec": "spec",
+        "semi:hasEquipmentSupplier": "supplier",
+        "semi:hasEquipmentType": "type",
+        "semi:hasState": "status"
       },
       "key_columns": [
         "id",
-        "name",
         "code",
-        "status",
+        "name",
+        "spec",
+        "supplier",
+        "type",
         "classify_id",
-        "description",
-        "station_id",
-        "gmt_create"
+        "status",
+        "extra",
+        "create_user_id",
+        "create_user",
+        "gmt_create",
+        "update_user_id",
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "trace_id"
       ],
-      "note": "status: 0=CLOSE(停用), 1=OPEN(启用)。sys_eqpinfo_tree 是设备树结构表，用于层级展示，不是设备实体表。"
+      "note": "status: 0=CLOSE(停用), 1=OPEN(启用)。spec=设备型号, supplier=供应商, type=设备类型, classify_id=关联工厂模型层级, extra=JSON扩展字段, deleted=软删除标记, trace_id=链路追踪编号。sys_eqpinfo_tree 是设备树结构表，用于层级展示，不是设备实体表。"
     },
     {
       "logic_class": "semi:EquipmentGroup",
@@ -273,7 +284,7 @@
         "semi:hasMaintenanceCountdown": "maintenance_countdown",
         "semi:hasRemainingLife": "remaining_useful_life"
       },
-      "note": "载具状态字段说明（均为整数枚举，禁止生成字符串值）：① status（维护状态 semi:CarrierMaintenanceStatus）：1=保养中(Maintenance) / 2=可用(Available) / 3=待保养(PendingMaintenance)；② sub_status（装载状态 semi:CarrierLoadStatus）：0=空载/为空/空的(Empty) / 1=有料/非空(Loaded)。查询'空载具/为空的载具/空的载具'时过滤条件应为 sub_status = 0，不是 status = 'Empty'。查询'可用载具'时过滤条件应为 status = 2。两个字段独立：可用且空载 = status=2 AND sub_status=0。",
+      "note": "载具状态字段说明（均为整数枚举，禁止生成字符串值）：① status（维护状态 semi:CarrierMaintenanceStatus）：1=保养中(Maintenance) / 2=可用(Available) / 3=待保养(PendingMaintenance)；② sub_status（装载状态 semi:CarrierLoadStatus）：0=空载/为空/空的(Empty) / 1=有料/非空(Loaded)。查询'空载具/为空的载具/空的载具'时过滤条件应为 sub_status = 0，不是 status = 'Empty'。查询'可用载具'时过滤条件应为 status = 2。两个字段独立：可用且空载 = status=2 AND sub_status=0。③ maintenance_countdown（距下次保养剩余计数，整数）：正值(>0)=未到保养周期/保养周期未到/还不需要保养；0或负值=已到或超出保养周期需立即保养。查询'未到保养周期/不需要保养/保养周期未到'时过滤条件为 maintenance_countdown > 0；查询'需要保养/已到保养周期'时过滤条件为 maintenance_countdown <= 0。maintenance_countdown 与 status 独立：status=3(待保养)是人工标记，maintenance_countdown 是系统自动倒计数，两者含义不同。",
       "key_columns": [
         "id",
         "code",

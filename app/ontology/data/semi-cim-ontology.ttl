@@ -565,12 +565,32 @@ semi:hasStationType a owl:DatatypeProperty ;
 semi:hasEquipmentCode a owl:DatatypeProperty ;
     rdfs:domain semi:Equipment ;
     rdfs:range xsd:string ;
-    rdfs:label "设备编码" .
+    rdfs:label "设备编码" ;
+    rdfs:comment "设备唯一编码，对应 equipment.code。" .
 
 semi:hasEquipmentName a owl:DatatypeProperty ;
     rdfs:domain semi:Equipment ;
     rdfs:range xsd:string ;
-    rdfs:label "设备名称" .
+    rdfs:label "设备名称" ;
+    rdfs:comment "设备显示名称，对应 equipment.name。" .
+
+semi:hasEquipmentSpec a owl:DatatypeProperty ;
+    rdfs:domain semi:Equipment ;
+    rdfs:range xsd:string ;
+    rdfs:label "设备型号" ;
+    rdfs:comment "设备型号规格，对应 equipment.spec。" .
+
+semi:hasEquipmentSupplier a owl:DatatypeProperty ;
+    rdfs:domain semi:Equipment ;
+    rdfs:range xsd:string ;
+    rdfs:label "供应商" ;
+    rdfs:comment "设备供应商名称或编码，对应 equipment.supplier。" .
+
+semi:hasEquipmentType a owl:DatatypeProperty ;
+    rdfs:domain semi:Equipment ;
+    rdfs:range xsd:string ;
+    rdfs:label "设备类型" ;
+    rdfs:comment "设备类型分类标识，对应 equipment.type。" .
 
 # 3.5.2 设备组 (EquipmentGroup)
 semi:hasEquipmentGroupName a owl:DatatypeProperty ;
