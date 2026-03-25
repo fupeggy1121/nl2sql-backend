@@ -1066,33 +1066,34 @@
       "virtual": false,
       "properties": {
         "semi:hasEventStartTime": "gmt_create",
-        "semi:hasOperatorId": "operator_id"
+        "semi:actsOnLot": "lot_id",
+        "semi:hasLotCode": "lot_code",
+        "semi:hasProcessId": "process_id",
+        "semi:hasProcessCode": "process_code"
       },
       "key_columns": [
         "id",
+        "operation_type",
         "lot_id",
         "lot_code",
-        "output_lot_id",
-        "output_lot_code",
         "product_id",
         "product_code",
         "product_name",
         "process_id",
         "process_code",
         "process_name",
-        "operation_type",
-        "station_id",
-        "equipment_id",
-        "operator_id",
+        "extra",
         "create_user_id",
         "create_user",
-        "before_state",
-        "after_state",
-        "extra",
-        "gmt_create"
+        "gmt_create",
+        "update_user_id",
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "批次进站操作执行记录，filter_condition = operation_type=8。进站后 Sublot.process_status 转为 40（加工中）。station_id/equipment_id 记录进站工序与绑定设备。不产出新批次，output_lot_id 为 null。"
+      "note": "批次进站操作执行记录，filter_condition = operation_type=8（物理表共用 matrix_routerx_operation_lot_batch_resume_log，各事件类型靠 operation_type 区分）。进站后 Sublot.process_status 转为 40（加工中）。process_id/process_code/process_name 记录进站工序站点信息。extra 为 JSON 扩展字段，可能含 equipment_id、sublot_id 等附加信息。注意：物理表无 station_id、equipment_id、operator_id、output_lot_id 等独立列，这些信息存储于 extra JSON 字段中。"
     },
     {
       "logic_class": "semi:CheckOutEvent",
