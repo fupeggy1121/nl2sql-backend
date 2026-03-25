@@ -112,12 +112,23 @@ class DatabaseSchemaScanner:
                     {"name": "status", "type": "varchar"}
                 ],
                 "equipment": [
-                    {"name": "id", "type": "uuid"},
-                    {"name": "equipment_code", "type": "varchar"},
-                    {"name": "equipment_name", "type": "varchar"},
-                    {"name": "equipment_type", "type": "varchar"},
+                    {"name": "id", "type": "bigint"},
+                    {"name": "code", "type": "varchar"},
+                    {"name": "name", "type": "varchar"},
+                    {"name": "spec", "type": "varchar"},
+                    {"name": "supplier", "type": "varchar"},
+                    {"name": "type", "type": "varchar"},
+                    {"name": "classify_id", "type": "bigint"},
                     {"name": "status", "type": "varchar"},
-                    {"name": "last_maintenance", "type": "timestamp"}
+                    {"name": "extra", "type": "json"},
+                    {"name": "create_user_id", "type": "bigint"},
+                    {"name": "create_user", "type": "varchar"},
+                    {"name": "gmt_create", "type": "datetime"},
+                    {"name": "update_user_id", "type": "bigint"},
+                    {"name": "update_user", "type": "varchar"},
+                    {"name": "gmt_update", "type": "datetime"},
+                    {"name": "deleted", "type": "tinyint"},
+                    {"name": "trace_id", "type": "varchar"}
                 ]
             }
             

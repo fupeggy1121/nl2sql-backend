@@ -45,20 +45,37 @@ function loadMessages(sessionId: string): Message[] {
 
 const MAX_MESSAGES_PER_SESSION = 50;
 
+/** Truncate queryResult.rows to at most N rows to keep localStorage size manageable. */
+function trimQueryResult(m: any, maxRows = 200): any {
+  if (!m.queryResult?.rows) return m;
+  return {
+    ...m,
+    queryResult: {
+      ...m.queryResult,
+      rows: m.queryResult.rows.slice(0, maxRows),
+    },
+  };
+}
+
 function saveMessages(sessionId: string, messages: Message[]): void {
-  // Strip large debug fields (pipeline_trace, queryResult) before persisting
-  const slim = messages.slice(-MAX_MESSAGES_PER_SESSION).map((m) => {
-    const { pipeline_trace, queryResult, ...rest } = m as any;
-    return rest;
-  });
+  // Preserve pipeline_trace and queryResult so they survive page reload.
+  // Trim large row sets to stay within localStorage quota (~5 MB).
+  const slim = messages.slice(-MAX_MESSAGES_PER_SESSION).map((m) => trimQueryResult(m as any));
   try {
     localStorage.setItem(LS_MESSAGES_PREFIX + sessionId, JSON.stringify(slim));
   } catch {
-    // Quota exceeded — retry with only the last 10 messages
+    // Quota exceeded — trim rows further and retry
     try {
-      localStorage.setItem(LS_MESSAGES_PREFIX + sessionId, JSON.stringify(slim.slice(-10)));
+      const leaner = slim.map((m) => trimQueryResult(m, 50));
+      localStorage.setItem(LS_MESSAGES_PREFIX + sessionId, JSON.stringify(leaner));
     } catch {
-      // Give up silently; UI remains functional even without persistence
+      // Last resort: keep only the last 10 messages with 20 rows each
+      try {
+        const minimal = slim.slice(-10).map((m) => trimQueryResult(m, 20));
+        localStorage.setItem(LS_MESSAGES_PREFIX + sessionId, JSON.stringify(minimal));
+      } catch {
+        // Give up silently; UI remains functional even without persistence
+      }
     }
   }
 }
