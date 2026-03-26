@@ -284,39 +284,74 @@ class SemanticContext:
 # POST /api/v1/ontology/synonyms/reload 热重载接口后）自动合并进来。
 # --------------------------------------------------------------------- #
 
-def _build_class_synonyms_static() -> Dict[str, str]:
-    """从 ontology_synonyms 展开成 word→URI 扁平字典（class + relation + data_property）。"""
+def _build_class_synonyms_static():
+    """
+    从 ontology_synonyms 展开成两个结构：
+    - flat:  word → URI（扁平字典，class + relation + data_property；重复键以最后写入为准）
+    - multi: word → [URI, ...]（仅 class 同义词；仅保留映射到 2+ 类的词，支持多类命中）
+
+    multi 的典型场景："过站记录" 同时属于 CheckInEventRecord 和 CheckOutEventRecord，
+    命中后两个类都进入 matched_classes，从而触发 IN (8, 9) 过滤。
+    """
     try:
         from app.config.ontology_synonyms import CLASS_SYNONYMS as _CS, RELATION_SYNONYMS as _RS, PROPERTY_SYNONYMS as _PS
-        flat: Dict[str, str] = {}
+
+        # ── 第一步：构建 class 多值映射（word → [uri, ...]，按定义顺序追加）
+        _class_multi: Dict[str, List[str]] = {}
         for uri, info in _CS.items():
             for word in info.get("synonyms", []):
-                flat[word] = uri
-                flat[word.lower()] = uri  # 小写版本，英文词大小写不敏感
-        # 关系同义词也纳入（用于关系关键词检测）
+                for w in (word, word.lower()):
+                    if w not in _class_multi:
+                        _class_multi[w] = []
+                    if uri not in _class_multi[w]:
+                        _class_multi[w].append(uri)
+
+        # ── 第二步：flat dict（class 部分）— 重复键取最后一个 URI（保持向后兼容）
+        flat: Dict[str, str] = {w: uris[-1] for w, uris in _class_multi.items()}
+
+        # 关系同义词（单类，直接写入 flat）
         for uri, info in _RS.items():
             for word in info.get("synonyms", []):
                 flat[word] = uri
-        # 数据属性同义词纳入（用于 WHERE 过滤列识别）
+        # 数据属性同义词（单类，直接写入 flat）
         for uri, info in _PS.items():
             for word in info.get("synonyms", []):
                 flat[word] = uri
                 flat[word.lower()] = uri
-        return flat
+
+        # ── 第三步：multi dict — 只保留映射到 2+ 类的词
+        multi: Dict[str, List[str]] = {
+            w: uris for w, uris in _class_multi.items() if len(uris) >= 2
+        }
+
+        if multi:
+            logger.info(
+                "[context_builder] Multi-class synonyms: %d keywords → %s",
+                len(multi),
+                {w: [u.split(":")[-1] for u in us] for w, us in multi.items()},
+            )
+
+        return flat, multi
+
     except Exception as e:
         logger.warning(f"[context_builder] 从 ontology_synonyms.py 构建字典失败，使用内置兜底: {e}")
         # 兜底：保留最小集确保基本功能
-        return {
-            "设备": "semi:Equipment", "机台": "semi:Equipment",
-            "载具": "semi:Carrier", "片篮": "semi:Carrier", "花篮": "semi:Carrier",
-            "晶圆": "semi:Wafer", "wafer": "semi:Wafer",
-            "批次": "semi:ProductionLot", "lot": "semi:ProductionLot",
-            "工单": "semi:ProductionOrder", "工序": "semi:ProcessStation",
-        }
+        return (
+            {
+                "设备": "semi:Equipment", "机台": "semi:Equipment",
+                "载具": "semi:Carrier", "片篮": "semi:Carrier", "花篮": "semi:Carrier",
+                "晶圆": "semi:Wafer", "wafer": "semi:Wafer",
+                "批次": "semi:ProductionLot", "lot": "semi:ProductionLot",
+                "工单": "semi:ProductionOrder", "工序": "semi:ProcessStation",
+            },
+            {},
+        )
 
 
 # 静态基础字典（来自 ontology_synonyms.py，服务启动时一次性构建）
-_CLASS_SYNONYMS: Dict[str, str] = _build_class_synonyms_static()
+_CLASS_SYNONYMS: Dict[str, str]
+_MULTI_CLASS_SYNONYMS: Dict[str, List[str]]   # word → [URI, ...]，仅含 2+ 类的词
+_CLASS_SYNONYMS, _MULTI_CLASS_SYNONYMS = _build_class_synonyms_static()
 
 # Supabase 动态叠加层：服务启动 + 热重载时更新（DB 词优先于静态词）
 _supabase_synonym_overlay: Dict[str, str] = {}
@@ -327,6 +362,15 @@ def _get_active_synonyms() -> Dict[str, str]:
     if not _supabase_synonym_overlay:
         return _CLASS_SYNONYMS
     return {**_CLASS_SYNONYMS, **_supabase_synonym_overlay}
+
+
+def _get_multi_class_synonyms() -> Dict[str, List[str]]:
+    """
+    返回「一词多类」同义词映射：{word: [URI1, URI2, ...]}。
+    仅包含映射到 2 个及以上本体类的词（例如 "过站记录" → [CheckIn, CheckOut]）。
+    Supabase 叠加层暂不合并（多类场景由静态词典维护）。
+    """
+    return _MULTI_CLASS_SYNONYMS
 
 
 def reload_synonyms_from_db() -> int:
@@ -694,6 +738,20 @@ class SemanticContextBuilder:
                                     "via intent_slots '%s'→keyword '%s'",
                                     logic_class, slot_text, keyword,
                                 )
+                # 策略S+: 多类命中扩展（同一关键词映射到 2+ 类，如"过站记录"→CheckIn+CheckOut）
+                for keyword, uris in _get_multi_class_synonyms().items():
+                    if keyword in slot_lower or slot_lower in keyword:
+                        for logic_class in uris:
+                            if logic_class not in seen_classes:
+                                pt = self._mapping.get_physical_table(logic_class)
+                                if pt:
+                                    seen_classes.add(logic_class)
+                                    results.append(self._to_matched_class(keyword, pt))
+                                    logger.info(
+                                        "[context_builder] Slot-injected multi-class %s "
+                                        "via intent_slots '%s'→keyword '%s'",
+                                        logic_class, slot_text, keyword,
+                                    )
 
         # 策略A: 映射字典中文标签精确匹配（label_cn 是查询子串）
         for pt in self._mapping.list_all_tables():
@@ -721,6 +779,22 @@ class SemanticContextBuilder:
                         display_column=None,
                         virtual=True,
                     ))
+
+        # 策略B+: 多类命中扩展 — 同一关键词映射到 2+ 类
+        # 例："过站记录" → [semi:CheckInEventRecord, semi:CheckOutEventRecord]
+        # → 两个类都进入 matched_classes → sql_generator 折叠为 operation_type IN (8, 9)
+        for keyword, uris in _get_multi_class_synonyms().items():
+            if keyword in query_lower:
+                for logic_class in uris:
+                    if logic_class not in seen_classes:
+                        pt = self._mapping.get_physical_table(logic_class)
+                        if pt:
+                            seen_classes.add(logic_class)
+                            results.append(self._to_matched_class(keyword, pt))
+                            logger.info(
+                                "[context_builder] Strategy B+ multi-class: '%s' → %s",
+                                keyword, logic_class,
+                            )
 
         # 策略C: 扫描本体 label_index — 检查 index key 是否出现在查询中
         for label_key, uri in self._ontology._label_index.items():

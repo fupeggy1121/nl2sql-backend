@@ -3606,24 +3606,6 @@
           "批次完成",
           "加工完成"
         ]
-      },
-      "PassThrough": {
-        "name": "过站（进站+出站）",
-        "description": "批次过站记录（进站 operation_type=8 + 出站 operation_type=9）",
-        "physical_condition": "matrix_routerx_operation_lot_batch_resume_log.operation_type IN (8, 9)",
-        "applies_to_table": "matrix_routerx_operation_lot_batch_resume_log",
-        "applies_to_column": "operation_type",
-        "is_terminal": false,
-        "nl_triggers": [
-          "过站记录",
-          "过站历史",
-          "所有过站记录",
-          "过站操作",
-          "进出站记录",
-          "进出站操作",
-          "过站"
-        ],
-        "note": "过站 = 进站(CheckIn, op=8) + 出站(CheckOut, op=9) 的合集。查询'过站记录'时必须加 WHERE operation_type IN (8, 9) 而不是无过滤或使用单一 op 值。"
       }
     },
     "semi:LotWIPStatus": {
