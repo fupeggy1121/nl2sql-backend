@@ -111,7 +111,7 @@ semi:MeasurementPassRecord a owl:Class ;
           owl:onProperty semi:isInstanceOfEvent ;
           owl:allValuesFrom semi:MeasurementEvent ] ;
     rdfs:label "量测与制程参数过站记录" ;
-    rdfs:comment "Wafer 在某个工艺站点执行量测或制程参数采集后产生的逐片参数快照记录。参数采集的直接主体是 Wafer（wafer_id 全局唯一不变），sublot_id / lot_id 是采集时刻记录的调度管理上下文快照字段，反映该 Wafer 当时所属的子批次/批次，不代表 Sublot 或 Lot 拥有此记录——拆批/并批后这些字段仍保留拆批前的归属信息用于追溯。核心关联：(1) hasMeasurementRecord（反向，Wafer→本记录）：wafer_id 是参数事实的物理锚点；(2) isInstanceOfEvent → semi:MeasurementEvent；(3) recordsMeasurementOf → 被量测的具体晶圆实例（本记录→Wafer，与 hasMeasurementRecord 互为逆向，关联键 wafer_id）；(4) recordedAtStation → 量测工艺站点（station_id，可选）；(5) processedByEquipment → 量测设备（eqp_id，人工录入时为空）。查询批次维度量测数据时直接对 process_measure_data.sublot_id / lot_id 过滤，完整语义路径为 Sublot ← belongsToSublot ← Wafer → hasMeasurementRecord。物理主映射：process_measure_data（eqp_id 非空）；制程参数人工录入：process_measure_data_raw（eqp_id 为空）。参数语义注释：param_model_id → param_model；参数分组：param_group_id → param_group。" .
+    rdfs:comment "Wafer 在某个工艺站点执行量测或制程参数采集后产生的逐片参数快照记录。参数采集的直接主体是 Wafer（wafer_id 全局唯一不变）。核心关联：(1) recordsMeasurementOf → 被量测的具体晶圆实例（MeasurementPassRecord→Wafer，关联键 wafer_id，规范方向）；逆向导航（Wafer→MeasurementPassRecord）由 owl:inverseOf 公理推导，不独立建模；(2) isInstanceOfEvent → semi:MeasurementEvent；(3) recordedAtStation → 量测工艺站点（station_id，可选）；(4) processedByEquipment → 量测设备（eqp_id，人工录入时为空）。lot_id / sub_lot_id 是物理表采集时刻的调度管理上下文快照字段（非关系型 FK），反映该 Wafer 当时所属批次/子批次，不代表 Lot/Sublot 拥有此记录，不在语义层建立独立的 ObjectProperty；批次/子批次维度过滤直接使用这两个列值匹配。物理主映射：process_measure_data；参数语义注释：param_model_id → param_model；参数分组：param_group_id → param_group。" .
 
 semi:ProductionEvent a owl:Class ;
     rdfs:subClassOf semi:Action ;
@@ -273,18 +273,20 @@ semi:hasParentLot a owl:ObjectProperty ;
 # 注：hasPassRecord 已移除——其语义等价于 actsOnLot 的反向查询加类型过滤
 # （CheckInEventRecord/CheckOutEventRecord WHERE lot_id=?），保留单一正向路径以避免 LLM 歧义。
 
-semi:hasMeasurementRecord a owl:ObjectProperty ;
-    rdfs:domain semi:Wafer ;
-    rdfs:range semi:MeasurementPassRecord ;
-    rdfs:label "晶圆量测参数记录" ;
-    rdfs:comment "晶圆在某站点执行量测后产生的逐片参数快照（MeasurementPassRecord）。关联键：process_measure_data.wafer_id → semi:Wafer，wafer_id 是参数采集的直接主体锚点，全程不变。process_measure_data 中的 sublot_id / lot_id 是采集时刻的调度管理上下文快照字段，不代表 Sublot/Lot 拥有量测记录，拆批后这些字段仍然记录的是拆批前的归属信息。批次维度查询量测数据使用 process_measure_data.sublot_id 过滤（利用快照字段），完整语义路径为：Sublot ← belongsToSublot ← Wafer → hasMeasurementRecord → MeasurementPassRecord。逆向属性 semi:recordsMeasurementOf（MeasurementPassRecord→Wafer）提供从参数记录出发的正向导航路径。" .
+# semi:hasMeasurementRecord 是 semi:recordsMeasurementOf 的逆向，可由 owl:inverseOf 公理推导，
+# 不独立建模为一等关系——避免在 TTL 层维护冗余的双向 ObjectProperty 声明。
+semi:hasMeasurementRecord owl:inverseOf semi:recordsMeasurementOf .
 
 semi:recordsMeasurementOf a owl:ObjectProperty ;
     rdfs:domain semi:MeasurementPassRecord ;
     rdfs:range semi:Wafer ;
-    owl:inverseOf semi:hasMeasurementRecord ;
     rdfs:label "量测记录关联的晶圆" ;
-    rdfs:comment "量测/制程参数记录（MeasurementPassRecord）反向关联被采集参数的晶圆实例（Wafer）。关联键：process_measure_data.wafer_id → matrix_routerx_operation_lot_wafer.wafer_id。是 semi:hasMeasurementRecord 的逆向属性（owl:inverseOf）。支持从参数记录出发正向导航至 Wafer，再通过 Wafer 的属性链追溯 Sublot/Lot 归属。" .
+    rdfs:comment "量测/制程参数记录（MeasurementPassRecord）关联被采集参数的晶圆实例（Wafer）。这是该域的规范方向：参数记录从自身出发指向其直接主体 Wafer（关联键 wafer_id，全局唯一不变）。逆向导航（Wafer → MeasurementPassRecord）可由 owl:inverseOf 公理推导，无需在映射层单独维护。lot_id / sub_lot_id 是物理表的采集时刻上下文快照字段，非关系型外键，不在 TTL 层建立独立的 ObjectProperty；批次维度过滤直接使用 process_measure_data.lot_id 列值匹配。" .
+
+# semi:measuredForLot 已移除：process_measure_data.lot_id 是物理层为查询效率设置的冗余快照字段
+# （varchar 批次编码，非整数 FK），反映采集时刻的批次归属上下文，不代表独立的领域语义关系。
+# 正确的语义路径为：MeasurementPassRecord → recordsMeasurementOf → Wafer → belongsToLot → ProductionLot。
+# lot_id / sub_lot_id 作为 MeasurementPassRecord 的数据属性（properties）保留，供 WHERE 条件过滤使用。
 
 semi:actsOnSublot a owl:ObjectProperty ;
     rdfs:domain semi:ProductionEventRecord ;
@@ -867,6 +869,30 @@ semi:hasSamplingRule a owl:DatatypeProperty ;
     rdfs:range xsd:string ;
     rdfs:label "抽检规则" ;
     rdfs:comment "该量测站点应用的抽检规则标识（如'每批抽n片'），决定量测结果对批次的代表性置信度。" .
+
+semi:hasRecordingTime a owl:DatatypeProperty ;
+    rdfs:domain semi:MeasurementPassRecord ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "量测录入时间" ;
+    rdfs:comment "量测或制程参数录入的时间戳，对应 process_measure_data.gmt_create。区别于量测设备的实际执行时间（target_eqp_time），gmt_create 是系统记录该参数值的时刻。" .
+
+semi:hasRecordingOperatorId a owl:DatatypeProperty ;
+    rdfs:domain semi:MeasurementPassRecord ;
+    rdfs:range xsd:anyURI ;
+    rdfs:label "录入人员ID" ;
+    rdfs:comment "创建该量测/制程参数记录的操作员ID，对应 process_measure_data.create_user_id。量测参数自动采集时为触发采集的操作员；制程参数人工录入时为录入人员。" .
+
+semi:hasRecordingOperator a owl:DatatypeProperty ;
+    rdfs:domain semi:MeasurementPassRecord ;
+    rdfs:range xsd:string ;
+    rdfs:label "录入人员" ;
+    rdfs:comment "创建该量测/制程参数记录的操作员姓名，对应 process_measure_data.create_user。" .
+
+semi:hasMeasurementParamType a owl:DatatypeProperty ;
+    rdfs:domain semi:MeasurementPassRecord ;
+    rdfs:range xsd:integer ;
+    rdfs:label "参数来源类型" ;
+    rdfs:comment "参数记录来源类型枚举，对应 process_measure_data.type：1=制程参数（操作员人工录入，eqp_id 通常为空）；2=量测参数（量测设备自动采集，eqp_id 非空）。" .
 
 # 3.14.4 生产事件记录属性 (ProductionEventRecord)
 semi:hasEventType a owl:DatatypeProperty ;
