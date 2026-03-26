@@ -632,14 +632,38 @@ def _format_semantic_context(semantic_ctx: dict) -> str:
         ]
         lines.append(f"涉及实体: {', '.join(class_strs)}")
         # 同表多类 filter_condition — 必须加入 WHERE 子句，不可省略
+        # 先按 (table, column) 分组，相同表+列的等值条件合并为 IN (...)
+        import re as _re
+        from collections import defaultdict as _defaultdict
+        _fc_groups: dict = _defaultdict(list)  # (tbl, col) -> [(label_cn, raw_val)]
+        _fc_others: list = []  # 无法解析为等值条件的，直接输出
         for c in classes:
             fc = c.get("filter_condition")
             tbl = c.get("physical_table")
-            if fc and tbl:
-                lines.append(
-                    f"  ⚠ 【强制WHERE条件】{c['label_cn']}({tbl}) 必须加 WHERE/AND {fc}"
-                    f"（同表多类区分，缺少此条件会把其他类型的行也查出来）"
-                )
+            if not (fc and tbl):
+                continue
+            m = _re.match(r"^(\w+)\s*=\s*(\S+)$", fc.strip())
+            if m:
+                col, val = m.group(1), m.group(2)
+                _fc_groups[(tbl, col)].append((c["label_cn"], val))
+            else:
+                _fc_others.append((c["label_cn"], tbl, fc))
+        for (tbl, col), entries in _fc_groups.items():
+            labels = "、".join(e[0] for e in entries)
+            vals = ", ".join(e[1] for e in entries)
+            if len(entries) == 1:
+                cond = f"{col} = {vals}"
+            else:
+                cond = f"{col} IN ({vals})"
+            lines.append(
+                f"  ⚠ 【强制WHERE条件】{labels}({tbl}) 必须加 WHERE/AND {cond}"
+                f"（同表多类区分，缺少此条件会把其他类型的行也查出来）"
+            )
+        for label_cn, tbl, fc in _fc_others:
+            lines.append(
+                f"  ⚠ 【强制WHERE条件】{label_cn}({tbl}) 必须加 WHERE/AND {fc}"
+                f"（同表多类区分，缺少此条件会把其他类型的行也查出来）"
+            )
 
     # JOIN 条件
     joins = semantic_ctx.get("joins", [])
