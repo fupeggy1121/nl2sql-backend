@@ -210,13 +210,32 @@ CLASS_SYNONYMS: dict = {
     },
 
     "semi:MeasurementPassRecord": {
-        "label_cn": "量测与制程参数记录",
+        "label_cn": "量测录入事件记录",
         "synonyms": [
-            "量测记录", "量测数据", "量测结果", "量测参数",
-            "制程参数", "制程参数记录", "参数采集记录",
+            "量测录入事件", "量测录入", "量测事件",
+            "量测操作", "参数录入事件",
+            "measurementpassrecord",
+        ],
+    },
+
+    "semi:WaferMeasurementSnapshot": {
+        "label_cn": "晶圆量测参数快照",
+        "synonyms": [
+            "量测快照", "量测数据", "量测结果", "量测参数",
+            "量测记录", "制程参数", "制程参数记录", "参数采集记录",
             "measurement记录", "参数过站", "量测过站",
-            "measurementpassrecord", "process_measure_data",
-            "量测参数记录", "制程参数采集",
+            "process_measure_data", "量测参数记录", "制程参数采集",
+            "参数快照", "量测参数数据", "量测值",
+            "wafermeasurementsnapshot",
+        ],
+    },
+
+    "semi:ParamDefinition": {
+        "label_cn": "参数定义",
+        "synonyms": [
+            "参数规格", "参数模型", "param_model",
+            "参数元数据", "参数定义实体",
+            "paramdefinition",
         ],
     },
 

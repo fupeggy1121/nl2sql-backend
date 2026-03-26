@@ -775,29 +775,10 @@
       "logic_class": "semi:MeasurementPassRecord",
       "physical_table": "process_measure_data",
       "primary_key": "id",
-      "label_cn": "量测与制程参数记录（逐片参数快照）",
+      "label_cn": "量测录入事件记录",
       "display_column": "wafer_id",
       "virtual": false,
       "properties": {
-        "semi:hasWaferId": "wafer_id",
-        "semi:hasLotId": "lot_id",
-        "semi:hasSublotId": "sub_lot_id",
-        "semi:hasParamCode": "param_code",
-        "semi:hasParamName": "param_name",
-        "semi:hasParamModelId": "param_model_id",
-        "semi:hasParamGroupId": "param_group_id",
-        "semi:hasMeasurementResult": "value",
-        "semi:hasParamUnit": "unit",
-        "semi:hasMeasurementParamType": "type",
-        "semi:hasProcessCode": "process_code",
-        "semi:hasProcessName": "process_name",
-        "semi:hasEquipmentId": "eqp_id",
-        "semi:hasEquipmentCode": "eqp_code",
-        "semi:hasTargetEquipmentId": "target_eqp_id",
-        "semi:hasTargetEquipmentCode": "target_eqp_code",
-        "semi:hasChamber": "chamber",
-        "semi:hasProductCode": "product_code",
-        "semi:hasTargetEqpTime": "target_eqp_time",
         "semi:hasRecordingTime": "gmt_create",
         "semi:hasRecordingOperatorId": "create_user_id",
         "semi:hasRecordingOperator": "create_user"
@@ -841,7 +822,81 @@
         "trace_id",
         "extra"
       ],
-      "note": "量测与制程参数记录表，以 Wafer × 参数规格为粒度存储加工或量测全过程的逐片参数完整状态快照。语义：针对所选批次的 Wafer 进行量测参数或制程参数赋值，记录了 Wafer 在某站点的加工或量测参数值的完整状态快照。关联关系规范方向：MeasurementPassRecord → recordsMeasurementOf → Wafer（关联键 wafer_id）；逆向导航（Wafer→MeasurementPassRecord）由 owl:inverseOf 推导，不在映射层建立反向边。\n\n核心字段语义：\n• wafer_id: 参数采集的物理锚点（全局唯一，拆批/并批后不变）\n• lot_id / sub_lot_id: 物理层采集时刻的批次/子批次上下文快照字段（varchar，非整数 FK）；反映该 Wafer 当时所属批次/子批次，谱系变更后仍保留原批次编码供追溯。不在语义层建立独立 ObjectProperty；批次/子批次维度过滤直接对这两列做 WHERE/AND 匹配\n• value / unit: 参数实测值及单位\n• type: 参数来源类型 — 1=制程参数（操作员人工录入，eqp_id 通常为空）；2=量测参数（量测设备自动采集，eqp_id 非空）\n• gmt_create: 量测/制程参数录入时间（semi:hasRecordingTime）\n• create_user / create_user_id: 录入人员及 ID（semi:hasRecordingOperator / hasRecordingOperatorId）\n• lot_last / sub_lot_last: 快照有效性标记 — 1 表示该 wafer 在当前批次/子批次上下文下的最新记录，查询\"当前参数状态\"时加此过滤\n• eqp_id / eqp_code: 量测/加工设备（type=2 量测参数时非空）\n• target_eqp_id / target_eqp_time: 实际执行设备及执行时间（与录入时间 gmt_create 区分）\n• param_model_id → param_model: 参数规格语义注释；param_group_id → param_group: 参数分组聚合"
+      "note": "量测录入事件记录（事件层）。代表一次量测/制程参数录入行为，记录事件级信息（操作员、时间戳、触发条件）。当前与快照明细同表（process_measure_data），未来拆表为独立事件主表。核心关联：hasSnapshot → WaferMeasurementSnapshot（1:N，每片 Wafer 每个参数一条快照明细）。事件层属性：gmt_create（录入时间）、create_user/create_user_id（操作员）。"
+    },
+    {
+      "logic_class": "semi:WaferMeasurementSnapshot",
+      "physical_table": "process_measure_data",
+      "primary_key": "id",
+      "label_cn": "晶圆量测参数快照",
+      "display_column": "wafer_id",
+      "virtual": false,
+      "properties": {
+        "semi:snapshotOfWafer": "wafer_id",
+        "semi:snapshotAtStation": "process_code",
+        "semi:snapshotOnEquipment": "eqp_id",
+        "semi:snapshotOfParam": "param_model_id",
+        "semi:snapshotInLot": "lot_id",
+        "semi:snapshotInSublot": "sub_lot_id",
+        "semi:hasParamValue": "value",
+        "semi:hasParamType": "type",
+        "semi:hasLotCodeSnapshot": "lot_id",
+        "semi:hasSublotCodeSnapshot": "sub_lot_id",
+        "semi:hasParamCode": "param_code",
+        "semi:hasParamName": "param_name",
+        "semi:hasParamUnit": "unit",
+        "semi:hasParamGroupId": "param_group_id",
+        "semi:hasProcessName": "process_name",
+        "semi:hasEquipmentCode": "eqp_code",
+        "semi:hasProductCode": "product_code",
+        "semi:hasChamber": "chamber",
+        "semi:hasTargetEqpTime": "target_eqp_time",
+        "semi:hasTargetEquipmentId": "target_eqp_id",
+        "semi:hasTargetEquipmentCode": "target_eqp_code",
+        "semi:hasRecordingTime": "gmt_create",
+        "semi:hasRecordingOperator": "create_user",
+        "semi:hasRecordingOperatorId": "create_user_id"
+      },
+      "key_columns": [
+        "id",
+        "wafer_id",
+        "lot_id",
+        "sub_lot_id",
+        "param_code",
+        "param_name",
+        "param_model_id",
+        "param_group_id",
+        "value",
+        "unit",
+        "type",
+        "process_id",
+        "process_code",
+        "process_name",
+        "eqp_id",
+        "eqp_code",
+        "target_eqp_id",
+        "target_eqp_code",
+        "chamber",
+        "trace_code",
+        "product_id",
+        "block_id",
+        "product_code",
+        "product_version",
+        "target_eqp_time",
+        "target_eqp_chamber",
+        "sub_lot_last",
+        "lot_last",
+        "create_user_id",
+        "create_user",
+        "gmt_create",
+        "update_user_id",
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "trace_id",
+        "extra"
+      ],
+      "note": "晶圆量测参数快照（快照明细层）。一片 Wafer 一个参数一行，代表一次量测录入行为中每片 Wafer 每个参数的具体采集结果。物理映射：process_measure_data（与 MeasurementPassRecord 当前同表，未来拆分为独立明细表）。\n\n对象属性（6个，用于语义导航和 JOIN 查询）：\n• snapshotOfWafer → Wafer（wafer_id，核心锚点，全局唯一不变）\n• snapshotAtStation → ProcessStation（process_code → matrix_routerx_config_process.code）\n• snapshotOnEquipment → Equipment（eqp_id → equipment.id，type=1 人工录入时为空）\n• snapshotOfParam → ParamDefinition（param_model_id → param_model.id）\n• snapshotInLot → ProductionLot（lot_id varchar 快照编码 → operation_lot.current_lot_code）\n• snapshotInSublot → Sublot（sub_lot_id varchar 快照编码 → operation_lot.current_lot_code WHERE parent_id!=0）\n\n数据属性（4个）：\n• hasParamValue（value）—— 参数实测值\n• hasParamType（type）—— 参数来源类型枚举：1=制程参数，2=量测参数\n• hasLotCodeSnapshot（lot_id）—— 采集时刻批次编码文本快照，用于直接 WHERE 过滤而不走 JOIN\n• hasSublotCodeSnapshot（sub_lot_id）—— 采集时刻子批次编码文本快照\n\n辅助字段：\n• lot_last / sub_lot_last: 快照有效性标记 — 1 表示该 wafer 在当前批次/子批次上下文下的最新记录\n• param_model_id → param_model: 参数规格语义注释；param_group_id → param_group: 参数分组聚合"
     },
     {
       "logic_class": "semi:MeasurementEvent",
@@ -1787,6 +1842,20 @@
       "note": "量测参数组，对应 param_group WHERE param_group_cat='measure'。聚合量测过站时需采集的产品质量参数，用于合格判定和工艺分析。由 usesMeasurementParamGroup 从 ProcessStation 引用（通用能力域），由 selectedMeasurementParamGroup 从 ProcessConstraint 引用（产品专属1:1选定，使用 measurementParamGroupId）。通过 containsMeasurementParam 聚合 MeasurementParam 实例。"
     },
     {
+      "logic_class": "semi:ParamDefinition",
+      "physical_table": "param_model",
+      "primary_key": "id",
+      "natural_key": "param_name",
+      "label_cn": "参数定义",
+      "properties": {
+        "semi:hasParamName": "param_name",
+        "semi:hasParamCode": "param_id",
+        "semi:hasParamCat": "param_cat",
+        "semi:hasParamUnit": "unit"
+      },
+      "note": "参数定义超类，覆盖制程参数和量测参数全类型（无 filter_condition）。作为 WaferMeasurementSnapshot.snapshotOfParam 的 range，允许快照同时关联制程参数和量测参数。物理表：param_model。ProcessParam 和 MeasurementParam 是其子类，通过 filter_condition 区分。"
+    },
+    {
       "logic_class": "semi:ProcessParam",
       "physical_table": "param_model",
       "primary_key": "id",
@@ -1917,8 +1986,18 @@
   ],
   "relation_mappings": [
     {
-      "logic_relation": "semi:recordsMeasurementOf",
-      "description": "量测/制程参数记录关联被采集参数的晶圆实例（MeasurementPassRecord→Wafer，规范方向）。lot_id/sub_lot_id 是物理表快照字段，不在映射层建立逆向边；逆向导航由 owl:inverseOf 公理表达，查询层通过 ForeignKey 策略双向可达。",
+      "logic_relation": "semi:hasSnapshot",
+      "description": "量测录入事件记录（MeasurementPassRecord）1:N 包含晶圆量测参数快照（WaferMeasurementSnapshot）。当前物理层同表（process_measure_data），语义层分离保证架构可演进性。",
+      "strategy": "Virtual",
+      "join_logic": {
+        "note": "当前同表语义抽象，无需物理 JOIN。未来拆表后通过外键关联（事件主表.id = 快照明细表.event_id）。"
+      },
+      "domain_class": "semi:MeasurementPassRecord",
+      "range_class": "semi:WaferMeasurementSnapshot"
+    },
+    {
+      "logic_relation": "semi:snapshotOfWafer",
+      "description": "晶圆量测快照关联被采集参数的晶圆实例（WaferMeasurementSnapshot→Wafer，核心锚点）",
       "strategy": "ForeignKey",
       "join_logic": {
         "source_table": "process_measure_data",
@@ -1926,8 +2005,75 @@
         "target_table": "matrix_routerx_operation_lot_wafer",
         "target_key": "wafer_id"
       },
-      "domain_class": "semi:MeasurementPassRecord",
+      "domain_class": "semi:WaferMeasurementSnapshot",
       "range_class": "semi:Wafer"
+    },
+    {
+      "logic_relation": "semi:snapshotAtStation",
+      "description": "参数采集时所在的工艺站点（WaferMeasurementSnapshot→ProcessStation，编码对编码）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "process_measure_data",
+        "source_key": "process_code",
+        "target_table": "matrix_routerx_config_process",
+        "target_key": "code"
+      },
+      "domain_class": "semi:WaferMeasurementSnapshot",
+      "range_class": "semi:ProcessStation"
+    },
+    {
+      "logic_relation": "semi:snapshotOnEquipment",
+      "description": "执行量测的具体设备实例（WaferMeasurementSnapshot→Equipment）。type=1制程参数人工录入时 eqp_id 为空",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "process_measure_data",
+        "source_key": "eqp_id",
+        "target_table": "equipment",
+        "target_key": "id"
+      },
+      "domain_class": "semi:WaferMeasurementSnapshot",
+      "range_class": "semi:Equipment"
+    },
+    {
+      "logic_relation": "semi:snapshotOfParam",
+      "description": "该快照采集的参数定义实体（WaferMeasurementSnapshot→ParamDefinition，可为 ProcessParam 或 MeasurementParam）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "process_measure_data",
+        "source_key": "param_model_id",
+        "target_table": "param_model",
+        "target_key": "id"
+      },
+      "domain_class": "semi:WaferMeasurementSnapshot",
+      "range_class": "semi:ParamDefinition"
+    },
+    {
+      "logic_relation": "semi:snapshotInLot",
+      "description": "采集时刻 Wafer 所属的主批次快照（WaferMeasurementSnapshot→ProductionLot，lot_id varchar 编码快照）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "process_measure_data",
+        "source_key": "lot_id",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "current_lot_code",
+        "note": "lot_id 是 varchar 采集时刻批次编码快照，非整数 FK。谱系变更后仍保留原批次编码供追溯。"
+      },
+      "domain_class": "semi:WaferMeasurementSnapshot",
+      "range_class": "semi:ProductionLot"
+    },
+    {
+      "logic_relation": "semi:snapshotInSublot",
+      "description": "采集时刻 Wafer 所属的子批次快照（WaferMeasurementSnapshot→Sublot，sub_lot_id varchar 编码快照）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "process_measure_data",
+        "source_key": "sub_lot_id",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "current_lot_code",
+        "note": "sub_lot_id 是 varchar 采集时刻子批次编码快照，对应 matrix_routerx_operation_lot WHERE parent_id != 0。"
+      },
+      "domain_class": "semi:WaferMeasurementSnapshot",
+      "range_class": "semi:Sublot"
     },
     {
       "logic_relation": "semi:actsOnSublot",
