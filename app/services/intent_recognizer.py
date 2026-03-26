@@ -377,8 +377,9 @@ class IntentRecognizer:
 - 扣留记录 / hold记录 → semi:HoldEventRecord
 - 释放记录 / release记录 / 取消扣留记录 → semi:ReleaseEventRecord
 - 不良录入 / NG记录 / 不良记录 → semi:NGRecordEventRecord
-- 量测记录 / 量测数据 / 量测参数 / 制程参数 / 参数采集记录 → semi:MeasurementPassRecord
-⚠ 注意区分："过站记录"特指进站/出站事件（CheckIn/CheckOut），不是量测参数记录（MeasurementPassRecord）
+- 量测记录 / 量测数据 / 量测参数 / 量测结果 / 量测参数值 / 量测值 / 制程参数 / 参数采集记录 → semi:WaferMeasurementSnapshot（量测快照层，查看具体参数数据时用）
+- 量测录入事件 / 量测录入 / 谁录入了量测 → semi:MeasurementPassRecord（量测事件层，查看录入人/录入时间时用）
+⚠ 注意区分："过站记录"特指进站/出站事件（CheckIn/CheckOut），不是量测参数记录（WaferMeasurementSnapshot）
 
 ## 仓库管理域（WMS）术语对照
 - 入库 / 入库记录 / 入库明细 / 物料入库 / 入库数量 → semi:InboundEventRecord
@@ -460,9 +461,14 @@ A: intent=direct_query, query_type=LIST, target_class_hints=["semi:CheckInEventR
    intent_slots={{"subject":"进站记录","action":"查询列表","dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":["批次=LT-2024"],"reasoning":"进站记录→CheckInEventRecord（operation_type=8）"}}
 
 Q: "查询批次LT-2024的量测记录"
-A: intent=direct_query, query_type=LIST, target_class_hints=["semi:MeasurementPassRecord"],
+A: intent=direct_query, query_type=LIST, target_class_hints=["semi:WaferMeasurementSnapshot"],
    semantic_filters=[{{"attribute":"lot_code","semantic_value":"LT-2024"}}],
-   intent_slots={{"subject":"量测记录","action":"查询列表","dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":["批次=LT-2024"],"reasoning":"量测记录→MeasurementPassRecord，与过站进出站记录不同"}}
+   intent_slots={{"subject":"量测数据","action":"查询列表","dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":["批次=LT-2024"],"reasoning":"量测记录/量测数据→WaferMeasurementSnapshot（快照层），查看参数值"}}
+
+Q: "谁录入了量测数据"
+A: intent=direct_query, query_type=LIST, target_class_hints=["semi:MeasurementPassRecord"],
+   semantic_filters=[],
+   intent_slots={{"subject":"量测录入事件","action":"查询列表","dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"关注录入人→MeasurementPassRecord（事件层），查create_user"}}
 
 Q: "查一下那个批次的数据"
 A: intent=need_clarification, query_type=LIST, target_class_hints=[], semantic_filters=[],
@@ -477,7 +483,7 @@ A: intent=need_clarification, query_type=LIST, target_class_hints=["semi:CheckIn
 ## 何时使用 need_clarification
 以下任一情况使用：
 1. 查询对象完全不明确（无批次号/设备/工序）且查询类型也未知，置信度 < 0.65
-2. 查询类型明确是事件记录类（CheckInEventRecord/CheckOutEventRecord/MeasurementPassRecord 等），但没有指定批次号/lot_code 过滤条件（全表扫描风险）
+2. 查询类型明确是事件记录类（CheckInEventRecord/CheckOutEventRecord/MeasurementPassRecord/WaferMeasurementSnapshot 等），但没有指定批次号/lot_code 过滤条件（全表扫描风险）
 ⚠ 不要滥用——主数据查询（Carrier/Equipment/ProcessStation/Inventory 等）即使无过滤也可直接生成 SQL。
 
 ## 当前用户输入
