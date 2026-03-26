@@ -1989,19 +1989,6 @@
       "range_class": "semi:ProductionLot"
     },
     {
-      "logic_relation": "semi:recordsMeasurementOf",
-      "description": "量测/制程参数记录关联被采集参数的晶圆实例（MPR→Wafer，hasMeasurementRecord 的逆向）",
-      "strategy": "ForeignKey",
-      "join_logic": {
-        "source_table": "process_measure_data",
-        "source_key": "wafer_id",
-        "target_table": "matrix_routerx_operation_lot_wafer",
-        "target_key": "wafer_id"
-      },
-      "domain_class": "semi:MeasurementPassRecord",
-      "range_class": "semi:Wafer"
-    },
-    {
       "logic_relation": "semi:containsInboundRequestDetail",
       "description": "入库申请单包含入库申请明细行（1:N）",
       "strategy": "ForeignKey",
