@@ -124,18 +124,20 @@ def query_planner_node(state: AgentState) -> dict:
     except Exception as _slot_err:
         logger.debug(f"[query_planner] intent_slots enrichment skipped: {_slot_err}")
 
-    # 安全守卫：用户明确说"所有"/"全部"/"all"/"不做限制"/"不限制"等时，
-    # 清除 LLM 可能幻觉出的 limit（LLM 有时会臆造一个 limit，导致截断结果）
+    # 安全守卫：只有用户明确说出数量词时才保留 limit，否则一律清除 LLM 幻觉
+    # LLM 对 carrier/lot 等宽泛查询经常臆造 limit，导致截断
     import re as _re_planner
-    if query_plan.get("limit") and _re_planner.search(
-        r'所有|全部|\ball\b|不做.*限制|不限制|无限制|不做数量限制|去掉.*limit|去除.*limit|取消.*limit',
-        effective_input, _re_planner.IGNORECASE
-    ):
-        logger.info(
-            f"[query_planner] User said '所有/全部/不限制' but LLM set "
-            f"limit={query_plan['limit']} — clearing hallucinated limit"
+    if query_plan.get("limit"):
+        _has_explicit_limit = _re_planner.search(
+            r'前\s*\d+|[Tt]op\s*\d+|限制\s*\d+|取\s*\d+\s*条|最多\s*\d+',
+            effective_input
         )
-        query_plan["limit"] = None
+        if not _has_explicit_limit:
+            logger.info(
+                f"[query_planner] No explicit limit keyword in input — "
+                f"clearing hallucinated limit={query_plan['limit']}"
+            )
+            query_plan["limit"] = None
 
     logger.info(f"[query_planner] Plan: table={query_plan['table']}, "
                 f"metrics={query_plan['metrics']}")

@@ -3,7 +3,7 @@ import requests
 import json
 
 BASE = "http://localhost:8000/api/v1/chat"
-SESSION = "test-carrier-followup-v2"
+SESSION = "test-carrier-followup-v3"
 
 def send(message):
     print("\n" + "=" * 70)
@@ -62,7 +62,7 @@ def send(message):
         print("  CLARIFY: %s" % cq[:200])
 
 # Step 1: initial query
-send("站点\"光泽度测量\"的可用载具列表")
+send('站点"光泽度测量"的可用载具列表')
 
-# Step 2: follow-up
-send("不做数量限制，并展示maintenance_countdown字段列")
+# Step 2: follow-up with 新增 field
+send("新增maintenance_countdown字段列展示")
