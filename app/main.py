@@ -116,6 +116,10 @@ def _register_routes(app: FastAPI):
     from app.api.v1.traceability import router as traceability_router
     app.include_router(traceability_router)
 
+    # 数据分析 API (Phase 1)
+    from app.api.v1.analytics import router as analytics_router
+    app.include_router(analytics_router)
+
     # 旧 API 兼容层
     from app.api.compat import router as compat_router
     app.include_router(compat_router)

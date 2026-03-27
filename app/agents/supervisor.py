@@ -1,0 +1,124 @@
+"""
+Supervisor — Multi-Agent 顶层路由器
+
+职责：
+1. 对用户输入进行意图预分类
+2. 路由到对应的子 Agent（query / analyze / report）
+3. 统一响应格式返回
+
+Phase 0: 仅支持 query 和 analyze 路由，analyze 暂返回提示。
+现有 Query Agent 逻辑零改动，通过 import 委托调用。
+"""
+
+import logging
+import re
+from typing import Dict, Any, Literal
+
+logger = logging.getLogger(__name__)
+
+# ── 分析意图关键词 ──
+_ANALYSIS_KEYWORDS = re.compile(
+    r"SPC|控制图|Cpk|Ppk|相关性分析|回归分析|预测模型|异常检测|帕累托|"
+    r"良率分析|趋势分析|方差分析|ANOVA|假设检验|t[\-\s]?test|卡方检验|"
+    r"统计分析|数据分析|描述性统计|分布分析|散点图分析|热力图",
+    re.IGNORECASE,
+)
+
+
+def classify_agent_intent(user_input: str) -> Literal["query", "analyze", "report"]:
+    """
+    顶层意图预分类 — 决定路由到哪个子 Agent。
+
+    当前策略: 关键词匹配。Phase 3 可升级为 LLM 分类。
+    """
+    if _ANALYSIS_KEYWORDS.search(user_input):
+        return "analyze"
+    # report 暂不启用，后续通过关键词或 LLM 判断
+    return "query"
+
+
+async def route_to_agent(
+    user_input: str,
+    session_id: str,
+    conversation_history: list | None = None,
+    **kwargs,
+) -> Dict[str, Any]:
+    """
+    Supervisor 主入口 — 分类意图并路由到子 Agent。
+
+    返回格式与现有 chat 端点一致：
+    {
+        "response": {...},
+        "is_followup": bool,
+        "session_id": str,
+        ...AgentState fields
+    }
+    """
+    intent = classify_agent_intent(user_input)
+    logger.info(f"[supervisor] intent={intent}, input={user_input[:60]}...")
+
+    if intent == "query":
+        return await _run_query_agent(
+            user_input, session_id, conversation_history, **kwargs
+        )
+    elif intent == "analyze":
+        return await _run_analysis_agent(
+            user_input, session_id, conversation_history, **kwargs
+        )
+    else:
+        return await _run_query_agent(
+            user_input, session_id, conversation_history, **kwargs
+        )
+
+
+async def _run_query_agent(
+    user_input: str,
+    session_id: str,
+    conversation_history: list | None = None,
+    **kwargs,
+) -> Dict[str, Any]:
+    """委托给现有 Query Agent（app/agent/graph.py），零改动。"""
+    from app.agent.graph import get_agent_app
+
+    agent = get_agent_app()
+    initial_state = {
+        "user_input": user_input,
+        "session_id": session_id,
+        "conversation_history": conversation_history or [],
+        "sql_retry_count": 0,
+        **kwargs,
+    }
+    return await agent.ainvoke(initial_state)
+
+
+async def _run_analysis_agent(
+    user_input: str,
+    session_id: str,
+    conversation_history: list | None = None,
+    **kwargs,
+) -> Dict[str, Any]:
+    """
+    路由到 Analysis Agent。
+
+    Phase 0: 返回友好提示（分析功能即将上线）。
+    Phase 3: 委托给 analysis_agent/graph.py 的独立 LangGraph。
+    """
+    # Phase 3 TODO: 替换为 analysis_agent 的实际调用
+    # from app.agents.analysis_agent.graph import get_analysis_agent_app
+    # agent = get_analysis_agent_app()
+    # return await agent.ainvoke(...)
+
+    logger.info(f"[supervisor] analysis_agent placeholder for: {user_input[:60]}...")
+    return {
+        "response": {
+            "success": True,
+            "answer": (
+                "检测到数据分析意图。分析 Agent 正在建设中，"
+                "请通过 /api/v1/analytics/run 接口直接调用分析方法。\n\n"
+                "可用分析方法请查询: GET /api/v1/analytics/methods"
+            ),
+            "agent_route": "analyze",
+        },
+        "is_followup": False,
+        "session_id": session_id,
+    }

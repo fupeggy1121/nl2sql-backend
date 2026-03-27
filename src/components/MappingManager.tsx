@@ -42,6 +42,8 @@ interface RelationMapping {
   description: string;
   strategy: string;
   join_logic: Record<string, any>;
+  domain_class?: string;
+  range_class?: string;
   confidence?: string;
 }
 
@@ -168,11 +170,18 @@ const textareaCls = `${inputCls} min-h-[80px] resize-y font-mono`;
 // ══════════════════════════════════════════════════════════════════
 
 const STRATEGY_COLORS: Record<string, string> = {
-  ForeignKey:   'bg-blue-100 text-blue-700',
-  JoinTable:    'bg-purple-100 text-purple-700',
-  Indirect:     'bg-orange-100 text-orange-700',
-  Recursive:    'bg-green-100 text-green-700',
-  Denormalized: 'bg-gray-100 text-gray-600',
+  ForeignKey:    'bg-blue-100 text-blue-700',
+  JoinVia:       'bg-cyan-100 text-cyan-700',
+  JoinTable:     'bg-purple-100 text-purple-700',
+  CompositeKey:  'bg-indigo-100 text-indigo-700',
+  Indirect:      'bg-orange-100 text-orange-700',
+  Recursive:     'bg-green-100 text-green-700',
+  Denormalized:  'bg-gray-100 text-gray-600',
+  EmbeddedJSON:  'bg-teal-100 text-teal-700',
+  EmbeddedJSON_FK: 'bg-teal-100 text-teal-600',
+  EventLog:      'bg-yellow-100 text-yellow-700',
+  ValueLookup:   'bg-pink-100 text-pink-700',
+  Virtual:       'bg-gray-100 text-gray-400',
 };
 
 const ACTION_COLORS: Record<string, string> = {
@@ -495,13 +504,137 @@ function ObjectMappingsTab() {
 // Tab 2: Relation Mappings
 // ══════════════════════════════════════════════════════════════════
 
-const STRATEGIES = ['ForeignKey', 'JoinTable', 'Indirect', 'Recursive', 'Denormalized'];
+const STRATEGIES = [
+  'ForeignKey',
+  'JoinVia',
+  'JoinTable',
+  'CompositeKey',
+  'Indirect',
+  'Recursive',
+  'Denormalized',
+  'EmbeddedJSON',
+  'EmbeddedJSON_FK',
+  'EventLog',
+  'ValueLookup',
+  'Virtual',
+];
+
+type RelationViewMode = 'list' | 'path';
+type RelationLayer = 'event' | 'snapshot' | 'entity';
+
+interface ScenarioPreset {
+  id: string;
+  label: string;
+  description: string;
+  chains: string[][];
+}
+
+const SCENARIO_PRESETS: ScenarioPreset[] = [
+  {
+    id: 'split',
+    label: '拆批链路',
+    description: '拆批事件的事件层→快照层→实体层主路径',
+    chains: [
+      ['semi:hasTransitionDetail', 'semi:snapshotOfSublot'],
+      ['semi:hasWaferTransitionSnapshot', 'semi:transitionSnapshotOfWafer'],
+      ['semi:producesLot', 'semi:producesSublot'],
+      ['semi:splitsFromSublot', 'semi:chooseSourceWafer', 'semi:assignsWaferToSublot']
+    ]
+  },
+  {
+    id: 'genealogy',
+    label: '谱系通用链路',
+    description: '适用于拆批/并批/攒批等谱系操作的通用快照路径',
+    chains: [
+      ['semi:hasTransitionDetail', 'semi:snapshotOfSublot', 'semi:transitionSnapshotAtStation'],
+      ['semi:hasWaferTransitionSnapshot', 'semi:transitionSnapshotOfWafer', 'semi:transitionSnapshotInSublot']
+    ]
+  },
+  {
+    id: 'measurement',
+    label: '量测链路',
+    description: '量测事件与量测快照语义路径',
+    chains: [
+      ['semi:hasSnapshot', 'semi:snapshotOfWafer'],
+      ['semi:hasSnapshot', 'semi:snapshotAtStation'],
+      ['semi:hasSnapshot', 'semi:snapshotInLot', 'semi:snapshotInSublot']
+    ]
+  }
+];
+
+function classifyRelationLayer(item: RelationMapping): RelationLayer {
+  const d = item.domain_class || '';
+  const r = item.range_class || '';
+  const rel = item.logic_relation || '';
+
+  if (
+    d.includes('EventRecord') ||
+    rel.startsWith('semi:hasTransition') ||
+    rel === 'semi:hasSnapshot' ||
+    rel === 'semi:hasWaferTransitionSnapshot'
+  ) {
+    return 'event';
+  }
+
+  if (d.includes('Snapshot') || r.includes('Snapshot') || rel.includes('Snapshot') || rel.startsWith('semi:snapshot')) {
+    return 'snapshot';
+  }
+
+  return 'entity';
+}
+
+function summarizeJoinLogic(joinLogic: Record<string, any> | undefined): string {
+  if (!joinLogic) return '—';
+  const parts: string[] = [];
+
+  if (joinLogic.source_table) parts.push(`src:${joinLogic.source_table}`);
+  if (joinLogic.source_key) parts.push(`srcKey:${joinLogic.source_key}`);
+  if (joinLogic.via_table) parts.push(`via:${joinLogic.via_table}`);
+  if (joinLogic.via_source_key) parts.push(`viaSrc:${joinLogic.via_source_key}`);
+  if (joinLogic.via_target_key) parts.push(`viaTgt:${joinLogic.via_target_key}`);
+  if (joinLogic.via_filter) parts.push(`filter:${joinLogic.via_filter}`);
+  if (joinLogic.via2_table) parts.push(`via2:${joinLogic.via2_table}`);
+  if (joinLogic.target_table) parts.push(`tgt:${joinLogic.target_table}`);
+  if (joinLogic.target_key) parts.push(`tgtKey:${joinLogic.target_key}`);
+  if (joinLogic.target_via_expr) parts.push(`expr:${joinLogic.target_via_expr}`);
+
+  return parts.length ? parts.join(' | ') : '—';
+}
+
+function formatClassName(cls?: string): string {
+  if (!cls) return '—';
+  return cls.replace('semi:', '');
+}
+
+function matchScenario(item: RelationMapping, scenario: string): boolean {
+  if (!scenario) return true;
+  const rel = (item.logic_relation || '').toLowerCase();
+  const desc = (item.description || '').toLowerCase();
+  const d = (item.domain_class || '').toLowerCase();
+  const r = (item.range_class || '').toLowerCase();
+  const corpus = `${rel} ${desc} ${d} ${r}`;
+
+  switch (scenario) {
+    case 'split':
+      return /split|拆批|produces|assigns|transition/.test(corpus);
+    case 'genealogy':
+      return /split|merge|accumulate|谱系|transition|source|target/.test(corpus);
+    case 'measurement':
+      return /measurement|snapshot|量测|param|process_measure_data/.test(corpus);
+    default:
+      return true;
+  }
+}
 
 function RelationMappingsTab() {
   const [items, setItems] = useState<RelationMapping[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [filterConf, setFilterConf] = useState('');
+  const [viewMode, setViewMode] = useState<RelationViewMode>('list');
+  const [layerFilter, setLayerFilter] = useState<string>('');
+  const [scenarioFilter, setScenarioFilter] = useState<string>('');
+  const [activePreset, setActivePreset] = useState<string>(SCENARIO_PRESETS[0].id);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState<Partial<RelationMapping> | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -595,6 +728,23 @@ function RelationMappingsTab() {
             <Field label="order_by（可选）"><input value={jl.order_by || ''} onChange={e => setJl('order_by', e.target.value)} className={inputCls} placeholder="sequence" /></Field>
           </div>
         );
+      case 'JoinVia':
+        return (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="source_table"><input value={jl.source_table || ''} onChange={e => setJl('source_table', e.target.value)} className={inputCls} /></Field>
+            <Field label="source_key"><input value={jl.source_key || 'id'} onChange={e => setJl('source_key', e.target.value)} className={inputCls} /></Field>
+            <Field label="via_table（中间表）"><input value={jl.via_table || ''} onChange={e => setJl('via_table', e.target.value)} className={inputCls} /></Field>
+            <Field label="via_source_key"><input value={jl.via_source_key || ''} onChange={e => setJl('via_source_key', e.target.value)} className={inputCls} /></Field>
+            <Field label="via_target_key"><input value={jl.via_target_key || ''} onChange={e => setJl('via_target_key', e.target.value)} className={inputCls} /></Field>
+            <Field label="via_filter（可选）" hint="如 JSON_EXTRACT(extra,'$.isSource')=false"><input value={jl.via_filter || ''} onChange={e => setJl('via_filter', e.target.value)} className={inputCls} /></Field>
+            <Field label="target_table"><input value={jl.target_table || ''} onChange={e => setJl('target_table', e.target.value)} className={inputCls} /></Field>
+            <Field label="target_key"><input value={jl.target_key || ''} onChange={e => setJl('target_key', e.target.value)} className={inputCls} /></Field>
+            <Field label="via2_table（第二跳，可选）"><input value={jl.via2_table || ''} onChange={e => setJl('via2_table', e.target.value)} className={inputCls} /></Field>
+            <Field label="via2_source_key"><input value={jl.via2_source_key || ''} onChange={e => setJl('via2_source_key', e.target.value)} className={inputCls} /></Field>
+            <Field label="via2_target_key"><input value={jl.via2_target_key || ''} onChange={e => setJl('via2_target_key', e.target.value)} className={inputCls} /></Field>
+            <Field label="备注" hint="可选"><input value={jl.note || ''} onChange={e => setJl('note', e.target.value)} className={inputCls} /></Field>
+          </div>
+        );
       case 'Recursive':
         return (
           <div className="grid grid-cols-2 gap-3">
@@ -620,18 +770,83 @@ function RelationMappingsTab() {
     }
   };
 
-  const autoItems = items.filter(i => i.confidence);
-  const reviewItems = items.filter(i => i.confidence === 'medium' || i.confidence === 'low');
+  const filteredItems = useMemo(() => {
+    return items.filter(item => {
+      if (layerFilter && classifyRelationLayer(item) !== layerFilter) return false;
+      if (scenarioFilter && !matchScenario(item, scenarioFilter)) return false;
+      return true;
+    });
+  }, [items, layerFilter, scenarioFilter]);
+
+  const reviewItems = filteredItems.filter(i => i.confidence === 'medium' || i.confidence === 'low');
+
+  const groupedItems = useMemo(() => {
+    const groups: Record<RelationLayer, RelationMapping[]> = {
+      event: [],
+      snapshot: [],
+      entity: []
+    };
+    filteredItems.forEach(item => {
+      groups[classifyRelationLayer(item)].push(item);
+    });
+    return groups;
+  }, [filteredItems]);
+
+  const relationMap = useMemo(() => {
+    return new Map(items.map(item => [item.logic_relation, item]));
+  }, [items]);
+
+  const currentPreset = useMemo(() => {
+    return SCENARIO_PRESETS.find(p => p.id === activePreset) || SCENARIO_PRESETS[0];
+  }, [activePreset]);
 
   return (
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex items-center gap-3 flex-wrap">
+        <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+          <button
+            onClick={() => setViewMode('list')}
+            className={`px-3 py-2 text-sm ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+          >
+            分层列表
+          </button>
+          <button
+            onClick={() => setViewMode('path')}
+            className={`px-3 py-2 text-sm ${viewMode === 'path' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+          >
+            场景链路
+          </button>
+        </div>
+
         <div className="relative flex-1 min-w-[200px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={search} onChange={e => { setSearch(e.target.value); load(e.target.value, filterConf); }}
             placeholder="搜索关系名 / 描述..." className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
         </div>
+
+        <select
+          value={scenarioFilter}
+          onChange={e => setScenarioFilter(e.target.value)}
+          className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none"
+        >
+          <option value="">全部场景</option>
+          <option value="split">拆批</option>
+          <option value="genealogy">谱系</option>
+          <option value="measurement">量测</option>
+        </select>
+
+        <select
+          value={layerFilter}
+          onChange={e => setLayerFilter(e.target.value)}
+          className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none"
+        >
+          <option value="">全部层级</option>
+          <option value="event">事件层</option>
+          <option value="snapshot">快照层</option>
+          <option value="entity">实体层</option>
+        </select>
+
         <select value={filterConf} onChange={e => { setFilterConf(e.target.value); load(search, e.target.value); }}
           className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none">
           <option value="">全部置信度</option>
@@ -653,62 +868,143 @@ function RelationMappingsTab() {
         </div>
       )}
 
-      <p className="text-xs text-gray-500">共 {items.length} 条关系映射</p>
+      <p className="text-xs text-gray-500">共 {filteredItems.length} 条关系映射（原始 {items.length} 条）</p>
+
+      {viewMode === 'path' && (
+        <div className="border border-blue-200 bg-blue-50/50 rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-medium text-gray-700">场景预设</span>
+            <select
+              value={activePreset}
+              onChange={e => setActivePreset(e.target.value)}
+              className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none bg-white"
+            >
+              {SCENARIO_PRESETS.map(p => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
+            </select>
+            <span className="text-xs text-gray-500">{currentPreset.description}</span>
+          </div>
+
+          <div className="space-y-3">
+            {currentPreset.chains.map((chain, index) => (
+              <div key={`${currentPreset.id}-${index}`} className="border border-gray-200 bg-white rounded-lg p-3">
+                <p className="text-xs font-medium text-gray-500 mb-2">链路 {index + 1}</p>
+                <div className="space-y-2">
+                  {chain.map((relName, stepIndex) => {
+                    const rel = relationMap.get(relName);
+                    if (!rel) {
+                      return (
+                        <div key={relName} className="text-xs text-red-500 bg-red-50 border border-red-100 rounded px-2 py-1">
+                          {stepIndex + 1}. {relName}（当前映射集中未找到）
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={relName} className="border border-gray-200 rounded-md p-2 bg-gray-50">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-gray-500">{stepIndex + 1}</span>
+                          <span className="font-mono text-xs text-blue-700">{rel.logic_relation}</span>
+                          <Badge text={rel.strategy} colorCls={STRATEGY_COLORS[rel.strategy] || 'bg-gray-100 text-gray-600'} />
+                          <Badge
+                            text={classifyRelationLayer(rel) === 'event' ? '事件层' : classifyRelationLayer(rel) === 'snapshot' ? '快照层' : '实体层'}
+                            colorCls={classifyRelationLayer(rel) === 'event' ? 'bg-indigo-100 text-indigo-700' : classifyRelationLayer(rel) === 'snapshot' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}
+                          />
+                        </div>
+                        <div className="mt-1 text-xs text-gray-600">
+                          {formatClassName(rel.domain_class)} → {formatClassName(rel.range_class)}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-500 break-all">
+                          JOIN摘要：{summarizeJoinLogic(rel.join_logic)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Table */}
-      <div className="border border-gray-200 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="w-8" />
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Logic Relation</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">策略</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">描述</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">置信度</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {loading && <tr><td colSpan={6} className="py-8 text-center text-gray-400">加载中...</td></tr>}
-            {!loading && items.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-gray-400">暂无数据 — 运行 generate_relation_mappings.py --merge 导入草稿</td></tr>}
-            {items.map(item => (
-              <React.Fragment key={item.logic_relation}>
-                <tr className={`hover:bg-gray-50 transition-colors ${item.confidence === 'medium' ? 'bg-yellow-50/30' : ''}`}>
-                  <td className="pl-3">
-                    <button onClick={() => setExpandedRow(expandedRow === item.logic_relation ? null : item.logic_relation)}
-                      className="text-gray-400 hover:text-gray-600">
-                      {expandedRow === item.logic_relation ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-blue-700">{item.logic_relation}</td>
-                  <td className="px-4 py-3">
-                    <Badge text={item.strategy} colorCls={STRATEGY_COLORS[item.strategy] || 'bg-gray-100 text-gray-600'} />
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={item.description}>{item.description || '—'}</td>
-                  <td className="px-4 py-3">
-                    {item.confidence && <Badge text={item.confidence} colorCls={CONFIDENCE_COLORS[item.confidence] || ''} />}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => openEdit(item)} className="p-1 text-gray-400 hover:text-blue-600"><Edit2 size={14} /></button>
-                      <button onClick={() => handleDelete(item.logic_relation)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 size={14} /></button>
-                    </div>
-                  </td>
-                </tr>
-                {expandedRow === item.logic_relation && (
-                  <tr className="bg-gray-50">
-                    <td colSpan={6} className="px-8 pb-4 pt-2">
-                      <pre className="text-xs text-gray-600 bg-white border border-gray-200 rounded-lg p-3 overflow-x-auto">
-                        {JSON.stringify(item.join_logic, null, 2)}
-                      </pre>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {viewMode === 'list' && (
+        <div className="space-y-4">
+          {(['event', 'snapshot', 'entity'] as RelationLayer[]).map(layer => {
+            const layerItems = groupedItems[layer];
+            const layerTitle = layer === 'event' ? '事件层关系' : layer === 'snapshot' ? '快照层关系' : '实体层关系';
+
+            return (
+              <div key={layer} className="border border-gray-200 rounded-xl overflow-hidden">
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">{layerTitle}</span>
+                  <span className="text-xs text-gray-500">{layerItems.length} 条</span>
+                </div>
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50/60 border-b border-gray-200">
+                    <tr>
+                      <th className="w-8" />
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Logic Relation</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">策略</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Domain → Range</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">描述</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">置信度</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {loading && layer === 'event' && <tr><td colSpan={7} className="py-8 text-center text-gray-400">加载中...</td></tr>}
+                    {!loading && filteredItems.length === 0 && layer === 'event' && <tr><td colSpan={7} className="py-8 text-center text-gray-400">暂无数据 — 运行 generate_relation_mappings.py --merge 导入草稿</td></tr>}
+                    {!loading && layerItems.length === 0 && filteredItems.length > 0 && (
+                      <tr><td colSpan={7} className="py-5 text-center text-gray-300 text-xs">该层级无匹配关系</td></tr>
+                    )}
+                    {layerItems.map(item => (
+                      <React.Fragment key={item.logic_relation}>
+                        <tr className={`hover:bg-gray-50 transition-colors ${item.confidence === 'medium' ? 'bg-yellow-50/30' : ''}`}>
+                          <td className="pl-3">
+                            <button onClick={() => setExpandedRow(expandedRow === item.logic_relation ? null : item.logic_relation)}
+                              className="text-gray-400 hover:text-gray-600">
+                              {expandedRow === item.logic_relation ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs text-blue-700">{item.logic_relation}</td>
+                          <td className="px-4 py-3">
+                            <Badge text={item.strategy} colorCls={STRATEGY_COLORS[item.strategy] || 'bg-gray-100 text-gray-600'} />
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-600">
+                            {formatClassName(item.domain_class)} → {formatClassName(item.range_class)}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={item.description}>{item.description || '—'}</td>
+                          <td className="px-4 py-3">
+                            {item.confidence && <Badge text={item.confidence} colorCls={CONFIDENCE_COLORS[item.confidence] || ''} />}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button onClick={() => openEdit(item)} className="p-1 text-gray-400 hover:text-blue-600"><Edit2 size={14} /></button>
+                              <button onClick={() => handleDelete(item.logic_relation)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 size={14} /></button>
+                            </div>
+                          </td>
+                        </tr>
+                        {expandedRow === item.logic_relation && (
+                          <tr className="bg-gray-50">
+                            <td colSpan={7} className="px-8 pb-4 pt-2 space-y-2">
+                              <div className="text-xs text-gray-500 break-all">JOIN摘要：{summarizeJoinLogic(item.join_logic)}</div>
+                              <pre className="text-xs text-gray-600 bg-white border border-gray-200 rounded-lg p-3 overflow-x-auto">
+                                {JSON.stringify(item.join_logic, null, 2)}
+                              </pre>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Modal */}
       {showModal && editItem && (

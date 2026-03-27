@@ -952,7 +952,7 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "生产事件执行记录主表（抽象父类，所有 operation_type 均写入此表）。不设 filter_condition，子类各自附加 tableFilter。完整枚举见 value_mappings.semi:LotOperationType。物理层三联写：本表（主记录）+ _detail（actsOnSublot 关系的物理载体，sub_lot_id FK + 快照字段 carrier_code/process_code + extra JSON isSource 标记）+ _wafer_detail_log（actsOnWafer 关系的物理载体，batch_resume_detail_log_id FK→_detail.id，wafer_id FK + 快照字段 sub_lot_code/carrier_code/slot_no/ng_code）。【⚠ 注意】物理表无 output_lot_id、output_lot_code、station_id、equipment_id、operator_id、before_state、after_state 等独立列；谱系操作的源/目标批次关系通过 _detail.extra(isSource) 区分，操作员信息存于 create_user_id/create_user，扩展信息存于 extra JSON。"
+      "note": "生产事件执行记录主表（抽象父类，所有 operation_type 均写入此表）。不设 filter_condition，子类各自附加 tableFilter。完整枚举见 value_mappings.semi:LotOperationType。物理层三联写：本表（主记录）+ _detail（hasTransitionDetail 关系的物理载体，sub_lot_id FK + 快照字段 carrier_code/process_code + extra JSON isSource 标记）+ _wafer_detail_log（hasWaferTransitionSnapshot 关系的物理载体，batch_resume_detail_log_id FK→_detail.id，wafer_id FK + 快照字段 sub_lot_code/carrier_code/slot_no/ng_code）。【⚠ 注意】物理表无 output_lot_id、output_lot_code、station_id、equipment_id、operator_id、before_state、after_state 等独立列；谱系操作的源/目标批次关系通过 _detail.extra(isSource) 区分，操作员信息存于 create_user_id/create_user，扩展信息存于 extra JSON。"
     },
     {
       "logic_class": "semi:SplitEvent",
@@ -1134,7 +1134,7 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "不良录入操作执行记录，filter_condition = operation_type=6。具体不良 Wafer 明细通过 actsOnWafer 关系记录于 _wafer_detail_log（ng_code 字段标注不良类型）。不改变批次 status，不产出新批次，output_lot_id 为 null。"
+      "note": "不良录入操作执行记录，filter_condition = operation_type=6。具体不良 Wafer 明细通过 hasWaferTransitionSnapshot 关系记录于 _wafer_detail_log（ng_code 字段标注不良类型）。不改变批次 status，不产出新批次，output_lot_id 为 null。"
     },
     {
       "logic_class": "semi:CheckInEvent",
@@ -1317,12 +1317,22 @@
       "note": "并批执行记录。lot_code=源批次；目标(父)批次（mergesIntoLot 关系）通过 _detail.extra 或 _detail 关系表中 isSource=false 一侧的 sub_lot_id 推导（物理表无独立 output_lot_id/output_lot_code 列）。是谱系操作（actsOnWafer 有逐片迁移明细记录所有 Wafer 从源批次迁移到目标批次的明细）。"
     },
     {
-      "logic_class": "semi:SublotOpSnapshot",
+      "logic_class": "semi:SublotTransitionSnapshot",
       "physical_table": "matrix_routerx_operation_lot_batch_resume_log_detail",
       "primary_key": "id",
-      "label_cn": "子批次操作状态快照（关系实现表）",
+      "label_cn": "子批次迁移快照",
       "virtual": true,
       "virtual_kind": "detail_snapshot",
+      "properties": {
+        "semi:belongsToEventRecord": "batch_resume_log_id",
+        "semi:snapshotOfSublot": "sub_lot_id",
+        "semi:hasSublotCodeSnapshot": "sub_lot_code",
+        "semi:hasCarrierCode": "carrier_code",
+        "semi:snapshotAtStation": "process_code",
+        "semi:hasProcessNameSnapshot": "process_name",
+        "semi:hasIsSourceFlag": "extra",
+        "semi:hasTargetLotCode": "extra"
+      },
       "key_columns": [
         "id",
         "batch_resume_log_id",
@@ -1337,15 +1347,24 @@
         "extra",
         "gmt_create"
       ],
-      "note": "【关系实现表，非独立本体类】semi:actsOnSublot（ProductionEventRecord→Sublot）的物理JoinVia中间表。batch_resume_log_id FK 关联主事件记录；sub_lot_id FK 关联被影响的子批次实例。快照字段 carrier_code/process_code 记录事件执行时刻的子批次上下文状态。extra(JSON) 含 isSource 标记：谱系操作时 isSource=true 表示源侧子批次，isSource=false 表示目标侧子批次（含 targetLotCode）。不单独暴露为本体类，通过 actsOnSublot 关系的 JoinVia 路径访问。"
+      "note": "【迁移快照层（Sublot粒度）】ProductionEventRecord 的 _detail 快照实体。batch_resume_log_id FK 关联主事件记录；sub_lot_id FK 关联被影响的子批次实例。carrier_code/process_code 记录事件时刻上下文；extra(JSON) 含 isSource（源/目标侧）及 targetLotCode（目标主批次编码）。可直接用于“本次操作涉及/产出的子批次分组”查询。"
     },
     {
-      "logic_class": "semi:WaferTransitionRecord",
+      "logic_class": "semi:WaferTransitionSnapshot",
       "physical_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
       "primary_key": "id",
-      "label_cn": "Wafer 迁移明细记录（关系实现表）",
+      "label_cn": "Wafer 迁移快照",
       "virtual": true,
       "virtual_kind": "detail_snapshot",
+      "properties": {
+        "semi:belongsToTransitionDetail": "batch_resume_detail_log_id",
+        "semi:transitionSnapshotOfWafer": "wafer_id",
+        "semi:hasSublotCodeSnapshot": "sub_lot_code",
+        "semi:hasSlotNo": "slot_no",
+        "semi:hasCarrierCode": "carrier_code",
+        "semi:hasNgCode": "ng_code",
+        "semi:hasNgReason": "ng_reason"
+      },
       "key_columns": [
         "id",
         "batch_resume_detail_log_id",
@@ -1360,7 +1379,7 @@
         "extra",
         "gmt_create"
       ],
-      "note": "【关系实现表，非独立本体类】semi:actsOnWafer（ProductionEventRecord→Wafer）的物理JoinVia中间表。batch_resume_detail_log_id FK 关联 _detail.id（非直接关联主表）；wafer_id FK 关联被影响的Wafer实例。sub_lot_code 记录 wafer 当前所属子批次；ng_code/ng_reason 记录不良原因（NGRecordEvent时）；carrier_code/slot_no 记录事件时刻 Wafer 所在载具槽位。谱系操作时每个 wafer 写两行（源侧+目标侧，各关联不同 _detail 行）。不单独暴露为本体类，通过 actsOnWafer 关系的 JoinVia 路径访问。"
+      "note": "【迁移快照层（Wafer粒度）】ProductionEventRecord 的 _wafer_detail_log 快照实体，经 _detail 关联到事件。wafer_id FK 关联 Wafer；sub_lot_code 记录事件时刻所属子批次；ng_code/ng_reason 记录不良原因；carrier_code/slot_no 记录事件时刻载具槽位。谱系操作时每个 wafer 通常写两行（源侧+目标侧），可用于直接做 wafer 粒度迁移分析。"
     },
     {
       "logic_class": "semi:WarehouseLocation",
@@ -2076,31 +2095,32 @@
       "range_class": "semi:Sublot"
     },
     {
-      "logic_relation": "semi:actsOnSublot",
-      "description": "生产事件执行记录关联所作用的子批次（通过 _detail 从表，携带快照属性 carrier_code/process_code及 extra JSON isSource 标记）",
+      "logic_relation": "semi:hasTransitionDetail",
+      "description": "生产事件记录包含子批次粒度迁移快照（ProductionEventRecord→SublotTransitionSnapshot）",
       "strategy": "JoinVia",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_log",
         "source_key": "id",
         "via_table": "matrix_routerx_operation_lot_batch_resume_log_detail",
         "via_source_key": "batch_resume_log_id",
-        "via_target_key": "sub_lot_id",
-        "target_table": "matrix_routerx_operation_lot",
+        "via_target_key": "id",
+        "target_table": "matrix_routerx_operation_lot_batch_resume_log_detail",
         "target_key": "id",
         "snapshot_columns": [
+          "sub_lot_id",
           "sub_lot_code",
           "carrier_code",
           "process_code",
           "extra"
         ],
-        "note": "通过 _detail 中间表关联：batch_resume_log_id→主事件记录，sub_lot_id→子批次实例（matrix_routerx_operation_lot WHERE parent_id!=0）。快照列 carrier_code/process_code 记录事件执行时刻的子批次上下文。extra(JSON) 含 isSource 标记：谱系操作时 isSource=true=源侧, false=目标侧。适用于全部 operation_type。"
+        "note": "路径：_resume_log.id → _detail.batch_resume_log_id。该关系直接暴露 _detail 为快照层实体，适用于全部 operation_type。源/目标侧通过 extra.isSource 区分。"
       },
       "domain_class": "semi:ProductionEventRecord",
-      "range_class": "semi:Sublot"
+      "range_class": "semi:SublotTransitionSnapshot"
     },
     {
-      "logic_relation": "semi:actsOnWafer",
-      "description": "生产事件执行记录关联所作用的晶圆（通过 _detail → _wafer_detail_log 两跳关联）",
+      "logic_relation": "semi:hasWaferTransitionSnapshot",
+      "description": "生产事件记录包含Wafer粒度迁移快照（ProductionEventRecord→WaferTransitionSnapshot）",
       "strategy": "JoinVia",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_log",
@@ -2109,19 +2129,76 @@
         "via_source_key": "batch_resume_log_id",
         "via2_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
         "via2_source_key": "batch_resume_detail_log_id",
-        "via2_target_key": "wafer_id",
-        "target_table": "matrix_routerx_operation_lot_wafer",
-        "target_key": "wafer_id",
+        "via2_target_key": "id",
+        "target_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
+        "target_key": "id",
         "snapshot_columns": [
+          "wafer_id",
           "sub_lot_code",
           "carrier_code",
           "slot_no",
           "ng_code"
         ],
-        "note": "两跳JoinVia：_resume_log.id → _detail.batch_resume_log_id → _detail.id = _wafer_detail_log.batch_resume_detail_log_id → _wafer_detail_log.wafer_id → Wafer实例。谱系操作时每个 wafer 写两行（源侧+目标侧，分别关联不同 _detail 行）。"
+        "note": "路径：_resume_log → _detail → _wafer_detail_log。该关系直接暴露 wafer 粒度快照层实体；源/目标侧语义通过关联到 _detail.extra.isSource 判断。"
       },
       "domain_class": "semi:ProductionEventRecord",
+      "range_class": "semi:WaferTransitionSnapshot"
+    },
+    {
+      "logic_relation": "semi:snapshotOfSublot",
+      "description": "子批次迁移快照对应的子批次实体（SublotTransitionSnapshot→Sublot）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_batch_resume_log_detail",
+        "source_key": "sub_lot_id",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "id",
+        "note": "_detail.sub_lot_id → lot.id（WHERE parent_id!=0）。"
+      },
+      "domain_class": "semi:SublotTransitionSnapshot",
+      "range_class": "semi:Sublot"
+    },
+    {
+      "logic_relation": "semi:transitionSnapshotAtStation",
+      "description": "子批次迁移快照对应的工艺站点（SublotTransitionSnapshot→ProcessStation）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_batch_resume_log_detail",
+        "source_key": "process_code",
+        "target_table": "matrix_routerx_config_process",
+        "target_key": "code",
+        "note": "_detail.process_code 为快照时刻工序编码。"
+      },
+      "domain_class": "semi:SublotTransitionSnapshot",
+      "range_class": "semi:ProcessStation"
+    },
+    {
+      "logic_relation": "semi:transitionSnapshotOfWafer",
+      "description": "Wafer迁移快照对应的晶圆实体（WaferTransitionSnapshot→Wafer）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
+        "source_key": "wafer_id",
+        "target_table": "matrix_routerx_operation_lot_wafer",
+        "target_key": "wafer_id",
+        "note": "_wafer_detail_log.wafer_id → lot_wafer.wafer_id。"
+      },
+      "domain_class": "semi:WaferTransitionSnapshot",
       "range_class": "semi:Wafer"
+    },
+    {
+      "logic_relation": "semi:transitionSnapshotInSublot",
+      "description": "Wafer迁移快照时刻所属子批次（WaferTransitionSnapshot→Sublot）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
+        "source_key": "sub_lot_code",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "current_lot_code",
+        "note": "_wafer_detail_log.sub_lot_code 为事件时刻子批次编码快照，对应 lot.current_lot_code（WHERE parent_id!=0）。"
+      },
+      "domain_class": "semi:WaferTransitionSnapshot",
+      "range_class": "semi:Sublot"
     },
     {
       "logic_relation": "semi:mergesIntoLot",
@@ -2834,22 +2911,37 @@
     },
     {
       "logic_relation": "semi:producesLot",
-      "description": "事件执行后产生的输出批次（概念关系，output_lot_id 列不存在于物理表）",
-      "strategy": "Virtual",
+      "description": "拆批/谱系变更事件执行后产生的新主批次。通过 _detail(isSource=false) 中间行的 extra.targetLotCode 关联 ProductionLot.lot_code",
+      "strategy": "JoinVia",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_log",
-        "note": "⚠ output_lot_id 列不存在于物理表（已确认扫描）。拆批/攒批产出批次信息通过 _detail 中间表 extra JSON 字段推导，无法直接 FK JOIN。禁止生成 log.output_lot_id = lot.id 格式的 JOIN 条件。查询输入批次（源批次）请使用 lot_id 列（actsOnLot 关系）。"
+        "source_key": "id",
+        "via_table": "matrix_routerx_operation_lot_batch_resume_log_detail",
+        "via_source_key": "batch_resume_log_id",
+        "via_filter": "JSON_EXTRACT(extra, '$.isSource') = false",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_via_expr": "JSON_EXTRACT(matrix_routerx_operation_lot_batch_resume_log_detail.extra, '$.targetLotCode')",
+        "target_key": "lot_code",
+        "note": "路径：_resume_log → _detail(isSource=false) → extra.targetLotCode 匹配 lot.lot_code。isSource=false 行为目标侧（产出批次），extra 中 targetLotCode 字段存储新主批次编号。物理表无 output_lot_id 列，禁止使用该列名生成 JOIN 条件。"
       },
       "domain_class": "semi:ProductionEventRecord",
       "range_class": "semi:ProductionLot"
     },
     {
       "logic_relation": "semi:producesSublot",
-      "description": "拆批/谱系变更事件执行后，为产出批次同步创建的初始 Sublot 实例（概念关系，output_lot_id 列不存在于物理表）",
-      "strategy": "Virtual",
+      "description": "拆批/谱系变更事件执行后产生的新子批次。通过 _detail(isSource=false) 中间行的 sub_lot_id FK 关联 Sublot 实例",
+      "strategy": "JoinVia",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_log",
-        "note": "⚠ output_lot_id 列不存在于物理表（已确认扫描）。产出 Sublot 信息通过 _detail 中间表推导，无法直接 FK JOIN。此关系标记为 Virtual，不用于 JoinGraph 路径推导。"
+        "source_key": "id",
+        "via_table": "matrix_routerx_operation_lot_batch_resume_log_detail",
+        "via_source_key": "batch_resume_log_id",
+        "via_target_key": "sub_lot_id",
+        "via_filter": "JSON_EXTRACT(extra, '$.isSource') = false",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "id",
+        "snapshot_columns": ["sub_lot_code", "carrier_code", "process_code"],
+        "note": "路径：_resume_log → _detail(isSource=false, sub_lot_id FK) → lot.id(Sublot)。isSource=false 行为目标侧，sub_lot_id 直接 FK 指向新产出的子批次实例。物理表无 output_lot_id 列，禁止使用该列名生成 JOIN 条件。"
       },
       "domain_class": "semi:ProductionEventRecord",
       "range_class": "semi:Sublot"
@@ -2871,7 +2963,7 @@
     },
     {
       "logic_relation": "semi:splitsFromSublot",
-      "description": "拆批事件中，被拆分的源子批次（subPropertyOf actsOnSublot，isSource=true）",
+      "description": "拆批事件中，被拆分的源子批次（subPropertyOf hasTransitionDetail，isSource=true）",
       "strategy": "JoinVia",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_log",
@@ -2894,7 +2986,7 @@
     },
     {
       "logic_relation": "semi:chooseSourceWafer",
-      "description": "拆批事件中，选择要从源子批次拆出的 wafer（subPropertyOf actsOnWafer，源侧）",
+      "description": "拆批事件中，选择要从源子批次拆出的 wafer（subPropertyOf hasWaferTransitionSnapshot，源侧）",
       "strategy": "JoinVia",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_log",
@@ -2919,7 +3011,7 @@
     },
     {
       "logic_relation": "semi:assignsWaferToLot",
-      "description": "拆批事件中，将晶圆分配至新产出的主批次（subPropertyOf actsOnWafer，目标侧）",
+      "description": "拆批事件中，将晶圆分配至新产出的主批次（subPropertyOf hasWaferTransitionSnapshot，目标侧）",
       "strategy": "JoinVia",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_log",
@@ -2944,7 +3036,7 @@
     },
     {
       "logic_relation": "semi:assignsWaferToSublot",
-      "description": "拆批事件中，将晶圆分别分配至新产出的子批次（subPropertyOf actsOnWafer，目标侧按子批次维度）",
+      "description": "拆批事件中，将晶圆分别分配至新产出的子批次（subPropertyOf hasWaferTransitionSnapshot，目标侧按子批次维度）",
       "strategy": "JoinVia",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_log",

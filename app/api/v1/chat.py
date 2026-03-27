@@ -17,8 +17,8 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from app.agent.graph import get_agent_app
 from app.agent.memory import conversation_memory
+from app.agents.supervisor import route_to_agent
 
 logger = logging.getLogger(__name__)
 
@@ -67,18 +67,14 @@ async def chat(req: ChatRequest):
     logger.info(f"[chat] session={session_id}, message={req.message[:80]}...")
 
     try:
-        agent = get_agent_app()
-
-        # 构建初始状态
-        initial_state = {
-            "user_input": req.message,
-            "session_id": session_id,
-            "conversation_history": req.conversation_history or [],
-            "sql_retry_count": 0,
-        }
-
-        # 运行 Agent
-        result = await agent.ainvoke(initial_state)
+        # Phase 0: 通过 Supervisor 路由到对应 Agent
+        # - query 意图 → 现有 Query Agent（零改动）
+        # - analyze 意图 → Analysis Agent（Phase 3 完善）
+        result = await route_to_agent(
+            user_input=req.message,
+            session_id=session_id,
+            conversation_history=req.conversation_history or [],
+        )
 
         # 提取最终响应
         response_data = result.get("response", {})
