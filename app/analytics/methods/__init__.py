@@ -6,3 +6,6 @@ from app.analytics.methods import spc  # noqa: F401
 from app.analytics.methods import hypothesis  # noqa: F401
 from app.analytics.methods import correlation  # noqa: F401
 from app.analytics.methods import pareto  # noqa: F401
+from app.analytics.methods import regression  # noqa: F401
+from app.analytics.methods import prediction  # noqa: F401
+from app.analytics.methods import anomaly  # noqa: F401

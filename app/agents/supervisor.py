@@ -98,27 +98,35 @@ async def _run_analysis_agent(
     **kwargs,
 ) -> Dict[str, Any]:
     """
-    路由到 Analysis Agent。
+    路由到 Analysis Agent (Phase 3 实装)。
 
-    Phase 0: 返回友好提示（分析功能即将上线）。
-    Phase 3: 委托给 analysis_agent/graph.py 的独立 LangGraph。
+    委托给 app/agents/analysis_agent/graph.py 的独立 LangGraph。
     """
-    # Phase 3 TODO: 替换为 analysis_agent 的实际调用
-    # from app.agents.analysis_agent.graph import get_analysis_agent_app
-    # agent = get_analysis_agent_app()
-    # return await agent.ainvoke(...)
+    from app.agents.analysis_agent.graph import get_analysis_agent_app
 
-    logger.info(f"[supervisor] analysis_agent placeholder for: {user_input[:60]}...")
+    logger.info(f"[supervisor] → analysis_agent: {user_input[:60]}...")
+
+    initial_state = {
+        "user_input": user_input,
+        "session_id": session_id,
+    }
+
+    try:
+        agent = get_analysis_agent_app()
+        final_state = await agent.ainvoke(initial_state)
+        response = final_state.get("response") or {
+            "success": False,
+            "answer": "分析 Agent 未返回结果",
+        }
+    except Exception as e:
+        logger.error(f"[supervisor] analysis_agent error: {e}", exc_info=True)
+        response = {
+            "success": False,
+            "answer": f"分析 Agent 执行出错: {e}",
+        }
+
     return {
-        "response": {
-            "success": True,
-            "answer": (
-                "检测到数据分析意图。分析 Agent 正在建设中，"
-                "请通过 /api/v1/analytics/run 接口直接调用分析方法。\n\n"
-                "可用分析方法请查询: GET /api/v1/analytics/methods"
-            ),
-            "agent_route": "analyze",
-        },
+        "response": response,
         "is_followup": False,
         "session_id": session_id,
     }
