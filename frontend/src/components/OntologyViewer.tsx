@@ -188,7 +188,15 @@ export default function OntologyViewer() {
 
     // Deep copy to avoid D3 mutating state
     const nodes: GraphNode[] = filteredData.nodes.map(n => ({ ...n }));
-    const links: GraphLink[] = filteredData.links.map(l => ({ ...l }));
+    const nodeIdSet = new Set(nodes.map(n => n.id));
+    // Filter out links whose source/target node doesn't exist in nodes (avoids D3 "node not found" crash)
+    const links: GraphLink[] = filteredData.links
+      .map(l => ({ ...l }))
+      .filter(l => {
+        const src = typeof l.source === 'string' ? l.source : (l.source as any)?.id;
+        const tgt = typeof l.target === 'string' ? l.target : (l.target as any)?.id;
+        return nodeIdSet.has(src) && nodeIdSet.has(tgt);
+      });
 
     // Container with zoom
     const g = svg.append('g');

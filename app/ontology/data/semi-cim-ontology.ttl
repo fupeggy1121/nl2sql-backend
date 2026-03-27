@@ -113,6 +113,10 @@ semi:MeasurementPassRecord a owl:Class ;
     rdfs:label "量测与制程参数过站记录" ;
     rdfs:comment "Wafer 在某个工艺站点执行量测或制程参数采集后产生的逐片参数快照记录。参数采集的直接主体是 Wafer（wafer_id 全局唯一不变）。核心关联：(1) recordsMeasurementOf → 被量测的具体晶圆实例（MeasurementPassRecord→Wafer，关联键 wafer_id，规范方向）；逆向导航（Wafer→MeasurementPassRecord）由 owl:inverseOf 公理推导，不独立建模；(2) isInstanceOfEvent → semi:MeasurementEvent；(3) recordedAtStation → 量测工艺站点（station_id，可选）；(4) processedByEquipment → 量测设备（eqp_id，人工录入时为空）。lot_id / sub_lot_id 是物理表采集时刻的调度管理上下文快照字段（非关系型 FK），反映该 Wafer 当时所属批次/子批次，不代表 Lot/Sublot 拥有此记录，不在语义层建立独立的 ObjectProperty；批次/子批次维度过滤直接使用这两个列值匹配。物理主映射：process_measure_data；参数语义注释：param_model_id → param_model；参数分组：param_group_id → param_group。" .
 
+semi:WaferMeasurementSnapshot a owl:Class ;
+    rdfs:label "晶圆量测参数快照" ;
+    rdfs:comment "MeasurementPassRecord（事件层）1:N 关联的快照明细层，记录单片 Wafer 在某次量测/制程参数录入中的逐参数采集值。物理主映射：process_measure_data（与 MeasurementPassRecord 当前同表，未来拆表后独立）。核心关联：snapshotOfWafer→Wafer；snapshotAtStation→ProcessStation；snapshotOnEquipment→Equipment；snapshotOfParam→ParamDefinition；snapshotInLot→ProductionLot；snapshotInSublot→Sublot。数据属性：hasParamValue（实测值）、hasParamType（1=制程参数人工录入，2=量测设备采集）、hasLotCodeSnapshot、hasSublotCodeSnapshot。" .
+
 semi:ProductionEvent a owl:Class ;
     rdfs:subClassOf semi:Action ;
     rdfs:label "生产事件类型（Action 子类）" ;
@@ -253,7 +257,7 @@ semi:hasInput a owl:ObjectProperty ;
     rdfs:domain semi:ProductionEvent ;
     rdfs:range [ a owl:Class ; owl:unionOf (semi:ProductionLot semi:Wafer) ] ;
     rdfs:label "动作输入" ;
-    rdfs:comment "本次操作的输入对象（ProductionLot 或 Wafer）。domain 为 semi:ProductionEvent（事件类型），不继承自抽象父类 Action。具体执行记录中的批次关联见 semi:ProductionEventRecord.actsOnLot。" .
+    rdfs:comment "本次操作的输入对象（ProductionLot 或 Wafer）。domain 为 semi:ProductionEvent（事件类型），不继承自抽象父类 Action。执行记录层的批次语义统一通过快照层路径表达（ProductionEventRecord → hasTransitionDetail → SublotTransitionSnapshot）。" .
 
 semi:hasOutput a owl:ObjectProperty ;
     rdfs:domain semi:ProductionEvent ;
@@ -270,7 +274,7 @@ semi:hasParentLot a owl:ObjectProperty ;
     rdfs:label "父批次(溯源)" .
 
 # 2.6 生产履历追溯对象属性 (Traceability Object Properties)
-# 注：hasPassRecord 已移除——其语义等价于 actsOnLot 的反向查询加类型过滤
+# 注：hasPassRecord 已移除——其语义等价于“事件记录按 lot_id 过滤 + 类型过滤”的反向查询
 # （CheckInEventRecord/CheckOutEventRecord WHERE lot_id=?），保留单一正向路径以避免 LLM 歧义。
 
 # 2.6.1 量测快照关联关系 (WaferMeasurementSnapshot Object Properties)
@@ -359,12 +363,6 @@ semi:isInstanceOfEvent a owl:ObjectProperty ;
     rdfs:label "事件实例记录" ;
     rdfs:comment "该执行记录对应的事件类型（ProductionEvent 子类实例），关联 record → event 类型定义。各子类通过 owl:allValuesFrom 约束将 range 精化为对应 XxxEvent 子类：SplitEventRecord→SplitEvent / MergeEventRecord→MergeEvent / AccumulateEventRecord→AccumulateEvent / HoldEventRecord→HoldEvent / ReleaseEventRecord→ReleaseEvent / NGRecordEventRecord→NGRecordEvent / CheckInEventRecord→CheckInEvent / CheckOutEventRecord→CheckOutEvent。" .
 
-semi:actsOnLot a owl:ObjectProperty ;
-    rdfs:domain semi:ProductionEventRecord ;
-    rdfs:range semi:ProductionLot ;
-    rdfs:label "事件所作用的主批次" ;
-    rdfs:comment "事件执行时选定的主批次（matrix_routerx_operation_lot_batch_resume_log.lot_code / lot_id FK）。所有批次操作事件（ProductionEventRecord 子类）均以主批次为操作入口。各子类通过 rdfs:subPropertyOf 定义更精确的角色语义：SplitEventRecord→splitsFromLot；MergeEventRecord→源批次（被并入）；AccumulateEventRecord→源批次（被攒入）；HoldEventRecord/ReleaseEventRecord→被扣留/释放批次；NGRecordEventRecord→被标记不良批次；CheckInEventRecord/CheckOutEventRecord→进/出站批次。" .
-
 semi:producesLot a owl:ObjectProperty ;
     rdfs:domain [
         a owl:Class ;
@@ -385,11 +383,10 @@ semi:producesSublot a owl:ObjectProperty ;
 
 # 2.6b 拆批事件专用子属性 (SplitEventRecord Sub-Properties)
 semi:splitsFromLot a owl:ObjectProperty ;
-    rdfs:subPropertyOf semi:actsOnLot ;
     rdfs:domain semi:SplitEventRecord ;
     rdfs:range semi:ProductionLot ;
     rdfs:label "拆批源主批次" ;
-    rdfs:comment "拆批事件中，被拆分的原始主批次。rdfs:subPropertyOf semi:actsOnLot，继承父属性的物理映射（_resume_log.lot_id/lot_code）。" .
+    rdfs:comment "拆批事件中，被拆分的原始主批次。查询语义统一通过快照层路径表达：SplitEventRecord → hasTransitionDetail(isSource=true) → targetLotCode/sourceLotCode（事件快照上下文）。" .
 
 semi:splitsFromSublot a owl:ObjectProperty ;
     rdfs:subPropertyOf semi:actsOnSublot ;
@@ -422,7 +419,7 @@ semi:assignsWaferToSublot a owl:ObjectProperty ;
 semi:mergesIntoLot a owl:ObjectProperty ;
     rdfs:domain semi:MergeEventRecord ; rdfs:range semi:ProductionLot ;
     rdfs:label "并入目标批次" ;
-    rdfs:comment "并批操作的接收方/目标批次（原父批次）。并批后源批次（actsOnLot）下所有 Sublot 和 Wafer 的 lot_id 归属更新指向此目标批次。区别于 actsOnLot：actsOnLot 是操作的源批次（被消耗方），mergesIntoLot 是目标批次（接收方）。⚠ output_lot_id 和 output_lot_code 列不存在于主表 matrix_routerx_operation_lot_batch_resume_log（物理扫描确认19列中无此字段），目标批次信息通过 _detail 中间表 extra JSON 字段推导，此关系不提供直接 FK JOIN 路径。" .
+    rdfs:comment "并批操作的接收方/目标批次（原父批次）。并批后源批次下所有 Sublot 和 Wafer 的 lot_id 归属更新指向此目标批次。源侧/目标侧语义通过 _detail.extra(isSource) 区分：源侧=被消耗方，mergesIntoLot=接收方。⚠ output_lot_id 和 output_lot_code 列不存在于主表 matrix_routerx_operation_lot_batch_resume_log（物理扫描确认19列中无此字段），目标批次信息通过 _detail 中间表 extra JSON 字段推导，此关系不提供直接 FK JOIN 路径。" .
 
 # 2.7 载具层级关联 (Carrier Hierarchy)
 semi:belongsToGroup a owl:ObjectProperty ;
@@ -511,7 +508,7 @@ semi:hasLotCode a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf (semi:ProductionLot semi:Sublot) ] ;
     rdfs:range xsd:string ;
     rdfs:label "批次号" ;
-    rdfs:comment "批次唯一业务标识符，对应 current_lot_code（批次/子批次）。动作执行记录中的批次引用通过 semi:ProductionEventRecord 的对象属性 actsOnLot / producesLot 建立，不在此属性定义。" .
+    rdfs:comment "批次唯一业务标识符，对应 current_lot_code（批次/子批次）。动作执行记录中的批次语义通过快照层（hasTransitionDetail + _detail.extra）以及谱系产出关系（producesLot）表达，不在此属性定义。" .
 
 semi:hasProcessStatus a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf (semi:ProductionLot semi:Sublot) ] ;
@@ -1065,7 +1062,7 @@ semi:SplitEventRecord a owl:Class ;
           owl:allValuesFrom semi:SplitEvent ] ;
     rdfs:label "拆批记录" ;
     semi:tableFilter "operation_type = 1" ;
-    rdfs:comment "拆批操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 1（semi:tableFilter 注解值）。核心关联：(1) isInstanceOfEvent → semi:SplitEvent，将记录锁定到拆批规则定义，引擎据此追溯 5 维规约生成物理执行序列；(2) actsOnLot → 源批次（被拆的父批次），Split 子属性 splitsFromLot 精确标记拆出源；(3) producesLot → MES 系统自动生成的新 ProductionLot（子批次），是拆批操作的核心产出；(4) producesSublot → 与 producesLot 同步创建的初始 Sublot，被迁移晶圆的 belongsToSublot 指向此 Sublot，保证 Wafer→Sublot→atStation 路径仍可导航；(5) actsOnWafer → 被迁移的具体晶圆实例列表，Split 子属性细分：chooseSourceWafer（源wafer选择）、assignsWaferToLot（wafer分配至新主批次）、assignsWaferToSublot（wafer分配至新子批次），支持逐片血缘追溯。物理层三联写入：主记录表（operation_type=1）+ _detail（拆批前后子批次状态快照，extra.isSource 区分源/目标侧）+ _wafer_detail_log（逐片Wafer迁移明细，batch_resume_detail_log_id→_detail.id）。" .
+    rdfs:comment "拆批操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 1（semi:tableFilter 注解值）。核心关联：(1) isInstanceOfEvent → semi:SplitEvent，将记录锁定到拆批规则定义，引擎据此追溯 5 维规约生成物理执行序列；(2) splitsFromLot → 源批次（被拆的父批次），通过快照层语义精确标记拆出源；(3) producesLot → MES 系统自动生成的新 ProductionLot（子批次），是拆批操作的核心产出；(4) producesSublot → 与 producesLot 同步创建的初始 Sublot，被迁移晶圆的 belongsToSublot 指向此 Sublot，保证 Wafer→Sublot→atStation 路径仍可导航；(5) actsOnWafer → 被迁移的具体晶圆实例列表，Split 子属性细分：chooseSourceWafer（源wafer选择）、assignsWaferToLot（wafer分配至新主批次）、assignsWaferToSublot（wafer分配至新子批次），支持逐片血缘追溯。物理层三联写入：主记录表（operation_type=1）+ _detail（拆批前后子批次状态快照，extra.isSource 区分源/目标侧）+ _wafer_detail_log（逐片Wafer迁移明细，batch_resume_detail_log_id→_detail.id）。" .
 
 # 5.2b 并批事件 (MergeEvent)
 semi:MergeEvent a owl:Class ;
@@ -1077,7 +1074,7 @@ semi:MergeEvent a owl:Class ;
     semi:transformationLogic "UPDATE Wafer SET lot_id = targetLotId, sub_lot_id = newSublotId WHERE wafer.lot_id = sourceLotId; UPDATE ProductionLot SET status = Completed WHERE id = sourceLotId" ;
     semi:apiBinding "MES_CORE_SERVICE.executeLotMerge" ;
     semi:postCondition "SourceLot.status == Completed && Wafer.lot_id == targetLotId" ;
-    semi:stateTransitionFunction "UPDATE Target(Wafer) SET belongsToLot = EventRecord.mergesIntoLot, belongsToSublot = newSublot WHERE Wafer.lot_id = EventRecord.actsOnLot.lot_id; UPDATE SourceLot SET status = Completed" .
+    semi:stateTransitionFunction "UPDATE Target(Wafer) SET belongsToLot = EventRecord.mergesIntoLot, belongsToSublot = newSublot WHERE Wafer.lot_id = SourceLot.id; UPDATE SourceLot SET status = Completed" .
 
 # 5.2c 并批执行记录 (MergeEventRecord)
 semi:MergeEventRecord a owl:Class ;
@@ -1087,13 +1084,13 @@ semi:MergeEventRecord a owl:Class ;
           owl:allValuesFrom semi:MergeEvent ] ;
     rdfs:label "并批记录" ;
     semi:tableFilter "operation_type = 2" ;
-    rdfs:comment "并批操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 2。核心关联：(1) isInstanceOfEvent → semi:MergeEvent；(2) actsOnLot → 源批次（被并入的来源批次，lot_code 字段）；(3) mergesIntoLot → 目标批次（接收方父批次，output_lot_code 字段），是并批操作的接收端；(4) actsOnWafer → 被重新归属的晶圆实例列表（_wafer_detail_log 逐片明细）。⚠ 并批是谱系操作（is_genealogy_event=True）：执行后源批次完结，所有 Wafer 归属迁移至目标批次下的新 Sublot ID。物理层二联写入：主记录表（operation_type=2）+ _wafer_detail_log（逐片Wafer归属迁移明细）。" .
+    rdfs:comment "并批操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 2。核心关联：(1) isInstanceOfEvent → semi:MergeEvent；(2) 源批次（被并入的来源批次，lot_code 字段；源/目标侧通过 _detail.extra.isSource 区分）；(3) mergesIntoLot → 目标批次（接收方父批次，output_lot_code 字段），是并批操作的接收端；(4) actsOnWafer → 被重新归属的晶圆实例列表（_wafer_detail_log 逐片明细）。⚠ 并批是谱系操作（is_genealogy_event=True）：执行后源批次完结，所有 Wafer 归属迁移至目标批次下的新 Sublot ID。物理层二联写入：主记录表（operation_type=2）+ _wafer_detail_log（逐片Wafer归属迁移明细）。" .
 
 # 5.3 批次扣留事件 (HoldEvent)
 semi:HoldEvent a owl:Class ;
     rdfs:subClassOf semi:ProductionEvent ;
     rdfs:label "批次扣留事件类型" ;
-    rdfs:comment "定义批次扣留（Hold）操作的规则/类型模板。对应 operation_type=4。执行后目标批次 WIPStatus 从 Run/IDLE 转为 Hold（激活扣留记录：HoldEventRecord 无对应晚于它的 ReleaseEventRecord）。⚠ 不产生新批次（无 producesLot），actsOnLot 指向被扣留的批次本身。支持预扣留：可在扣留时指定未来某工序站点，批次流转到该工序时自动触发扣留，extra 字段存储 preHoldProcessId/preHoldProcessCode。执行记录层见 semi:HoldEventRecord。" ;
+    rdfs:comment "定义批次扣留（Hold）操作的规则/类型模板。对应 operation_type=4。执行后目标批次 WIPStatus 从 Run/IDLE 转为 Hold（激活扣留记录：HoldEventRecord 无对应晚于它的 ReleaseEventRecord）。⚠ 不产生新批次（无 producesLot），目标批次由记录行 lot_id/lot_code 及快照上下文确定。支持预扣留：可在扣留时指定未来某工序站点，批次流转到该工序时自动触发扣留，extra 字段存储 preHoldProcessId/preHoldProcessCode。执行记录层见 semi:HoldEventRecord。" ;
     # 维度一：准入规则 — 目标批次须在制（未被其他激活扣留且批次状态正常）
     semi:preCondition "TargetLot.status IN (50) && WIPStatus(lotId) != Hold" ;
     # 维度二：参数规约 — 批次ID必须；预扣留工序可选
@@ -1115,13 +1112,13 @@ semi:HoldEventRecord a owl:Class ;
           owl:allValuesFrom semi:HoldEvent ] ;
     rdfs:label "批次扣留记录" ;
     semi:tableFilter "operation_type = 4" ;
-    rdfs:comment "批次扣留操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 4。【关联语义】actsOnLot → 被扣留的批次（操作主体，即被扣留的 ProductionLot；该批次 WIPStatus 执行后转为 Hold）；⚠ 该操作不产生新批次（producesLot 不适用，不出现在本子类的 SQL 关联中）。区别于拆批：拆批 actsOnLot 是源批次、producesLot 是新析出批次；扣留操作 actsOnLot 与被操作对象同一，无产出批次。extra 字段可包含预扣留工序信息（preHoldProcessId/preHoldProcessCode）。" .
+    rdfs:comment "批次扣留操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 4。【关联语义】被扣留批次（操作主体）由 lot_id/lot_code 与快照上下文共同确定；该批次 WIPStatus 执行后转为 Hold。⚠ 该操作不产生新批次（producesLot 不适用，不出现在本子类的 SQL 关联中）。区别于拆批：拆批存在源批次与产出批次；扣留操作仅对单批次做状态变更，无产出批次。extra 字段可包含预扣留工序信息（preHoldProcessId/preHoldProcessCode）。" .
 
 # 5.5 批次释放事件 (ReleaseEvent)
 semi:ReleaseEvent a owl:Class ;
     rdfs:subClassOf semi:ProductionEvent ;
     rdfs:label "批次释放事件类型" ;
-    rdfs:comment "定义批次释放（Release）操作的规则/类型模板。对应 operation_type=5。解除批次激活扣留状态，执行后 WIPStatus 从 Hold 恢复为 Run 或 IDLE（取决于 process_status 值）。⚠ 不产生新批次（无 producesLot），actsOnLot 指向被释放的扣留批次本身。注意区分：status=80(BatchStatus.Staged/暂存) 是独立字段，与激活扣留不等价，釋放操作针对激活扣留记录（HoldEventRecord），而非仅针对 status=80 字段。执行记录层见 semi:ReleaseEventRecord。" ;
+    rdfs:comment "定义批次释放（Release）操作的规则/类型模板。对应 operation_type=5。解除批次激活扣留状态，执行后 WIPStatus 从 Hold 恢复为 Run 或 IDLE（取决于 process_status 值）。⚠ 不产生新批次（无 producesLot），被释放批次由记录行 lot_id/lot_code 与快照上下文确定。注意区分：status=80(BatchStatus.Staged/暂存) 是独立字段，与激活扣留不等价，释放操作针对激活扣留记录（HoldEventRecord），而非仅针对 status=80 字段。执行记录层见 semi:ReleaseEventRecord。" ;
     # 维度一：准入规则 — 目标批次须存在激活扣留记录
     semi:preCondition "WIPStatus(lotId) == Hold" ;
     # 维度二：参数规约 — 仅需批次ID
@@ -1143,7 +1140,7 @@ semi:ReleaseEventRecord a owl:Class ;
           owl:allValuesFrom semi:ReleaseEvent ] ;
     rdfs:label "批次释放记录" ;
     semi:tableFilter "operation_type = 5" ;
-    rdfs:comment "批次释放操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 5。【关联语义】actsOnLot → 被扣留待释放的批次（操作主体，即被释放的 ProductionLot；该批次 WIPStatus 执行后从 Hold 恢复为 Run 或 IDLE）；⚠ 该操作不产生新批次（producesLot 不适用）。WIPStatus 的转变由推导逻辑决定：释放后不再满足激活扣留条件（EXISTS HoldEventRecord 且无 ReleaseEventRecord），WIPStatus 恢复为 process_status 决定的 Run 或 IDLE。区别于拆批：拆批有明确的 actsOnLot（源批次）→ producesLot（新析出批次）谱系关系；释放/扣留操作均为单批次状态变更，不涉及批次谱系生成。" .
+    rdfs:comment "批次释放操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 5。【关联语义】被扣留待释放的批次（操作主体）由 lot_id/lot_code 与快照上下文确定；该批次 WIPStatus 执行后从 Hold 恢复为 Run 或 IDLE。⚠ 该操作不产生新批次（producesLot 不适用）。WIPStatus 的转变由推导逻辑决定：释放后不再满足激活扣留条件（EXISTS HoldEventRecord 且无 ReleaseEventRecord），WIPStatus 恢复为 process_status 决定的 Run 或 IDLE。区别于拆批：拆批存在源批次→产出批次的谱系关系；释放/扣留操作均为单批次状态变更，不涉及批次谱系生成。" .
 
 # 5.7 不良录入事件 (NGRecordEvent)
 semi:NGRecordEvent a owl:Class ;
@@ -1162,7 +1159,7 @@ semi:NGRecordEventRecord a owl:Class ;
           owl:allValuesFrom semi:NGRecordEvent ] ;
     rdfs:label "不良录入记录" ;
     semi:tableFilter "operation_type = 6" ;
-    rdfs:comment "不良录入操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 6。【关联语义】actsOnLot → 被标记不良的批次；actsOnWafer → 具体被标记的晶圆实例列表。不良明细写入 _wafer_detail_log（ng_code 字段）。不改变批次 status，不产生新批次（producesLot 不适用）。" .
+    rdfs:comment "不良录入操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 6。【关联语义】被标记不良的批次由 lot_id/lot_code 与快照上下文确定；actsOnWafer → 具体被标记的晶圆实例列表。不良明细写入 _wafer_detail_log（ng_code 字段）。不改变批次 status，不产生新批次（producesLot 不适用）。" .
 
 # 5.9 批次进站事件 (CheckInEvent)
 semi:CheckInEvent a owl:Class ;
@@ -1183,7 +1180,7 @@ semi:CheckInEventRecord a owl:Class ;
           owl:allValuesFrom semi:CheckInEvent ] ;
     rdfs:label "批次进站记录" ;
     semi:tableFilter "operation_type = 8" ;
-    rdfs:comment "批次进站操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 8。【关联语义】actsOnLot → 进站的批次（操作主体）；执行后 Sublot.atStation 指向目标工序站点，process_status 转变为 40（加工中）。不产生新批次（producesLot 不适用）。区别于 CheckOutEventRecord：进站标志着工序处理的开始，出站标志着完成并流转下道。station_id/equipment_id 字段记录进站工序与绑定设备。" .
+    rdfs:comment "批次进站操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 8。【关联语义】进站批次（操作主体）由 lot_id/lot_code 与快照上下文确定；执行后 Sublot.atStation 指向目标工序站点，process_status 转变为 40（加工中）。不产生新批次（producesLot 不适用）。区别于 CheckOutEventRecord：进站标志着工序处理的开始，出站标志着完成并流转下道。station_id/equipment_id 字段记录进站工序与绑定设备。" .
 
 # 5.11 批次出站事件 (CheckOutEvent)
 semi:CheckOutEvent a owl:Class ;
@@ -1204,7 +1201,7 @@ semi:CheckOutEventRecord a owl:Class ;
           owl:allValuesFrom semi:CheckOutEvent ] ;
     rdfs:label "批次出站记录" ;
     semi:tableFilter "operation_type = 9" ;
-    rdfs:comment "批次出站操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 9。【关联语义】actsOnLot → 出站的批次（操作主体）；执行后 Sublot.process_status 转变为 10/20（待进站），批次流转至下道工序。不产生新批次（producesLot 不适用）。与 CheckInEventRecord 成对出现：一次完整的过站周期 = 一条 CheckInEventRecord（op=8）+ 一条 CheckOutEventRecord（op=9）。station_id 字段记录本道出站工序。" .
+    rdfs:comment "批次出站操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 9。【关联语义】出站批次（操作主体）由 lot_id/lot_code 与快照上下文确定；执行后 Sublot.process_status 转变为 10/20（待进站），批次流转至下道工序。不产生新批次（producesLot 不适用）。与 CheckInEventRecord 成对出现：一次完整的过站周期 = 一条 CheckInEventRecord（op=8）+ 一条 CheckOutEventRecord（op=9）。station_id 字段记录本道出站工序。" .
 
 # 5.13 攒批事件 (AccumulateEvent)
 semi:AccumulateEvent a owl:Class ;
@@ -1216,7 +1213,7 @@ semi:AccumulateEvent a owl:Class ;
     semi:transformationLogic "INSERT ProductionLot(new_lot_id); INSERT Sublot(new_sublot_id, lot_id=new_lot_id); UPDATE Wafer SET lot_id=new_lot_id, sub_lot_id=new_sublot_id WHERE wafer.lot_id IN sourceLotIds; UPDATE SourceLots SET status=Completed" ;
     semi:apiBinding "MES_CORE_SERVICE.executeAccumulate" ;
     semi:postCondition "new ProductionLot EXISTS && Wafer.lot_id == new_lot_id" ;
-    semi:stateTransitionFunction "UPDATE Target(Wafer) SET belongsToLot=EventRecord.producesLot, belongsToSublot=EventRecord.producesSublot WHERE Wafer.lot_id IN EventRecord.actsOnLot; UPDATE SourceLots SET status=Completed" .
+    semi:stateTransitionFunction "UPDATE Target(Wafer) SET belongsToLot=EventRecord.producesLot, belongsToSublot=EventRecord.producesSublot WHERE Wafer.lot_id IN EventRecord.sourceLotIds; UPDATE SourceLots SET status=Completed" .
 
 # 5.14 攒批执行记录 (AccumulateEventRecord)
 semi:AccumulateEventRecord a owl:Class ;
@@ -1226,7 +1223,7 @@ semi:AccumulateEventRecord a owl:Class ;
           owl:allValuesFrom semi:AccumulateEvent ] ;
     rdfs:label "攒批记录" ;
     semi:tableFilter "operation_type = 16" ;
-    rdfs:comment "攒批操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 16。⚠ 物理层多行模型：每个源批次对应一行记录（lot_code=源批次），同一次攒批操作的多行共享相同的 gmt_create/create_user_id（⚠ output_lot_id 列不存在于物理表，攒批产出的新批次信息通过 _detail.extra JSON 字段推导，禁止使用 output_lot_id 做 JOIN）。核心关联：(1) isInstanceOfEvent → semi:AccumulateEvent；(2) actsOnLot → 各源批次（每行一个，同产品型号）；(3) producesLot → 新生成的 ProductionLot（由 _detail.extra 推导）；(4) producesSublot → 新批次对应的初始 Sublot；(5) actsOnWafer → 被攒入新批次的晶圆实例列表（_wafer_detail_log 逐片明细）。谱系操作：执行后所有源批次完结，wafer 归属迁移至新批次/子批次。" .
+    rdfs:comment "攒批操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 16。⚠ 物理层多行模型：每个源批次对应一行记录（lot_code=源批次），同一次攒批操作的多行共享相同的 gmt_create/create_user_id（⚠ output_lot_id 列不存在于物理表，攒批产出的新批次信息通过 _detail.extra JSON 字段推导，禁止使用 output_lot_id 做 JOIN）。核心关联：(1) isInstanceOfEvent → semi:AccumulateEvent；(2) 各源批次（每行一个，同产品型号，源/目标侧由 _detail.extra.isSource 区分）；(3) producesLot → 新生成的 ProductionLot（由 _detail.extra 推导）；(4) producesSublot → 新批次对应的初始 Sublot；(5) actsOnWafer → 被攒入新批次的晶圆实例列表（_wafer_detail_log 逐片明细）。谱系操作：执行后所有源批次完结，wafer 归属迁移至新批次/子批次。" .
 
 ### ==========================================
 ### 5.13（已重构）_detail 中间表（原 SublotOpSnapshot）

@@ -339,6 +339,56 @@ class MappingDictionary:
                         to_table=step["to_table"],
                         to_key=step["to_key"],
                     ))
+            elif strategy == "JoinVia":
+                source_table = jl.get("source_table", "")
+                source_key = jl.get("source_key", "")
+                via_table = jl.get("via_table", "")
+                via_source_key = jl.get("via_source_key", "")
+                via_target_key = jl.get("via_target_key", "")
+                via_pk = jl.get("via_pk", "id")
+                via2_table = jl.get("via2_table", "")
+                via2_source_key = jl.get("via2_source_key", "")
+                via2_target_key = jl.get("via2_target_key", "")
+                target_table = jl.get("target_table", "")
+                target_key = jl.get("target_key", "")
+                target_via_expr = jl.get("target_via_expr", "")
+
+                # step1: source -> via
+                if source_table and source_key and via_table and via_source_key:
+                    conditions.append(JoinCondition(
+                        from_table=source_table,
+                        from_key=source_key,
+                        to_table=via_table,
+                        to_key=via_source_key,
+                    ))
+
+                if via2_table:
+                    # step2: via -> via2
+                    if via_table and via_pk and via2_source_key:
+                        conditions.append(JoinCondition(
+                            from_table=via_table,
+                            from_key=via_pk,
+                            to_table=via2_table,
+                            to_key=via2_source_key,
+                        ))
+                    # step3: via2 -> target
+                    if via2_table and via2_target_key and target_table and target_key:
+                        conditions.append(JoinCondition(
+                            from_table=via2_table,
+                            from_key=via2_target_key,
+                            to_table=target_table,
+                            to_key=target_key,
+                        ))
+                else:
+                    # step2: via -> target
+                    left_key = via_target_key or target_via_expr
+                    if via_table and left_key and target_table and target_key:
+                        conditions.append(JoinCondition(
+                            from_table=via_table,
+                            from_key=left_key,
+                            to_table=target_table,
+                            to_key=target_key,
+                        ))
             elif strategy in ("Recursive", "Denormalized"):
                 # 保留原始 join_logic，不做 JOIN 链拆解
                 # Recursive 策略额外构建 RecursiveMapping 索引

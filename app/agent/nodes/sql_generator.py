@@ -701,6 +701,8 @@ def _format_semantic_context(semantic_ctx: dict) -> str:
                     )
                 else:
                     lines.append(f"  {c['from']} = {c['to']}")
+            if j.get("note"):
+                lines.append(f"  [{strategy}提示] {j['note']}")
             if not j.get("conditions") and j.get("note"):
                 lines.append(f"  [{strategy}提示] {j['note']}")
 

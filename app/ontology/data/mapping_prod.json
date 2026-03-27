@@ -926,7 +926,6 @@
         "semi:hasEventType": "operation_type",
         "semi:hasEventStartTime": "gmt_create",
         "semi:hasLotCode": "lot_code",
-        "semi:actsOnLot": "lot_id",
         "semi:hasOperatorId": "create_user_id",
         "semi:hasOperator": "create_user"
       },
@@ -1154,7 +1153,6 @@
       "virtual": false,
       "properties": {
         "semi:hasEventStartTime": "gmt_create",
-        "semi:actsOnLot": "lot_id",
         "semi:hasLotCode": "lot_code",
         "semi:hasProcessId": "process_id",
         "semi:hasProcessCode": "process_code"
@@ -2896,20 +2894,6 @@
       "range_class": "semi:ProductionEvent"
     },
     {
-      "logic_relation": "semi:actsOnLot",
-      "description": "事件执行时的输入/主体批次，通过lot_id关联ProductionLot",
-      "strategy": "ForeignKey",
-      "join_logic": {
-        "source_table": "matrix_routerx_operation_lot_batch_resume_log",
-        "source_key": "lot_id",
-        "target_table": "matrix_routerx_operation_lot",
-        "target_key": "id",
-        "note": "matrix_routerx_operation_lot_batch_resume_log.lot_id → matrix_routerx_operation_lot.id，定位事件的主体批次。"
-      },
-      "domain_class": "semi:ProductionEventRecord",
-      "range_class": "semi:ProductionLot"
-    },
-    {
       "logic_relation": "semi:producesLot",
       "description": "拆批/谱系变更事件执行后产生的新主批次。通过 _detail(isSource=false) 中间行的 extra.targetLotCode 关联 ProductionLot.lot_code",
       "strategy": "JoinVia",
@@ -2948,7 +2932,7 @@
     },
     {
       "logic_relation": "semi:splitsFromLot",
-      "description": "拆批事件中，被拆分的原始主批次（subPropertyOf actsOnLot）",
+      "description": "拆批事件中，被拆分的原始主批次（源侧主批次）",
       "strategy": "ForeignKey",
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_log",
@@ -2956,7 +2940,7 @@
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "id",
         "filter_condition": "operation_type = 1",
-        "note": "继承 actsOnLot 的物理映射路径（lot_id FK），filter_condition 限定拆批记录。"
+        "note": "源侧主批次的物理映射路径（lot_id FK），filter_condition 限定拆批记录。"
       },
       "domain_class": "semi:SplitEventRecord",
       "range_class": "semi:ProductionLot"

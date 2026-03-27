@@ -52,6 +52,8 @@ interface RelationMapping {
   description: string;
   strategy: string;
   join_logic: Record<string, any>;
+  domain_class?: string;
+  range_class?: string;
   confidence?: string;
 }
 
@@ -191,11 +193,17 @@ const textareaCls = `${inputCls} min-h-[80px] resize-y font-mono`;
 
 const STRATEGY_COLORS: Record<string, string> = {
   ForeignKey:    'bg-blue-100 text-blue-700',
+  JoinVia:       'bg-cyan-100 text-cyan-700',
   JoinTable:     'bg-purple-100 text-purple-700',
+  CompositeKey:  'bg-indigo-100 text-indigo-700',
   Indirect:      'bg-orange-100 text-orange-700',
   Recursive:     'bg-green-100 text-green-700',
   Denormalized:  'bg-gray-100 text-gray-600',
   EmbeddedJSON:  'bg-teal-100 text-teal-700',
+  EmbeddedJSON_FK: 'bg-teal-100 text-teal-600',
+  EventLog:      'bg-yellow-100 text-yellow-700',
+  ValueLookup:   'bg-pink-100 text-pink-700',
+  Virtual:       'bg-gray-100 text-gray-400',
 };
 
 const ACTION_COLORS: Record<string, string> = {
@@ -856,13 +864,226 @@ function ObjectMappingsTab() {
 // Tab 2: Relation Mappings
 // ══════════════════════════════════════════════════════════════════
 
-const STRATEGIES = ['ForeignKey', 'JoinTable', 'Indirect', 'Recursive', 'Denormalized', 'EmbeddedJSON'];
+const STRATEGIES = [
+  'ForeignKey',
+  'JoinVia',
+  'JoinTable',
+  'CompositeKey',
+  'Indirect',
+  'Recursive',
+  'Denormalized',
+  'EmbeddedJSON',
+  'EmbeddedJSON_FK',
+  'EventLog',
+  'ValueLookup',
+  'Virtual',
+];
+
+type RelationViewMode = 'list' | 'path';
+type RelationLayer = 'event' | 'snapshot' | 'entity';
+
+interface ScenarioPreset {
+  id: string;
+  label: string;
+  description: string;
+  chains: string[][];
+}
+
+const SCENARIO_PRESETS: ScenarioPreset[] = [
+  {
+    id: 'split',
+    label: '拆批链路',
+    description: '拆批事件的事件层→快照层→实体层主路径',
+    chains: [
+      ['semi:hasTransitionDetail', 'semi:snapshotOfSublot'],
+      ['semi:hasWaferTransitionSnapshot', 'semi:transitionSnapshotOfWafer'],
+      ['semi:producesLot', 'semi:producesSublot'],
+      ['semi:splitsFromSublot', 'semi:chooseSourceWafer', 'semi:assignsWaferToSublot']
+    ]
+  },
+  {
+    id: 'genealogy',
+    label: '谱系通用链路',
+    description: '适用于拆批/并批/攒批等谱系操作的通用快照路径',
+    chains: [
+      ['semi:hasTransitionDetail', 'semi:snapshotOfSublot', 'semi:transitionSnapshotAtStation'],
+      ['semi:hasWaferTransitionSnapshot', 'semi:transitionSnapshotOfWafer', 'semi:transitionSnapshotInSublot']
+    ]
+  },
+  {
+    id: 'measurement',
+    label: '量测链路',
+    description: '量测事件与量测快照语义路径',
+    chains: [
+      ['semi:hasSnapshot', 'semi:snapshotOfWafer'],
+      ['semi:hasSnapshot', 'semi:snapshotAtStation'],
+      ['semi:hasSnapshot', 'semi:snapshotInLot', 'semi:snapshotInSublot']
+    ]
+  }
+];
+
+function classifyRelationLayer(item: RelationMapping): RelationLayer {
+  const d = item.domain_class || '';
+  const r = item.range_class || '';
+  const rel = item.logic_relation || '';
+
+  if (d.includes('EventRecord') || rel.startsWith('semi:hasTransition') || rel === 'semi:hasSnapshot' || rel === 'semi:hasWaferTransitionSnapshot') {
+    return 'event';
+  }
+  if (d.includes('Snapshot') || r.includes('Snapshot') || rel.includes('Snapshot') || rel.startsWith('semi:snapshot')) {
+    return 'snapshot';
+  }
+  return 'entity';
+}
+
+function summarizeJoinLogic(joinLogic: Record<string, any> | undefined): string {
+  if (!joinLogic) return '—';
+  const parts: string[] = [];
+  if (joinLogic.source_table) parts.push(`src:${joinLogic.source_table}`);
+  if (joinLogic.source_key) parts.push(`srcKey:${joinLogic.source_key}`);
+  if (joinLogic.via_table) parts.push(`via:${joinLogic.via_table}`);
+  if (joinLogic.via_source_key) parts.push(`viaSrc:${joinLogic.via_source_key}`);
+  if (joinLogic.via_target_key) parts.push(`viaTgt:${joinLogic.via_target_key}`);
+  if (joinLogic.via_filter) parts.push(`filter:${joinLogic.via_filter}`);
+  if (joinLogic.via2_table) parts.push(`via2:${joinLogic.via2_table}`);
+  if (joinLogic.target_table) parts.push(`tgt:${joinLogic.target_table}`);
+  if (joinLogic.target_key) parts.push(`tgtKey:${joinLogic.target_key}`);
+  if (joinLogic.target_via_expr) parts.push(`expr:${joinLogic.target_via_expr}`);
+  return parts.length ? parts.join(' | ') : '—';
+}
+
+function formatClassName(cls?: unknown): string {
+  if (cls === null || cls === undefined) return '—';
+
+  const normalize = (value: unknown) => {
+    if (value === null || value === undefined) return '—';
+    const text = String(value);
+    return text.replace(/^semi:/, '');
+  };
+
+  if (Array.isArray(cls)) {
+    if (cls.length === 0) return '—';
+    return cls.map(normalize).join(' | ');
+  }
+
+  return normalize(cls);
+}
+
+function getRiskAnalysis(rel: RelationMapping | undefined): { level: 'low' | 'medium' | 'high'; reasons: string[] } {
+  if (!rel) return { level: 'high', reasons: ['关系定义缺失'] };
+
+  const reasons: string[] = [];
+  const jl = rel.join_logic || {};
+  const sourceKey = String(jl.source_key || '');
+  const targetKey = String(jl.target_key || '');
+  const expr = String(jl.target_via_expr || '');
+  const filter = String(jl.via_filter || jl.filter_condition || '');
+  const strategy = rel.strategy || '';
+
+  if (strategy === 'Virtual' || strategy === 'EventLog' || strategy === 'Indirect') reasons.push(`策略 ${strategy} 不是稳定的直接 FK 关系`);
+  if (strategy === 'JoinVia' || strategy === 'JoinTable' || jl.via2_table) reasons.push('存在中间表/多跳路径，语义依赖路径完整性');
+  if (expr || /JSON_EXTRACT|\$\./i.test(expr)) reasons.push('目标值来自 JSON/表达式推导，不是显式外键');
+  if (/JSON_EXTRACT|isSource|source|target/i.test(filter)) reasons.push('依赖过滤条件区分源侧/目标侧，语义容易误用');
+  if ((sourceKey && !/(^id$|_id$|wafer_id$|batch_resume_log_id$|batch_resume_detail_log_id$)/i.test(sourceKey)) || (targetKey && !/(^id$|_id$|wafer_id$|batch_resume_log_id$|batch_resume_detail_log_id$)/i.test(targetKey))) reasons.push('依赖编码/名称列匹配而非标准 ID 外键');
+  if (!rel.domain_class || !rel.range_class) reasons.push('Domain/Range 信息不完整，层级语义需要人工确认');
+
+  if (reasons.length >= 3) return { level: 'high', reasons };
+  if (reasons.length >= 1) return { level: 'medium', reasons };
+  return { level: 'low', reasons: ['标准直接关系，语义脆弱性较低'] };
+}
+
+function getRiskBadgeColor(level: 'low' | 'medium' | 'high'): string {
+  if (level === 'high') return 'bg-red-100 text-red-700';
+  if (level === 'medium') return 'bg-yellow-100 text-yellow-700';
+  return 'bg-green-100 text-green-700';
+}
+
+function getRiskLabel(level: 'low' | 'medium' | 'high'): string {
+  if (level === 'high') return '高风险边';
+  if (level === 'medium') return '中风险边';
+  return '低风险边';
+}
+
+function buildChainText(preset: ScenarioPreset, relationMap: Map<string, RelationMapping>, review = false, chain?: string[], chainIndex?: number): string {
+  const chains = chain ? [chain] : preset.chains;
+  const title = chain ? `链路：${(chainIndex || 0) + 1}` : `说明：${preset.description}`;
+  const lines: string[] = [`场景：${preset.label}`, title, ''];
+
+  chains.forEach((current, idx) => {
+    if (!chain) lines.push(`链路 ${idx + 1}：`);
+    current.forEach((relName, stepIndex) => {
+      const rel = relationMap.get(relName);
+      if (!rel) {
+        lines.push(`${stepIndex + 1}. ${relName}（未找到定义）`);
+        return;
+      }
+      const risk = getRiskAnalysis(rel);
+      if (!review) {
+        lines.push(`${stepIndex + 1}. ${rel.logic_relation} | ${formatClassName(rel.domain_class)} -> ${formatClassName(rel.range_class)} | ${rel.strategy}`);
+        lines.push(`   风险：${getRiskLabel(risk.level)} | ${risk.reasons.join('；')}`);
+        lines.push(`   JOIN摘要：${summarizeJoinLogic(rel.join_logic)}`);
+      } else {
+        lines.push(`[${stepIndex + 1}] ${rel.logic_relation}`);
+        lines.push(`- 层级：${classifyRelationLayer(rel) === 'event' ? '事件层' : classifyRelationLayer(rel) === 'snapshot' ? '快照层' : '实体层'}`);
+        lines.push(`- Domain：${rel.domain_class || '—'}`);
+        lines.push(`- Range：${rel.range_class || '—'}`);
+        lines.push(`- Strategy：${rel.strategy || '—'}`);
+        lines.push(`- 风险：${getRiskLabel(risk.level)}`);
+        lines.push(`- 风险原因：${risk.reasons.join('；')}`);
+        lines.push(`- JOIN摘要：${summarizeJoinLogic(rel.join_logic)}`);
+        lines.push(`- 描述：${rel.description || '—'}`);
+        lines.push('- 审查问题：');
+        lines.push('  [ ] 语义是否准确？');
+        lines.push('  [ ] 是否跳层？');
+        lines.push('  [ ] 物理路径/过滤条件是否可靠？');
+        lines.push('  [ ] 是否混淆快照状态与当前状态？');
+      }
+    });
+    lines.push('');
+  });
+  return lines.join('\n').trim();
+}
+
+function buildChainMermaid(preset: ScenarioPreset, relationMap: Map<string, RelationMapping>, chains?: string[][]): string {
+  const lines: string[] = ['flowchart LR'];
+  const targetChains = chains || preset.chains;
+  const sanitize = (value: string) => value.replace(/[^a-zA-Z0-9_]/g, '_');
+  targetChains.forEach((chain, chainIndex) => {
+    chain.forEach((relName, stepIndex) => {
+      const rel = relationMap.get(relName);
+      if (!rel) return;
+      const domain = formatClassName(rel.domain_class);
+      const range = formatClassName(rel.range_class);
+      const a = `${sanitize(domain)}_${chainIndex}_${stepIndex}_d`;
+      const b = `${sanitize(range)}_${chainIndex}_${stepIndex}_r`;
+      lines.push(`  ${a}["${domain}"]`);
+      lines.push(`  ${b}["${range}"]`);
+      lines.push(`  ${a} -->|${rel.logic_relation}\\n${rel.strategy}| ${b}`);
+    });
+  });
+  lines.push(`  %% ${preset.label}`);
+  return lines.join('\n');
+}
+
+function matchScenario(item: RelationMapping, scenario: string): boolean {
+  if (!scenario) return true;
+  const corpus = `${item.logic_relation || ''} ${item.description || ''} ${item.domain_class || ''} ${item.range_class || ''}`.toLowerCase();
+  if (scenario === 'split') return /split|拆批|produces|assigns|transition/.test(corpus);
+  if (scenario === 'genealogy') return /split|merge|accumulate|谱系|transition|source|target/.test(corpus);
+  if (scenario === 'measurement') return /measurement|snapshot|量测|param|process_measure_data/.test(corpus);
+  return true;
+}
 
 function RelationMappingsTab() {
   const [items, setItems] = useState<RelationMapping[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [filterConf, setFilterConf] = useState('');
+  const [viewMode, setViewMode] = useState<RelationViewMode>('list');
+  const [layerFilter, setLayerFilter] = useState('');
+  const [scenarioFilter, setScenarioFilter] = useState('');
+  const [activePreset, setActivePreset] = useState<string>(SCENARIO_PRESETS[0].id);
+  const [copyMessage, setCopyMessage] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState<Partial<RelationMapping> | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -926,6 +1147,32 @@ function RelationMappingsTab() {
     }
   };
 
+  const filteredItems = useMemo(() => items.filter(item => {
+    if (layerFilter && classifyRelationLayer(item) !== layerFilter) return false;
+    if (scenarioFilter && !matchScenario(item, scenarioFilter)) return false;
+    return true;
+  }), [items, layerFilter, scenarioFilter]);
+
+  const groupedItems = useMemo(() => {
+    const groups: Record<RelationLayer, RelationMapping[]> = { event: [], snapshot: [], entity: [] };
+    filteredItems.forEach(item => groups[classifyRelationLayer(item)].push(item));
+    return groups;
+  }, [filteredItems]);
+
+  const relationMap = useMemo(() => new Map(items.map(item => [item.logic_relation, item])), [items]);
+  const currentPreset = useMemo(() => SCENARIO_PRESETS.find(p => p.id === activePreset) || SCENARIO_PRESETS[0], [activePreset]);
+
+  const copyText = async (text: string, successMsg: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyMessage(successMsg);
+      window.setTimeout(() => setCopyMessage(''), 2500);
+    } catch {
+      setCopyMessage('复制失败，请检查浏览器剪贴板权限');
+      window.setTimeout(() => setCopyMessage(''), 3000);
+    }
+  };
+
   // join_logic form varies by strategy
   const renderJoinLogicForm = () => {
     if (!editItem) return null;
@@ -954,6 +1201,23 @@ function RelationMappingsTab() {
             <Field label="target_table"><input value={jl.target_table || ''} onChange={e => setJl('target_table', e.target.value)} className={inputCls} /></Field>
             <Field label="target_pk"><input value={jl.target_pk || 'id'} onChange={e => setJl('target_pk', e.target.value)} className={inputCls} /></Field>
             <Field label="order_by（可选）"><input value={jl.order_by || ''} onChange={e => setJl('order_by', e.target.value)} className={inputCls} placeholder="sequence" /></Field>
+          </div>
+        );
+      case 'JoinVia':
+        return (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="source_table"><input value={jl.source_table || ''} onChange={e => setJl('source_table', e.target.value)} className={inputCls} /></Field>
+            <Field label="source_key"><input value={jl.source_key || 'id'} onChange={e => setJl('source_key', e.target.value)} className={inputCls} /></Field>
+            <Field label="via_table（中间表）"><input value={jl.via_table || ''} onChange={e => setJl('via_table', e.target.value)} className={inputCls} /></Field>
+            <Field label="via_source_key"><input value={jl.via_source_key || ''} onChange={e => setJl('via_source_key', e.target.value)} className={inputCls} /></Field>
+            <Field label="via_target_key"><input value={jl.via_target_key || ''} onChange={e => setJl('via_target_key', e.target.value)} className={inputCls} /></Field>
+            <Field label="via_filter（可选）"><input value={jl.via_filter || ''} onChange={e => setJl('via_filter', e.target.value)} className={inputCls} /></Field>
+            <Field label="target_table"><input value={jl.target_table || ''} onChange={e => setJl('target_table', e.target.value)} className={inputCls} /></Field>
+            <Field label="target_key"><input value={jl.target_key || ''} onChange={e => setJl('target_key', e.target.value)} className={inputCls} /></Field>
+            <Field label="via2_table（第二跳，可选）"><input value={jl.via2_table || ''} onChange={e => setJl('via2_table', e.target.value)} className={inputCls} /></Field>
+            <Field label="via2_source_key"><input value={jl.via2_source_key || ''} onChange={e => setJl('via2_source_key', e.target.value)} className={inputCls} /></Field>
+            <Field label="via2_target_key"><input value={jl.via2_target_key || ''} onChange={e => setJl('via2_target_key', e.target.value)} className={inputCls} /></Field>
+            <Field label="备注" hint="可选"><input value={jl.note || ''} onChange={e => setJl('note', e.target.value)} className={inputCls} /></Field>
           </div>
         );
       case 'Recursive':
@@ -994,18 +1258,34 @@ function RelationMappingsTab() {
     }
   };
 
-  const autoItems = items.filter(i => i.confidence);
-  const reviewItems = items.filter(i => i.confidence === 'medium' || i.confidence === 'low');
+  const reviewItems = filteredItems.filter(i => i.confidence === 'medium' || i.confidence === 'low');
 
   return (
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex items-center gap-3 flex-wrap">
+        <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
+          <button onClick={() => setViewMode('list')} className={`px-3 py-2 text-sm ${viewMode === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>分层列表</button>
+          <button onClick={() => setViewMode('path')} className={`px-3 py-2 text-sm ${viewMode === 'path' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>场景链路</button>
+        </div>
+
         <div className="relative flex-1 min-w-[200px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={search} onChange={e => { setSearch(e.target.value); load(e.target.value, filterConf); }}
             placeholder="搜索关系名 / 描述..." className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50" />
         </div>
+        <select value={scenarioFilter} onChange={e => setScenarioFilter(e.target.value)} className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none">
+          <option value="">全部场景</option>
+          <option value="split">拆批</option>
+          <option value="genealogy">谱系</option>
+          <option value="measurement">量测</option>
+        </select>
+        <select value={layerFilter} onChange={e => setLayerFilter(e.target.value)} className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none">
+          <option value="">全部层级</option>
+          <option value="event">事件层</option>
+          <option value="snapshot">快照层</option>
+          <option value="entity">实体层</option>
+        </select>
         <select value={filterConf} onChange={e => { setFilterConf(e.target.value); load(search, e.target.value); }}
           className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none">
           <option value="">全部置信度</option>
@@ -1027,26 +1307,93 @@ function RelationMappingsTab() {
         </div>
       )}
 
-      <p className="text-xs text-gray-500">共 {items.length} 条关系映射</p>
+      <p className="text-xs text-gray-500">共 {filteredItems.length} 条关系映射（原始 {items.length} 条）</p>
+
+      {viewMode === 'path' && (
+        <div className="border border-blue-200 bg-blue-50/50 rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-medium text-gray-700">场景预设</span>
+            <select value={activePreset} onChange={e => setActivePreset(e.target.value)} className="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none bg-white">
+              {SCENARIO_PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+            <button onClick={() => copyText(buildChainText(currentPreset, relationMap, false), '已复制简版链路')} className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50">复制简版链路</button>
+            <button onClick={() => copyText(buildChainText(currentPreset, relationMap, true), '已复制审查版链路')} className="px-3 py-2 text-sm border border-blue-300 rounded-lg bg-blue-600 text-white hover:bg-blue-700">复制审查版链路</button>
+            <button onClick={() => copyText(buildChainMermaid(currentPreset, relationMap), '已复制当前场景 Mermaid')} className="px-3 py-2 text-sm border border-emerald-300 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">导出 Mermaid</button>
+            <span className="text-xs text-gray-500">{currentPreset.description}</span>
+            {copyMessage && <span className="text-xs text-green-600">{copyMessage}</span>}
+          </div>
+
+          <div className="space-y-3">
+            {currentPreset.chains.map((chain, index) => (
+              <div key={`${currentPreset.id}-${index}`} className="border border-gray-200 bg-white rounded-lg p-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+                  <p className="text-xs font-medium text-gray-500">链路 {index + 1}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button onClick={() => copyText(buildChainText(currentPreset, relationMap, false, chain, index), `已复制链路 ${index + 1} 简版`)} className="px-2.5 py-1 text-xs border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50">复制本链路</button>
+                    <button onClick={() => copyText(buildChainText(currentPreset, relationMap, true, chain, index), `已复制链路 ${index + 1} 审查版`)} className="px-2.5 py-1 text-xs border border-blue-300 rounded-md bg-blue-600 text-white hover:bg-blue-700">复制本链路审查版</button>
+                    <button onClick={() => copyText(buildChainMermaid(currentPreset, relationMap, [chain]), `已复制链路 ${index + 1} Mermaid`)} className="px-2.5 py-1 text-xs border border-emerald-300 rounded-md bg-emerald-600 text-white hover:bg-emerald-700">Mermaid</button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {chain.map((relName, stepIndex) => {
+                    const rel = relationMap.get(relName);
+                    if (!rel) {
+                      return <div key={relName} className="text-xs text-red-500 bg-red-50 border border-red-100 rounded px-2 py-1">{stepIndex + 1}. {relName}（当前映射集中未找到）</div>;
+                    }
+                    const risk = getRiskAnalysis(rel);
+                    return (
+                      <div key={relName} className="border border-gray-200 rounded-md p-2 bg-gray-50">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-gray-500">{stepIndex + 1}</span>
+                          <span className="font-mono text-xs text-blue-700">{rel.logic_relation}</span>
+                          <Badge text={rel.strategy} colorCls={STRATEGY_COLORS[rel.strategy] || 'bg-gray-100 text-gray-600'} />
+                          <Badge text={classifyRelationLayer(rel) === 'event' ? '事件层' : classifyRelationLayer(rel) === 'snapshot' ? '快照层' : '实体层'} colorCls={classifyRelationLayer(rel) === 'event' ? 'bg-indigo-100 text-indigo-700' : classifyRelationLayer(rel) === 'snapshot' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'} />
+                          <Badge text={getRiskLabel(risk.level)} colorCls={getRiskBadgeColor(risk.level)} />
+                        </div>
+                        <div className="mt-1 text-xs text-gray-600">{formatClassName(rel.domain_class)} → {formatClassName(rel.range_class)}</div>
+                        <div className="mt-1 text-xs text-amber-700">风险原因：{risk.reasons.join('；')}</div>
+                        <div className="mt-1 text-xs text-gray-500 break-all">JOIN摘要：{summarizeJoinLogic(rel.join_logic)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Table */}
-      <div className="border border-gray-200 rounded-xl overflow-hidden">
+      {viewMode === 'list' && <div className="space-y-4">
+      {(['event', 'snapshot', 'entity'] as RelationLayer[]).map(layer => {
+        const layerItems = groupedItems[layer];
+        const layerTitle = layer === 'event' ? '事件层关系' : layer === 'snapshot' ? '快照层关系' : '实体层关系';
+        return (
+      <div key={layer} className="border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-700">{layerTitle}</span>
+          <span className="text-xs text-gray-500">{layerItems.length} 条</span>
+        </div>
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="w-8" />
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Logic Relation</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">策略</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Domain → Range</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">描述</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">置信度</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {loading && <tr><td colSpan={6} className="py-8 text-center text-gray-400">加载中...</td></tr>}
-            {!loading && items.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-gray-400">暂无数据 — 运行 generate_relation_mappings.py --merge 导入草稿</td></tr>}
-            {items.map((item, idx) => {
+            {loading && layer === 'event' && <tr><td colSpan={7} className="py-8 text-center text-gray-400">加载中...</td></tr>}
+            {!loading && filteredItems.length === 0 && layer === 'event' && <tr><td colSpan={7} className="py-8 text-center text-gray-400">暂无数据 — 运行 generate_relation_mappings.py --merge 导入草稿</td></tr>}
+            {!loading && layerItems.length === 0 && filteredItems.length > 0 && <tr><td colSpan={7} className="py-5 text-center text-gray-300 text-xs">该层级无匹配关系</td></tr>}
+            {layerItems.map((item, idx) => {
               const rowKey = `${item.logic_relation}::${item.domain_class || idx}`;
+              const risk = getRiskAnalysis(item);
               return (
               <React.Fragment key={rowKey}>
                 <tr className={`hover:bg-gray-50 transition-colors ${item.confidence === 'medium' ? 'bg-yellow-50/30' : ''}`}>
@@ -1060,6 +1407,7 @@ function RelationMappingsTab() {
                   <td className="px-4 py-3">
                     <Badge text={item.strategy} colorCls={STRATEGY_COLORS[item.strategy] || 'bg-gray-100 text-gray-600'} />
                   </td>
+                  <td className="px-4 py-3 text-xs text-gray-600">{formatClassName(item.domain_class)} → {formatClassName(item.range_class)}</td>
                   <td className="px-4 py-3 text-gray-600 max-w-xs truncate" title={item.description}>{item.description || '—'}</td>
                   <td className="px-4 py-3">
                     {item.confidence && <Badge text={item.confidence} colorCls={CONFIDENCE_COLORS[item.confidence] || ''} />}
@@ -1073,11 +1421,16 @@ function RelationMappingsTab() {
                 </tr>
                 {expandedRow === rowKey && (
                   <tr className="bg-gray-50">
-                    <td colSpan={6} className="px-8 pb-4 pt-2">
+                    <td colSpan={7} className="px-8 pb-4 pt-2 space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge text={getRiskLabel(risk.level)} colorCls={getRiskBadgeColor(risk.level)} />
+                        <span className="text-xs text-amber-700">风险原因：{risk.reasons.join('；')}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 break-all">JOIN摘要：{summarizeJoinLogic(item.join_logic)}</div>
                       <pre className="text-xs text-gray-600 bg-white border border-gray-200 rounded-lg p-3 overflow-x-auto">
                         {JSON.stringify(item.join_logic, null, 2)}
                       </pre>
-                      {item.domain_class && <div className="mt-2 text-xs text-gray-400">domain: {item.domain_class} → range: {item.range_class}</div>}
+                      {item.domain_class && <div className="text-xs text-gray-400">domain: {item.domain_class} → range: {item.range_class}</div>}
                     </td>
                   </tr>
                 )}
@@ -1086,6 +1439,8 @@ function RelationMappingsTab() {
           </tbody>
         </table>
       </div>
+        )})}
+      </div>}
 
       {/* Modal */}
       {showModal && editItem && (
@@ -1487,7 +1842,193 @@ function BusinessRulesTab() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// Tab 5: Changelog
+// Tab 5: Metrics
+// ══════════════════════════════════════════════════════════════════
+
+function MetricsTab() {
+  const [items, setItems] = useState<MetricDefinition[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [editItem, setEditItem] = useState<Partial<MetricDefinition> | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async (q = search) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await mappingApi.getMetrics({ q });
+      setItems(res.data || []);
+    } catch (e: any) {
+      setError(e.message || '加载指标定义失败');
+      setItems([]);
+    }
+    setLoading(false);
+  }, [search]);
+
+  useEffect(() => { load(); }, []);
+
+  const openAdd = () => {
+    setEditItem({
+      metric_id: '',
+      zh_names: [],
+      anchor_table: '',
+      formula: '',
+      granularity: [],
+      description: '',
+      join_path: '',
+      auto_filter: '',
+    });
+    setIsEditing(false);
+    setShowModal(true);
+  };
+
+  const openEdit = (item: MetricDefinition) => {
+    setEditItem({ ...item });
+    setIsEditing(true);
+    setShowModal(true);
+  };
+
+  const handleSave = async () => {
+    if (!editItem) return;
+    setSaving(true);
+    setError('');
+    try {
+      const payload = {
+        ...editItem,
+        zh_names: typeof editItem.zh_names === 'string'
+          ? (editItem.zh_names as any).split(',').map((s: string) => s.trim()).filter(Boolean)
+          : (editItem.zh_names || []),
+        granularity: typeof editItem.granularity === 'string'
+          ? (editItem.granularity as any).split(',').map((s: string) => s.trim()).filter(Boolean)
+          : (editItem.granularity || []),
+      };
+
+      if (isEditing) {
+        await mappingApi.updateMetric(editItem.metric_id!, payload);
+      } else {
+        await mappingApi.createMetric(payload);
+      }
+
+      setShowModal(false);
+      load();
+    } catch (e: any) {
+      setError(e.message || '保存指标定义失败');
+    }
+    setSaving(false);
+  };
+
+  const handleDelete = async (metricId: string) => {
+    if (!confirm(`删除指标定义 ${metricId}？`)) return;
+    try {
+      await mappingApi.deleteMetric(metricId);
+      load();
+    } catch (e: any) {
+      alert(e.message || '删除失败');
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={search}
+            onChange={e => { setSearch(e.target.value); load(e.target.value); }}
+            placeholder="搜索 metric_id / 中文别名 / anchor_table..."
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+          />
+        </div>
+        <button onClick={() => load()} className="p-2 text-gray-500 border border-gray-300 rounded-lg hover:bg-gray-50">
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+        </button>
+        <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+          <Plus size={16} />添加
+        </button>
+      </div>
+
+      {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{error}</div>}
+
+      {!loading && items.length === 0 && !error && (
+        <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center text-gray-400">
+          <BarChart2 size={32} className="mx-auto mb-3 opacity-40" />
+          <p className="text-sm">暂无指标定义</p>
+          <p className="text-xs mt-1">请先在 mapping_prod.json 的 metric_definitions 中配置后再编辑</p>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {items.map(item => (
+          <div key={item.metric_id} className="border border-gray-200 rounded-xl p-4 space-y-2">
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="font-mono text-sm font-medium text-blue-700">{item.metric_id}</span>
+                {item.zh_names?.length > 0 && (
+                  <span className="ml-2 text-sm text-gray-700">{item.zh_names.join(' / ')}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => openEdit(item)} className="p-1 text-gray-400 hover:text-blue-600"><Edit2 size={14} /></button>
+                <button onClick={() => handleDelete(item.metric_id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 size={14} /></button>
+              </div>
+            </div>
+
+            <div className="text-xs text-gray-600">anchor_table: <span className="font-mono">{item.anchor_table || '—'}</span></div>
+            <div className="text-xs text-gray-600">formula: <span className="font-mono">{item.formula || '—'}</span></div>
+            <div className="text-xs text-gray-600">granularity: {(item.granularity || []).join(', ') || '—'}</div>
+            {item.description && <p className="text-xs text-gray-600">{item.description}</p>}
+          </div>
+        ))}
+      </div>
+
+      {showModal && editItem && (
+        <Modal title={isEditing ? `编辑指标：${editItem.metric_id}` : '新增指标定义'} onClose={() => setShowModal(false)} onConfirm={handleSave} confirmText={saving ? '保存中...' : '保存'} wide>
+          {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{error}</div>}
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="metric_id" required>
+              <input value={editItem.metric_id || ''} onChange={e => setEditItem({ ...editItem, metric_id: e.target.value })} disabled={isEditing} className={`${inputCls} ${isEditing ? 'bg-gray-50 text-gray-500' : ''}`} placeholder="wip_count_by_station" />
+            </Field>
+            <Field label="anchor_table" required>
+              <input value={editItem.anchor_table || ''} onChange={e => setEditItem({ ...editItem, anchor_table: e.target.value })} className={inputCls} placeholder="matrix_routerx_operation_lot" />
+            </Field>
+          </div>
+
+          <Field label="中文别名（zh_names，逗号分隔）">
+            <input value={Array.isArray(editItem.zh_names) ? editItem.zh_names.join(', ') : (editItem.zh_names as any) || ''} onChange={e => setEditItem({ ...editItem, zh_names: e.target.value as any })} className={inputCls} placeholder="在制品数量, 工站WIP" />
+          </Field>
+
+          <Field label="formula" required>
+            <textarea value={editItem.formula || ''} onChange={e => setEditItem({ ...editItem, formula: e.target.value })} className={`${textareaCls} min-h-[90px]`} placeholder="COUNT(DISTINCT lot_id)" />
+          </Field>
+
+          <Field label="granularity（逗号分隔）">
+            <input value={Array.isArray(editItem.granularity) ? editItem.granularity.join(', ') : (editItem.granularity as any) || ''} onChange={e => setEditItem({ ...editItem, granularity: e.target.value as any })} className={inputCls} placeholder="process, product, day" />
+          </Field>
+
+          <Field label="description">
+            <input value={editItem.description || ''} onChange={e => setEditItem({ ...editItem, description: e.target.value })} className={inputCls} />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="join_path（可选）">
+              <input value={editItem.join_path || ''} onChange={e => setEditItem({ ...editItem, join_path: e.target.value })} className={inputCls} />
+            </Field>
+            <Field label="auto_filter（可选）">
+              <input value={editItem.auto_filter || ''} onChange={e => setEditItem({ ...editItem, auto_filter: e.target.value })} className={inputCls} />
+            </Field>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// Tab 6: Changelog
 // ══════════════════════════════════════════════════════════════════
 
 function ChangelogTab() {

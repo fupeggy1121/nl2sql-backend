@@ -684,7 +684,7 @@ class SemanticContextBuilder:
             )
 
         # Step 3: 路径发现 + JOIN 翻译
-        joins = self._resolve_joins(matched)
+        joins = self._resolve_joins(matched, user_query)
         ctx.joins = joins
         if joins:
             logger.info("Resolved %d join paths", len(joins))
@@ -1367,7 +1367,7 @@ class SemanticContextBuilder:
                 return True
         return False
 
-    def _resolve_joins(self, classes: List[MatchedClass]) -> List[ResolvedJoin]:
+    def _resolve_joins(self, classes: List[MatchedClass], query: str = "") -> List[ResolvedJoin]:
         """
         对匹配到的类两两做路径发现，然后将每一跳的本体关系翻译为物理 JOIN。
 
@@ -1396,6 +1396,37 @@ class SemanticContextBuilder:
         # 已匹配类的语义 URI 集合，用于中间节点纯洁性检查
         matched_class_uris: Set[str] = {c.logic_class for c in physical_classes}
 
+        query_lower = (query or "").lower()
+
+        # relation preference inferred from query wording (用于最短路径并列时择优)
+        prefer_output_rel = any(k in query_lower for k in [
+            "新批次", "产出", "输出", "拆出", "目标批次", "新增一列", "增加一列",
+            "new lot", "output lot", "produced",
+        ])
+        prefer_input_rel = any(k in query_lower for k in [
+            "源批次", "原批次", "输入批次", "作用批次",
+        ])
+
+        preferred_relation_tokens: List[str] = []
+        if prefer_output_rel:
+            preferred_relation_tokens.extend([
+                "produceslot", "producessublot", "assignswafertolot", "assignswafertosublot",
+            ])
+        if prefer_input_rel:
+            preferred_relation_tokens.extend([
+                "splitsfromlot", "splitsfromsublot",
+            ])
+
+        def _score_path(edges: List) -> int:
+            if not preferred_relation_tokens:
+                return 0
+            score = 0
+            for e in edges:
+                rel = e.logic_relation.lstrip("^").lower()
+                if any(tok in rel for tok in preferred_relation_tokens):
+                    score += 10
+            return score
+
         for i in range(len(physical_classes)):
             for j in range(i + 1, len(physical_classes)):
                 source = physical_classes[i].logic_class
@@ -1415,6 +1446,8 @@ class SemanticContextBuilder:
                             )
                         ]
                         chosen_paths = clean_paths if clean_paths else all_paths
+                        if len(chosen_paths) > 1 and preferred_relation_tokens:
+                            chosen_paths = sorted(chosen_paths, key=_score_path, reverse=True)
                         logger.info(
                             "[context_builder] %s→%s: %d paths, %d passed semantic validation",
                             source, target, len(all_paths), len(chosen_paths),
