@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   BotMessageSquare, Book, Tag, Network, Sparkles, BarChart,
-  Plus, MessageSquare, FlaskConical, LayoutDashboard, Trash2, GitBranch
+  Plus, MessageSquare, FlaskConical, LayoutDashboard, Trash2, GitBranch, TrendingUp
 } from 'lucide-react'
 import { DbModeBadge } from './components/DbModeBadge'
 import MappingManager from './components/MappingManager'
@@ -13,10 +13,11 @@ import NLTestManager from './components/NLTestManager'
 import { DashboardModule } from './components/Dashboard/DashboardModule'
 import { DashboardEditor } from './components/Dashboard/DashboardEditor'
 import { TraceabilityView } from './components/Traceability/TraceabilityView'
+import { AnalysisPage } from './components/Analysis/AnalysisPage'
 import { useData } from './hooks/useData'
 
 // ── Types ─────────────────────────────────────────────────────────
-type TopModule = 'ai-chat' | 'ontology-management' | 'nl-testing'
+type TopModule = 'ai-chat' | 'ontology-management' | 'analysis'
 
 interface ChatSession {
   id: string
@@ -29,6 +30,7 @@ const ontologySubItems = [
   { id: 'semantic-mapping-management', label: '语义映射管理', icon: Tag },
   { id: 'ontology-viewer',             label: '本体可视化',   icon: Network },
   { id: 'synonym-management',          label: '同义词管理',   icon: Tag },
+  { id: 'nl-testing',                  label: '语义测试',     icon: FlaskConical },
 ]
 
 // ── Main App ──────────────────────────────────────────────────────
@@ -67,8 +69,6 @@ export default function App() {
     setActiveTopModule(mod)
     if (mod === 'ontology-management') {
       setActiveSubModule('semantic-mapping-management')
-    } else if (mod === 'nl-testing') {
-      setActiveSubModule('nl-testing')
     } else {
       const sessions = await fetchChatSessions()
       const latest = await fetchLatestChatSession()
@@ -108,7 +108,7 @@ export default function App() {
   )
 
   const renderSidebar = () => {
-    if (activeTopModule === 'nl-testing') {
+    if (activeTopModule === 'analysis') {
       return null
     }
     if (activeTopModule === 'ontology-management') {
@@ -257,6 +257,9 @@ export default function App() {
   }
 
   const renderContent = () => {
+    if (activeTopModule === 'analysis') {
+      return <AnalysisPage />
+    }
     if (activeTopModule === 'nl-testing') {
       return <NLTestManager />
     }
@@ -265,6 +268,7 @@ export default function App() {
         case 'semantic-mapping-management': return <MappingManager />
         case 'ontology-viewer':             return <OntologyViewer />
         case 'synonym-management':          return <SynonymManager />
+        case 'nl-testing':                  return <NLTestManager />
         default:                            return <MappingManager />
       }
     }
@@ -292,8 +296,8 @@ export default function App() {
 
   const topNavItems = [
     { id: 'ai-chat' as TopModule,             label: '智能报表', icon: Sparkles },
+    { id: 'analysis' as TopModule,            label: '数据分析', icon: TrendingUp },
     { id: 'ontology-management' as TopModule, label: '本体管理', icon: Book },
-    { id: 'nl-testing' as TopModule,          label: '语义测试', icon: FlaskConical },
   ]
 
   return (
@@ -323,7 +327,7 @@ export default function App() {
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         {renderSidebar()}
-        <main style={{ flex: 1, minHeight: 0, overflow: (activeTopModule === 'ontology-management' || activeTopModule === 'nl-testing') ? 'auto' : 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <main style={{ flex: 1, minHeight: 0, overflow: ((activeTopModule === 'ontology-management' && activeSubModule !== 'ontology-viewer')) ? 'auto' : 'hidden', display: 'flex', flexDirection: 'column' }}>
           {renderContent()}
         </main>
       </div>
