@@ -1419,7 +1419,8 @@
       "properties": {
         "semi:hasBatchNo": "batch_no",
         "semi:hasBoxNo": "unique_code",
-        "semi:hasBatchQty": "quantity"
+        "semi:hasStockQty": "quantity",
+        "semi:hasStockUnit": "unit_name"
       },
       "key_columns": [
         "id",
@@ -1434,36 +1435,10 @@
         "unit_name",
         "warehouse_id",
         "warehouse_name",
-        "receive_time"
+        "receive_time",
+        "lock_quantity"
       ],
-      "note": "物料批次实例无独立表，批次字段（batch_no/unique_code）嵌入在warehouse_inventory、warehouse_input_record_bill_detail、warehouse_output_record_bill_detail中。此处主映射到warehouse_inventory（完整批次在库快照）。单件追踪型填充unique_code（盒号），批量计数型仅有batch_no；由warehouse_material.batch/unique_code字段配置物料管理模式。"
-    },
-    {
-      "logic_class": "semi:Inventory",
-      "physical_table": "warehouse_inventory",
-      "primary_key": "id",
-      "label_cn": "库存明细",
-      "display_column": "material_model_name",
-      "properties": {
-        "semi:hasStockQty": "quantity",
-        "semi:hasStockUnit": "unit_name"
-      },
-      "key_columns": [
-        "id",
-        "material_model_id",
-        "material_model_code",
-        "material_model_name",
-        "material_type_name",
-        "unique_code",
-        "batch_no",
-        "quantity",
-        "lock_quantity",
-        "unit_name",
-        "warehouse_id",
-        "warehouse_name",
-        "receive_time"
-      ],
-      "note": "库存明细快照表，一行=(库位×物料×批次)->在库数量。与semi:MaterialBatch共享warehouse_inventory表；quantity＝当前在库量，lock_quantity＝锁定量，可用量＝quantity-lock_quantity。"
+      "note": "物料批次实例无独立表，主映射到 warehouse_inventory。每行即一个批次实例在某库位的在库快照。batch_no/unique_code 标识批次身份；quantity=当前在库量，lock_quantity=锁定量，可用量=quantity-lock_quantity。通过 locatedAt 关联库位，通过 batchOfMaterial 关联物料类型。"
     },
     {
       "logic_class": "semi:InboundApprovalRecord",
@@ -2315,8 +2290,8 @@
       "note": "出库明细中batch_no/unique_code字段软关联到warehouse_inventory中的批次快照行，建立出库操作←→批次实例之间的语义连接，支持批次追溯和出库历史查询。"
     },
     {
-      "logic_relation": "semi:storedAtLocation",
-      "description": "物料批次实例存放在哪个库位（MaterialBatch→WarehouseLocation）",
+      "logic_relation": "semi:locatedAt",
+      "description": "物料批次实例当前存放的库位（MaterialBatch→WarehouseLocation）",
       "strategy": "ForeignKey",
       "join_logic": {
         "source_table": "warehouse_inventory",
@@ -2326,11 +2301,39 @@
       },
       "domain_class": "semi:MaterialBatch",
       "range_class": "semi:WarehouseLocation",
-      "note": "warehouse_inventory.warehouse_id → warehouse_model.id。建立批次实例←→库位之间的核心空间位置关系，支持'某批次在哪个库位'和'某库位有哪些批次'双向查询。"
+      "note": "warehouse_inventory.warehouse_id → warehouse_model.id。建立批次实例↔库位之间的核心空间关系，支持“某批次在哪个库位”和“某库位有哪些批次/物料”双向查询。"
     },
     {
-      "logic_relation": "semi:updatesInventory",
-      "description": "入库记录明细生成后同步更新对应库存快照行（InboundEventRecord→Inventory）",
+      "logic_relation": "semi:batchOfMaterial",
+      "description": "物料批次实例对应的物料类型（MaterialBatch→Material）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "warehouse_inventory",
+        "source_key": "material_model_id",
+        "target_table": "material",
+        "target_key": "id"
+      },
+      "domain_class": "semi:MaterialBatch",
+      "range_class": "semi:Material",
+      "note": "warehouse_inventory.material_model_id → material.id。建立批次实例↔物料类型的归属关系，支持“某种物料有哪些批次在库”和“按物料统计库位库存分布”类查询。"
+    },
+    {
+      "logic_relation": "semi:batchOfMaterial",
+      "description": "物料批次实例对应的物料类型（MaterialBatch→Material）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "warehouse_inventory",
+        "source_key": "material_model_id",
+        "target_table": "material",
+        "target_key": "id"
+      },
+      "domain_class": "semi:MaterialBatch",
+      "range_class": "semi:Material",
+      "note": "warehouse_inventory.material_model_id → material.id。建立批次实例↔物料类型的归属关系，支持“某种物料有哪些批次在库”和“按物料统计库位库存分布”类查询。"
+    },
+    {
+      "logic_relation": "semi:updatesBatch",
+      "description": "入库记录明细生成后同步更新对应物料批次行的 quantity 字段（InboundEventRecord→MaterialBatch）",
       "strategy": "CompositeKey",
       "join_logic": {
         "source_table": "warehouse_input_record_bill_detail",
@@ -2348,36 +2351,8 @@
         "note": "入库单审批通过并执行入库后，warehouse_input_record_bill_detail中的每一行对应更新或新增warehouse_inventory中的一条在库快照记录，数量字段从count合并到quantity。"
       },
       "domain_class": "semi:InboundEventRecord",
-      "range_class": "semi:Inventory",
-      "note": "入库记录单生成时，入库明细行通过batch_no/unique_code+warehouse_id定位并更新warehouse_inventory（semi:Inventory）的quantity字段，反映实时库存变化。"
-    },
-    {
-      "logic_relation": "semi:inventoryAtLocation",
-      "description": "库存快照行属于哪个库位（Inventory→WarehouseLocation）",
-      "strategy": "ForeignKey",
-      "join_logic": {
-        "source_table": "warehouse_inventory",
-        "source_key": "warehouse_id",
-        "target_table": "warehouse_model",
-        "target_key": "id"
-      },
-      "domain_class": "semi:Inventory",
-      "range_class": "semi:WarehouseLocation",
-      "note": "warehouse_inventory.warehouse_id → warehouse_model.id。建立库存快照←→库位的直接位置关系，支持'某库位有多少库存'和'库存按库位分布'类查询。与 semi:storedAtLocation 语义等价但 domain 为 semi:Inventory，使路径发现引擎可直接从 Inventory 到 WarehouseLocation。"
-    },
-    {
-      "logic_relation": "semi:inventoryOfMaterial",
-      "description": "库存快照行对应的物料主数据（Inventory→Material）",
-      "strategy": "ForeignKey",
-      "join_logic": {
-        "source_table": "warehouse_inventory",
-        "source_key": "material_model_id",
-        "target_table": "material",
-        "target_key": "id"
-      },
-      "domain_class": "semi:Inventory",
-      "range_class": "semi:Material",
-      "note": "warehouse_inventory.material_model_id → material.id。建立库存明细←→物料主数据的核心关联，支持按物料名称/型号/类型统计各库位库存分布。"
+      "range_class": "semi:MaterialBatch",
+      "note": "入库单审批通过并执行入库后，warehouse_input_record_bill_detail 中的每一行对应更新或新增 warehouse_inventory 中的一条在库批次记录。"
     },
     {
       "logic_relation": "semi:belongsToLot",
@@ -2936,7 +2911,11 @@
         "filter_condition": "JSON_EXTRACT(extra, '$.isSource') = false",
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "id",
-        "snapshot_columns": ["sub_lot_code", "carrier_code", "process_code"],
+        "snapshot_columns": [
+          "sub_lot_code",
+          "carrier_code",
+          "process_code"
+        ],
         "note": "直接路径：_detail(isSource=false).sub_lot_id → lot.id(WHERE parent_id!=0)。isSource=false 行为目标侧，sub_lot_id FK 指向新产出的子批次实例。"
       },
       "domain_class": "semi:SublotTransitionSnapshot",
