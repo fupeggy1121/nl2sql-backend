@@ -2352,6 +2352,34 @@
       "note": "入库记录单生成时，入库明细行通过batch_no/unique_code+warehouse_id定位并更新warehouse_inventory（semi:Inventory）的quantity字段，反映实时库存变化。"
     },
     {
+      "logic_relation": "semi:inventoryAtLocation",
+      "description": "库存快照行属于哪个库位（Inventory→WarehouseLocation）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "warehouse_inventory",
+        "source_key": "warehouse_id",
+        "target_table": "warehouse_model",
+        "target_key": "id"
+      },
+      "domain_class": "semi:Inventory",
+      "range_class": "semi:WarehouseLocation",
+      "note": "warehouse_inventory.warehouse_id → warehouse_model.id。建立库存快照←→库位的直接位置关系，支持'某库位有多少库存'和'库存按库位分布'类查询。与 semi:storedAtLocation 语义等价但 domain 为 semi:Inventory，使路径发现引擎可直接从 Inventory 到 WarehouseLocation。"
+    },
+    {
+      "logic_relation": "semi:inventoryOfMaterial",
+      "description": "库存快照行对应的物料主数据（Inventory→Material）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "warehouse_inventory",
+        "source_key": "material_model_id",
+        "target_table": "material",
+        "target_key": "id"
+      },
+      "domain_class": "semi:Inventory",
+      "range_class": "semi:Material",
+      "note": "warehouse_inventory.material_model_id → material.id。建立库存明细←→物料主数据的核心关联，支持按物料名称/型号/类型统计各库位库存分布。"
+    },
+    {
       "logic_relation": "semi:belongsToLot",
       "description": "Wafer 属于哪个 ProductionLot",
       "strategy": "ForeignKey",

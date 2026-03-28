@@ -1532,6 +1532,16 @@ semi:updatesInventory a owl:ObjectProperty ;
     rdfs:label "入库明细更新库存快照" ;
     rdfs:comment "入库记录明细生成后同步更新 warehouse_inventory 库存快照行（semi:Inventory.quantity 字段）。物理映射：warehouse_input_record_bill_detail 通过 batch_no/unique_code+warehouse_id 定位 warehouse_inventory 行。" .
 
+semi:inventoryAtLocation a owl:ObjectProperty ;
+    rdfs:domain semi:Inventory ; rdfs:range semi:WarehouseLocation ;
+    rdfs:label "库存所属库位" ;
+    rdfs:comment "库存快照行属于哪个库位（Inventory→WarehouseLocation）。物理映射：warehouse_inventory.warehouse_id → warehouse_model.id。支持'某库位库存分布'类查询。" .
+
+semi:inventoryOfMaterial a owl:ObjectProperty ;
+    rdfs:domain semi:Inventory ; rdfs:range semi:Material ;
+    rdfs:label "库存对应物料" ;
+    rdfs:comment "库存快照行对应的物料主数据（Inventory→Material）。物理映射：warehouse_inventory.material_model_id → material.id。支持按物料统计各库位库存分布。" .
+
 # 8.6 入库单-明细包含关系
 semi:containsInboundDetail a owl:ObjectProperty ;
     rdfs:domain semi:InboundBill ; rdfs:range semi:InboundEventRecord ;
