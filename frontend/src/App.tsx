@@ -17,7 +17,7 @@ import { AnalysisPage } from './components/Analysis/AnalysisPage'
 import { useData } from './hooks/useData'
 
 // ── Types ─────────────────────────────────────────────────────────
-type TopModule = 'ai-chat' | 'ontology-management' | 'analysis'
+type TopModule = 'ai-chat' | 'ontology-management'
 
 interface ChatSession {
   id: string
@@ -108,9 +108,6 @@ export default function App() {
   )
 
   const renderSidebar = () => {
-    if (activeTopModule === 'analysis') {
-      return null
-    }
     if (activeTopModule === 'ontology-management') {
       return (
         <nav style={{ width: 200, flexShrink: 0, background: '#fff', borderRight: '1px solid #e5e7eb', padding: '16px 0' }}>
@@ -184,6 +181,14 @@ export default function App() {
           {savedReports.length === 0 && (
             <div style={{ padding: '6px 18px', fontSize: 12, color: '#d1d5db', fontStyle: 'italic' }}>暂无保存的报表</div>
           )}
+          {/* ── 数据分析工作台 ───────────────────────────── */}
+          <div style={{ padding: '12px 16px 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: 4 }}>数据分析</div>
+          <button
+            onClick={() => { setActiveTopModule('ai-chat'); setActiveSubModule('analysis-workbench') }}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', background: activeSubModule === 'analysis-workbench' ? '#eff6ff' : 'transparent', color: activeSubModule === 'analysis-workbench' ? '#1d4ed8' : '#374151', border: 'none', cursor: 'pointer', fontSize: 13, textAlign: 'left', borderLeft: activeSubModule === 'analysis-workbench' ? '2px solid #2563eb' : '2px solid transparent' }}>
+            <TrendingUp size={13} style={{ flexShrink: 0 }} />
+            分析工作台
+          </button>
           {/* ── 追溯记录 ─────────────────────────────── */}
           <div style={{ padding: '12px 16px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>追溯查询</span>
@@ -257,9 +262,6 @@ export default function App() {
   }
 
   const renderContent = () => {
-    if (activeTopModule === 'analysis') {
-      return <AnalysisPage />
-    }
     if (activeTopModule === 'nl-testing') {
       return <NLTestManager />
     }
@@ -273,6 +275,7 @@ export default function App() {
       }
     }
     if (activeSubModule === 'saved-reports') return <ReportsModule reportId={undefined} />
+    if (activeSubModule === 'analysis-workbench') return <AnalysisPage />
     if (activeSubModule.startsWith('report-')) {
       const id = activeSubModule.replace('report-', '')
       return <ReportsModule reportId={id} />
@@ -295,9 +298,8 @@ export default function App() {
   }
 
   const topNavItems = [
-    { id: 'ai-chat' as TopModule,             label: '智能报表', icon: Sparkles },
-    { id: 'analysis' as TopModule,            label: '数据分析', icon: TrendingUp },
-    { id: 'ontology-management' as TopModule, label: '本体管理', icon: Book },
+    { id: 'ai-chat' as TopModule,             label: 'X', icon: Sparkles },
+    { id: 'ontology-management' as TopModule, label: 'Ontology Hub', icon: Book },
   ]
 
   return (
@@ -305,7 +307,7 @@ export default function App() {
       <header style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '0 24px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <BotMessageSquare size={20} color="#4f46e5" />
-          <span style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', marginRight: 24 }}>ChatBI</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e', marginRight: 24 }}>X</span>
           <nav style={{ display: 'flex', gap: 2 }}>
             {topNavItems.map(item => {
               const Icon = item.icon
@@ -327,7 +329,7 @@ export default function App() {
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         {renderSidebar()}
-        <main style={{ flex: 1, minHeight: 0, overflow: ((activeTopModule === 'ontology-management' && activeSubModule !== 'ontology-viewer')) ? 'auto' : 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <main style={{ flex: 1, minHeight: 0, overflow: ((activeTopModule === 'ontology-management' && activeSubModule !== 'ontology-viewer') || activeSubModule === 'analysis-workbench') ? 'auto' : 'hidden', display: 'flex', flexDirection: 'column' }}>
           {renderContent()}
         </main>
       </div>

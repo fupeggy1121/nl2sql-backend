@@ -16,11 +16,12 @@ class DataSourceConfig(BaseModel):
 
     type: str = Field(
         ...,
-        description="数据来源类型: sql / table / data",
-        pattern=r"^(sql|table|data)$",
+        description="数据来源类型: sql / table / data / nlquery",
+        pattern=r"^(sql|table|data|nlquery)$",
     )
     sql: Optional[str] = Field(None, description="SQL 查询语句 (type=sql 时必填)")
     table: Optional[str] = Field(None, description="表名 (type=table 时必填)")
+    nlquery: Optional[str] = Field(None, description="自然语言描述 (type=nlquery 时必填，系统自动转换为 SQL)")
     filters: Optional[Dict[str, Any]] = Field(
         None, description="WHERE 筛选条件 (type=table 时可选)"
     )

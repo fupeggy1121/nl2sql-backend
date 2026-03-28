@@ -1,10 +1,14 @@
 // ── Method metadata ────────────────────────────────────────────────
 export interface ParamSchema {
-  type: 'string' | 'number' | 'boolean' | 'select'
-  label: string
+  type: 'string' | 'number' | 'boolean' | 'select' | 'integer' | 'array'
+  label?: string
+  description?: string  // 后端实际返回的字段
   default?: unknown
   options?: { value: string; label: string }[]
+  enum?: string[]       // 后端也可能用 enum 代替 options
   required?: boolean
+  hidden?: boolean      // 隐藏在基础界面中
+  tier?: 'business' | 'field' | 'advanced'  // 层次：业务参数/字段映射/高级
 }
 
 export interface MethodInfo {
@@ -15,7 +19,7 @@ export interface MethodInfo {
 }
 
 // ── Data source config ─────────────────────────────────────────────
-export type DataSourceType = 'sql' | 'table' | 'nlquery'
+export type DataSourceType = 'sql' | 'table' | 'nlquery' | 'data'
 
 export interface DataSourceConfig {
   type: DataSourceType
@@ -63,8 +67,9 @@ export interface AnalysisResponse {
 // ── Preview ────────────────────────────────────────────────────────
 export interface PreviewResponse {
   success: boolean
+  rows_count: number
   columns: string[]
-  rows: unknown[][]
-  total_rows: number
+  dtypes: Record<string, string>
+  sample: Record<string, unknown>[]
   error?: string
 }

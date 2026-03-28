@@ -70,26 +70,38 @@ async def compat_process_query(request: Request):
         session_id = body.get("session_id") or str(uuid.uuid4())
         conversation_history = body.get("conversation_history", [])
 
-        agent = get_agent_app()
-
-        # 运行 Agent（携带 session_id 实现多轮记忆）
-        initial_state = {
-            "user_input": natural_language,
-            "session_id": session_id,
-            "conversation_history": conversation_history,
-            "sql_retry_count": 0,
-        }
+        # ── 通过 supervisor 路由（支持 query / analyze / report 三路） ──
+        try:
+            from app.agents.supervisor import route_to_agent
+            result = await route_to_agent(
+                natural_language,
+                session_id,
+                conversation_history,
+            )
+        except ImportError:
+            # 回退到直接调用 Query Agent
+            agent = get_agent_app()
+            initial_state = {
+                "user_input": natural_language,
+                "session_id": session_id,
+                "conversation_history": conversation_history,
+                "sql_retry_count": 0,
+            }
+            result = await agent.ainvoke(initial_state)
 
         logger.info(
             f"[compat/process] session={session_id}, "
             f"input='{natural_language[:60]}...', mode={execution_mode}"
         )
 
-        # explain / execute 都走完整 Agent 流水线，统一返回所有字段
-        # Agent 无论什么模式都会执行完整 pipeline，不再区分返回字段
-        result = await agent.ainvoke(initial_state)
         response_data = result.get("response", {})
         is_followup = result.get("is_followup", False)
+        # pipeline_trace: analysis_agent 写在 response 内；query_agent 写在顶层 result
+        pipeline_trace = (
+            response_data.get("pipeline_trace")
+            or result.get("pipeline_trace")
+            or []
+        )
 
         return JSONResponse({
             "success": response_data.get("success", False),
@@ -99,7 +111,11 @@ async def compat_process_query(request: Request):
             "query_plan": response_data.get("query_plan"),
             "query_result": response_data.get("query_result"),
             "visualization": response_data.get("visualization"),
-            "pipeline_trace": response_data.get("pipeline_trace", []),
+            "pipeline_trace": pipeline_trace,
+            # 分析报表类响应额外字段（良率/OEE 等）
+            "analysis": response_data.get("analysis"),
+            "charts": response_data.get("charts"),
+            "answer": response_data.get("answer"),
         })
 
     except Exception as e:

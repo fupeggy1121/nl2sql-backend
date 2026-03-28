@@ -90,6 +90,20 @@ export interface VisualizationConfig {
   [key: string]: any;
 }
 
+// 分析报表图表规格（后端直接输出 ECharts option）
+export interface PlotlyChartSpec {
+  type: string;
+  title?: string;
+  echarts?: Record<string, any>;  // 直接传给 ReactECharts 的 option
+}
+
+// 分析报表结果（良率/OEE 等 analysis_agent 返回）
+export interface AnalysisResultPayload {
+  method: string;
+  summary: string;
+  data: Record<string, any>;
+}
+
 export interface UnifiedQueryResponse {
   success: boolean;
   session_id?: string;          // 后端返回的会话ID，前端应保存用于后续追问
@@ -101,6 +115,10 @@ export interface UnifiedQueryResponse {
   pipeline_trace?: PipelineTraceStep[];  // 管道追踪（可展开查看完整流水线）
   visualization?: VisualizationConfig;    // 后端返回的可视化配置信息（可选）
   error?: string;
+  // 分析报表类字段（良率/OEE 等 analysis_agent 返回）
+  answer?: string;
+  analysis?: AnalysisResultPayload;
+  charts?: PlotlyChartSpec[];
 }
 
 /**

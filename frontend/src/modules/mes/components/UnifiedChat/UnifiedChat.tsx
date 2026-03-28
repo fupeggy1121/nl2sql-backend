@@ -23,12 +23,14 @@ import {
   BoxSelect,
 } from 'lucide-react';
 import { nl2sqlApi } from "../../../../services/nl2sqlApi";
+import type { PlotlyChartSpec, AnalysisResultPayload } from "../../../../services/nl2sqlApi";
 import { EChartsVisualization } from "../EChartsVisualization";
 import { FeedbackForm } from "../FeedbackForm";
 import { FeedbackStats } from "../FeedbackStats";
 import QueryTrace, { TraceStep } from "../QueryTrace";
 import { useData } from "../../../../hooks/useData";
 import InlineTraceabilityChart from '../../../../components/Traceability/InlineTraceabilityChart';
+import AnalysisChartPanel from '../../../../components/Analysis/AnalysisChartPanel';
 import './UnifiedChat.css';
 
 export interface Message {
@@ -64,6 +66,8 @@ export interface Message {
     error?: string;
     rowCount?: number;
   };
+  analysisResult?: AnalysisResultPayload;
+  analysisCharts?: PlotlyChartSpec[];
   pipeline_trace?: TraceStep[];
 }
 
@@ -80,6 +84,59 @@ const TRACEABILITY_TRIGGERS = [
   '批次追溯', '追溯批次', '批次履历', '追溯', '生产履历',
   '批次谱系', '谱系', 'wafer追溯', '追踪批次', 'wafer履历',
 ];
+
+// ── 图表类型切换 ─────────────────────────────────────────────────
+const CHART_TYPE_MAP: Partial<Record<string, Message['visualizationType']>> = {
+  '柱状图': 'bar', '条形图': 'bar', '直方图': 'bar',
+  '折线图': 'line', '趋势图': 'line', '曲线图': 'line',
+  '饼图': 'pie', '圆饼图': 'pie', '环形图': 'pie',
+  '散点图': 'scatter',
+  '热力图': 'heatmap',
+  '雷达图': 'radar',
+  '漏斗图': 'funnel',
+  '表格': 'table',
+};
+
+const CHART_TYPE_LABELS: Record<string, string> = {
+  bar: '柱状图', line: '折线图', pie: '饼图', scatter: '散点图',
+  table: '表格', heatmap: '热力图', radar: '雷达图', funnel: '漏斗图',
+};
+
+// 包含这些关键字时视为「数据查询」，不拦截
+const DATA_QUERY_KEYWORDS = ['统计', '查询', '查找', '获取', '计算', 'select', '列出', '找出', '过滤', '排序', '分组'];
+
+/**
+ * 判断输入是否是纯粹的「切换图表类型」请求。
+ * 返回目标图表类型及可选的 X/Y 轴字段提示；若不是则返回 null。
+ */
+function detectChartChangeIntent(text: string): {
+  chartType: Message['visualizationType'];
+  xAxisHint: string | null;
+  yAxisHint: string | null;
+} | null {
+  // 含数据查询词 → 是新查询，不拦截
+  if (DATA_QUERY_KEYWORDS.some((k) => text.includes(k))) return null;
+
+  let chartType: Message['visualizationType'] | undefined;
+  for (const [keyword, type] of Object.entries(CHART_TYPE_MAP)) {
+    if (text.includes(keyword)) { chartType = type; break; }
+  }
+  if (!chartType) return null;
+
+  // 必须有表示「切换/展示」的动词
+  const displayVerbs = ['展示', '显示', '改成', '切换', '用', '以', '换成', '改为', '变成', '换为'];
+  if (!displayVerbs.some((v) => text.includes(v))) return null;
+
+  // 提取轴字段提示
+  const xMatch = text.match(/[xX]轴[为是](.+?)(?=[，,。；\s]|[yY]轴|$)/);
+  const yMatch = text.match(/[yY]轴[为是](.+?)(?=[，,。；\s]|[xX]轴|$)/);
+
+  return {
+    chartType,
+    xAxisHint: xMatch ? xMatch[1].trim() : null,
+    yAxisHint: yMatch ? yMatch[1].trim() : null,
+  };
+}
 
 /** 从用户输入中提取批次号或 Wafer 号（支持 LOT-xxx / DEMO-xxx / L+多位数 / 批次关键字后跟码 等） */
 function extractTraceCode(text: string): { lotCode?: string; waferCode?: string } {
@@ -244,6 +301,84 @@ export function UnifiedChat({
     try {
       await addChatMessage(sessionId, userMessage);
 
+      // ── 图表切换拦截：不调用后端，直接在前端改变最近一条结果的可视化类型 ──
+      const chartIntent = detectChartChangeIntent(content);
+      if (chartIntent) {
+        const lastDataMsg = [...messages].reverse().find(
+          (m) => m.type === 'assistant' && Array.isArray(m.data) && m.data.length > 0
+        );
+        if (lastDataMsg) {
+          // 尝试从实际列名模糊匹配坐标轴字段
+          const columns = Object.keys(lastDataMsg.data![0]);
+          const resolveField = (hint: string | null) => {
+            if (!hint) return undefined;
+            return (
+              columns.find((c) => c.toLowerCase().includes(hint.toLowerCase())) ||
+              columns.find((c) => hint.toLowerCase().includes(c.toLowerCase())) ||
+              hint
+            );
+          };
+
+          setActiveChartTypeOverrides((prev) => ({
+            ...prev,
+            [lastDataMsg.id]: chartIntent.chartType,
+          }));
+
+          if (chartIntent.xAxisHint || chartIntent.yAxisHint) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id !== lastDataMsg.id
+                  ? m
+                  : {
+                      ...m,
+                      chartConfig: {
+                        ...m.chartConfig,
+                        ...(chartIntent.xAxisHint
+                          ? { xAxisField: resolveField(chartIntent.xAxisHint) }
+                          : {}),
+                        ...(chartIntent.yAxisHint
+                          ? { yAxisField: resolveField(chartIntent.yAxisHint) }
+                          : {}),
+                      },
+                    }
+              )
+            );
+          }
+
+          const label = CHART_TYPE_LABELS[chartIntent.chartType] ?? chartIntent.chartType;
+          const axisInfo = [
+            chartIntent.xAxisHint ? `X轴：${chartIntent.xAxisHint}` : '',
+            chartIntent.yAxisHint ? `Y轴：${chartIntent.yAxisHint}` : '',
+          ]
+            .filter(Boolean)
+            .join('，');
+          const replyMsg: Message = {
+            id: (Date.now() + 1).toString(),
+            type: 'assistant',
+            content: `已切换为${label}${axisInfo ? `（${axisInfo}）` : ''}。`,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, replyMsg]);
+          await addChatMessage(sessionId, replyMsg);
+          setIsProcessing(false);
+          setStep('input');
+          return;
+        }
+        // 没有上文数据时继续走后端（后端会报错），友好提示
+        const noDataMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          type: 'assistant',
+          content: '暂无可切换的查询结果，请先执行一次数据查询。',
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, noDataMsg]);
+        await addChatMessage(sessionId, noDataMsg);
+        setIsProcessing(false);
+        setStep('input');
+        return;
+      }
+      // ── end 图表切换拦截 ──
+
       const response = await nl2sqlApi.explainQuery(content, sessionId);
       
       if (!response.success) {
@@ -263,6 +398,56 @@ if (response.type === 'clarification' && response.clarification_question) {
   setMessages((prev) => [...prev, clarificationMessage]);
   await addChatMessage(sessionId, clarificationMessage);
   setIsProcessing(false);
+  return;
+}
+
+// ── 分析报表分支：analysis_agent 直接返回结果（良率/OEE 等），无 query_plan ──
+if (response.analysis || response.answer) {
+  const reportMsg: Message = {
+    id: (Date.now() + 1).toString(),
+    type: 'assistant',
+    content: response.answer || response.analysis?.summary || '分析完成',
+    timestamp: new Date(),
+    analysisResult: response.analysis,
+    analysisCharts: response.charts,
+    pipeline_trace: response.pipeline_trace,
+  };
+  setMessages((prev) => [...prev, reportMsg]);
+  await addChatMessage(sessionId, reportMsg);
+  setIsProcessing(false);
+  setStep('input');
+  return;
+}
+
+// ── 普通查询分支：query_agent 已在第一次请求中执行 SQL 并返回结果 ──
+// 后端始终自动执行，无需用户手动确认 SQL；SQL 细节在 pipeline_trace 中可查
+if (response.query_result?.success && Array.isArray(response.query_result.data)) {
+  setStep('results');
+  const qr = response.query_result;
+  const resultMsg: Message = {
+    id: (Date.now() + 1).toString(),
+    type: 'assistant',
+    content: `✅ 查询返回 ${qr.rows_count ?? qr.data.length} 条数据`,
+    timestamp: new Date(),
+    queryResult: {
+      success: true,
+      data: qr.data,
+      rowCount: qr.rows_count ?? qr.data.length,
+    },
+    data: qr.data,
+    visualizationType: qr.visualization_type || 'table',
+    chartConfig: {
+      xAxisField: response.visualization?.xAxisField,
+      yAxisField: response.visualization?.yAxisField,
+      colorField: response.visualization?.colorField,
+    },
+    intent: response.query_plan?.query_intent,
+    pipeline_trace: response.pipeline_trace,
+  };
+  setMessages((prev) => [...prev, resultMsg]);
+  await addChatMessage(sessionId, resultMsg);
+  setIsProcessing(false);
+  setStep('input');
   return;
 }
 
@@ -564,7 +749,7 @@ setCurrentIntent(queryPlan.query_intent || null);
               <Sparkles className="icon" />
             </div>
             <div className="header-title">
-              <h1>MES 智能报表</h1>
+              <h1>X</h1>
             </div>
           </div>
           <div className="header-right">
@@ -614,6 +799,11 @@ setCurrentIntent(queryPlan.query_intent || null);
                     lotCode={message.traceabilityData?.lotCode}
                     waferCode={message.traceabilityData?.waferCode}
                   />
+                )}
+
+                {/* 分析报表图表（良率/OEE 等 analysis_agent 返回） */}
+                {message.type === 'assistant' && message.analysisCharts && message.analysisCharts.length > 0 && (
+                  <AnalysisChartPanel charts={message.analysisCharts} />
                 )}
 
                 {/* 查询追踪组件 - 当存在 pipeline_trace 时渲染 */}
@@ -883,8 +1073,7 @@ setCurrentIntent(queryPlan.query_intent || null);
       <div className="step-indicator">
         <div className={`step ${step === 'input' ? 'active' : ''}`}>输入查询</div>
         <div className={`step ${step === 'clarify' ? 'active' : ''}`}>澄清意图</div>
-        <div className={`step ${step === 'explain' ? 'active' : ''}`}>SQL预览</div>
-        <div className={`step ${step === 'execute' ? 'active' : ''}`}>执行查询</div>
+        <div className={`step ${step === 'execute' ? 'active' : ''}`}>处理中</div>
         <div className={`step ${step === 'results' ? 'active' : ''}`}>查看结果</div>
       </div>
 

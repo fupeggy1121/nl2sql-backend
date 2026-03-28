@@ -125,7 +125,11 @@ semi:ProductionEvent a owl:Class ;
 semi:ProductionEventRecord a owl:Class ;
     rdfs:label "生产事件记录（抽象父类）" ;
     semi:isAbstract "true"^^xsd:boolean ;
-    rdfs:comment "【抽象父类，不直接实例化】生产事件执行记录的抽象父类。主映射表：matrix_routerx_operation_lot_batch_resume_log（所有 operation_type 均写入此表）；关联从表：_detail（子批次操作状态快照，SublotOpSnapshot）和 _wafer_detail_log（逐片 Wafer 迁移明细，WaferTransitionRecord）。每条记录对应一次具体操作，记录操作人、时间戳、状态变更及输入/输出批次。全量子类：SplitEventRecord（1-拆批）/ HoldEventRecord（4-扣留）/ ReleaseEventRecord（5-释放）/ NGRecordEventRecord（6-不良录入）/ CheckInEventRecord（8-进站）/ CheckOutEventRecord（9-出站）。各子类与 ProductionLot 的关联语义不同，详见子类 rdfs:comment。" .
+    rdfs:comment "【抽象父类，不直接实例化】生产事件执行记录的抽象父类。主映射表：matrix_routerx_operation_lot_batch_resume_log（所有 operation_type 均写入此表）；关联从表：_detail（子批次迁移快照层，semi:SublotTransitionSnapshot）和 _wafer_detail_log（逐片 Wafer 迁移明细，semi:WaferTransitionSnapshot）。每条记录对应一次具体操作，记录操作人、时间戳、状态变更及输入/输出批次。全量子类：SplitEventRecord（1-拆批）/ HoldEventRecord（4-扣留）/ ReleaseEventRecord（5-释放）/ NGRecordEventRecord（6-不良录入）/ CheckInEventRecord（8-进站）/ CheckOutEventRecord（9-出站）。各子类与 ProductionLot 的关联语义通过 hasTransitionDetail → SublotTransitionSnapshot 快照层路径表达，详见子类 rdfs:comment。" .
+
+semi:SublotTransitionSnapshot a owl:Class ;
+    rdfs:label "子批次迁移快照" ;
+    rdfs:comment "ProductionEventRecord 关联从表 _detail 的快照层语义实体（semi:hasTransitionDetail 关系的值域）。每行记录一条子批次粒度的迁移快照，包含：batch_resume_log_id（关联主事件记录）、sub_lot_id/sub_lot_code（被影响子批次）、carrier_code/process_code（事件时刻上下文）、extra(JSON) 含 isSource（源/目标侧标记）及 targetLotCode（目标主批次编码）。谱系操作（拆批/攒批）下 isSource=true 为源侧行（被拆批次），isSource=false 为目标侧行（新产出批次）。快照层专属关系：producesLot（产出主批次）、producesSublot（产出子批次）、splitsFromLot（拆批源主批次）、splitsFromSublot（拆批源子批次）。逐片 Wafer 分配关系（chooseSourceWafer/assignsWaferToLot/assignsWaferToSublot）属于 WaferTransitionSnapshot 层（_wafer_detail_log），通过 hasWaferTransitionSnapshot 桥接访问。物理表：matrix_routerx_operation_lot_batch_resume_log_detail。" .
 
 ### ==========================================
 ### 2. 核心有机关联 (Object Properties)
@@ -364,57 +368,49 @@ semi:isInstanceOfEvent a owl:ObjectProperty ;
     rdfs:comment "该执行记录对应的事件类型（ProductionEvent 子类实例），关联 record → event 类型定义。各子类通过 owl:allValuesFrom 约束将 range 精化为对应 XxxEvent 子类：SplitEventRecord→SplitEvent / MergeEventRecord→MergeEvent / AccumulateEventRecord→AccumulateEvent / HoldEventRecord→HoldEvent / ReleaseEventRecord→ReleaseEvent / NGRecordEventRecord→NGRecordEvent / CheckInEventRecord→CheckInEvent / CheckOutEventRecord→CheckOutEvent。" .
 
 semi:producesLot a owl:ObjectProperty ;
-    rdfs:domain [
-        a owl:Class ;
-        owl:unionOf (semi:SplitEventRecord semi:AccumulateEventRecord)
-    ] ;
+    rdfs:domain semi:SublotTransitionSnapshot ;
     rdfs:range semi:ProductionLot ;
     rdfs:label "产出批次" ;
-    rdfs:comment "谱系生成型事件执行后产生的新批次（MES 自动生成的 ProductionLot ID），对应 output_lot_code 字段。SplitEventRecord：拆批后析出的新子批次；AccumulateEventRecord：多个源批次攒批后生成的全新批次（所有源批次的 output_lot_code 指向同一新批次）。区别于 MergeEventRecord 的 mergesIntoLot：攒批产出的是全新批次，并批的目标是已存在的父批次。" .
+    rdfs:comment "事件快照层：SublotTransitionSnapshot(isSource=false) 行中 extra.targetLotCode 字段指向本次谱系操作（拆批/攒批）产生的新主批次（MES 自动生成）。物理路径：_detail WHERE JSON_EXTRACT(extra,'$.isSource')=false → JSON_EXTRACT(extra,'$.targetLotCode') = lot.lot_code。区别于 splitsFromLot（源侧批次）和 mergesIntoLot（并批接收方批次）。" .
 
 semi:producesSublot a owl:ObjectProperty ;
-    rdfs:domain [
-        a owl:Class ;
-        owl:unionOf (semi:SplitEventRecord semi:AccumulateEventRecord)
-    ] ;
+    rdfs:domain semi:SublotTransitionSnapshot ;
     rdfs:range semi:Sublot ;
     rdfs:label "产出子批次" ;
-    rdfs:comment "谱系生成型事件执行后，为产出批次同步创建的初始 Sublot 实例。与 producesLot 一一对应。SplitEventRecord：拆批时新批次的初始子批次；AccumulateEventRecord：攒批后新批次的初始子批次（所有被攒入 wafer 的 belongsToSublot 更新指向此 Sublot）。stateTransitionFunction 依赖此属性更新被迁移晶圆的 belongsToSublot 指针，保证 Wafer→belongsToSublot→atStation 路径在谱系操作后仍然连通。物理层对应 matrix_routerx_operation_lot 中与新批次绑定的初始记录行。" .
+    rdfs:comment "事件快照层：SublotTransitionSnapshot(isSource=false) 行中 sub_lot_id 字段指向本次谱系操作（拆批/攒批）同步创建的初始 Sublot 实例，与 producesLot 一一对应。物理路径：_detail WHERE JSON_EXTRACT(extra,'$.isSource')=false → sub_lot_id → lot.id(parent_id!=0)。被迁移晶圆的 belongsToSublot 指针更新至此 Sublot，保证 Wafer→Sublot→atStation 路径连通。" .
 
-# 2.6b 拆批事件专用子属性 (SplitEventRecord Sub-Properties)
+# 2.6b 拆批快照层子属性 (SublotTransitionSnapshot Split-Specific Sub-Properties)
+# 以下属性 domain=SublotTransitionSnapshot，仅用于拆批操作上下文，
+# 通过 ProductionEventRecord →(hasTransitionDetail)→ SublotTransitionSnapshot 路径访问。
 semi:splitsFromLot a owl:ObjectProperty ;
-    rdfs:domain semi:SplitEventRecord ;
+    rdfs:domain semi:SublotTransitionSnapshot ;
     rdfs:range semi:ProductionLot ;
     rdfs:label "拆批源主批次" ;
-    rdfs:comment "拆批事件中，被拆分的原始主批次。查询语义统一通过快照层路径表达：SplitEventRecord → hasTransitionDetail(isSource=true) → targetLotCode/sourceLotCode（事件快照上下文）。" .
+    rdfs:comment "事件快照层（拆批专属）：_detail 行经 batch_resume_log_id → _resume_log.lot_id 关联被拆分的原始主批次。物理路径：_detail.batch_resume_log_id → _resume_log.id → _resume_log.lot_id → lot.id。仅适用于拆批操作（operation_type=1）上下文。" .
 
 semi:splitsFromSublot a owl:ObjectProperty ;
-    rdfs:subPropertyOf semi:actsOnSublot ;
-    rdfs:domain semi:SplitEventRecord ;
+    rdfs:domain semi:SublotTransitionSnapshot ;
     rdfs:range semi:Sublot ;
     rdfs:label "拆批源子批次" ;
-    rdfs:comment "拆批事件中，被拆分的源子批次（wafer 在拆批前所属的子批次）。rdfs:subPropertyOf semi:actsOnSublot。物理映射：_detail WHERE extra→isSource=true 的 sub_lot_id/sub_lot_code 行。" .
+    rdfs:comment "事件快照层（拆批专属）：SublotTransitionSnapshot(isSource=true) 行中 sub_lot_id 字段指向被拆分的源子批次（wafer 在拆批前所属的子批次）。物理路径：_detail WHERE JSON_EXTRACT(extra,'$.isSource')=true → sub_lot_id → lot.id(parent_id!=0)。" .
 
 semi:chooseSourceWafer a owl:ObjectProperty ;
-    rdfs:subPropertyOf semi:actsOnWafer ;
-    rdfs:domain semi:SplitEventRecord ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
     rdfs:range semi:Wafer ;
     rdfs:label "拆批选择源Wafer" ;
-    rdfs:comment "拆批事件中，选择要从源子批次拆出的 wafer 集合（源侧）。rdfs:subPropertyOf semi:actsOnWafer。物理映射：_wafer_detail_log WHERE batch_resume_detail_log_id IN (isSource=true 的 _detail.id) → wafer_id/wafer_code。" .
+    rdfs:comment "Wafer 迁移快照层（拆批专属）：WaferTransitionSnapshot（_wafer_detail_log）行中 wafer_id FK 直接指向被选择拆出的源侧晶圆实体。源侧语义通过所关联 _detail 行的 extra.isSource=true 约束（由上游 hasWaferTransitionSnapshot 路径携带）。物理路径：_wafer_detail_log.wafer_id → matrix_routerx_operation_lot_wafer.wafer_id。物理表：matrix_routerx_operation_lot_batch_resume_wafer_detail_log。" .
 
 semi:assignsWaferToLot a owl:ObjectProperty ;
-    rdfs:subPropertyOf semi:actsOnWafer ;
-    rdfs:domain semi:SplitEventRecord ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
     rdfs:range semi:Wafer ;
     rdfs:label "拆批分配Wafer至新主批次" ;
-    rdfs:comment "拆批事件中，将晶圆分配至新产出的主批次。rdfs:subPropertyOf semi:actsOnWafer。物理映射：_wafer_detail_log WHERE batch_resume_detail_log_id IN (isSource=false 的 _detail.id) → wafer_id/wafer_code。新主批次通过 _detail.extra→targetLotCode 获取。" .
+    rdfs:comment "Wafer 迁移快照层（拆批专属）：WaferTransitionSnapshot（_wafer_detail_log）行中 wafer_id FK 直接指向被分配至新主批次的目标侧晶圆实体。目标侧语义通过所关联 _detail 行的 extra.isSource=false 约束。新主批次通过 _detail.extra.targetLotCode 获取。物理路径：_wafer_detail_log.wafer_id → matrix_routerx_operation_lot_wafer.wafer_id。物理表：matrix_routerx_operation_lot_batch_resume_wafer_detail_log。" .
 
 semi:assignsWaferToSublot a owl:ObjectProperty ;
-    rdfs:subPropertyOf semi:actsOnWafer ;
-    rdfs:domain semi:SplitEventRecord ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
     rdfs:range semi:Wafer ;
     rdfs:label "拆批分配Wafer至新子批次" ;
-    rdfs:comment "拆批事件中，将晶圆分别分配至新产出的子批次。rdfs:subPropertyOf semi:actsOnWafer。物理映射：同 assignsWaferToLot 路径，但子批次通过 _detail(isSource=false).sub_lot_code 获取。_wafer_detail_log.sub_lot_code 同时记录了该 wafer 目标子批次，支持按子批次维度查询被分配的 wafer。" .
+    rdfs:comment "Wafer 迁移快照层（拆批专属）：WaferTransitionSnapshot（_wafer_detail_log）行中 wafer_id FK 直接指向被分配至新子批次的目标侧晶圆实体，语义焦点在子批次维度。目标子批次通过 _wafer_detail_log.sub_lot_code 直接获取（无需回溯 _detail）。物理路径：_wafer_detail_log.wafer_id → matrix_routerx_operation_lot_wafer.wafer_id。物理表：matrix_routerx_operation_lot_batch_resume_wafer_detail_log。" .
 
 semi:mergesIntoLot a owl:ObjectProperty ;
     rdfs:domain semi:MergeEventRecord ; rdfs:range semi:ProductionLot ;

@@ -38,8 +38,8 @@ export interface LlmTokenUsage {
 
 export interface PipelineStep {
   step: string
-  elapsed_ms: number
-  summary: string
+  elapsed_ms?: number            // query_agent 有精确计时；analysis_agent 为 0
+  summary?: string               // 一行中文摘要
   status: 'ok' | 'warn' | 'error' | 'skip'
   detail?: Record<string, unknown>
   llm_tokens?: LlmTokenUsage

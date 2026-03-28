@@ -9,3 +9,5 @@ from app.analytics.methods import pareto  # noqa: F401
 from app.analytics.methods import regression  # noqa: F401
 from app.analytics.methods import prediction  # noqa: F401
 from app.analytics.methods import anomaly  # noqa: F401
+from app.analytics.methods import yield_report  # noqa: F401
+from app.analytics.methods import oee_report  # noqa: F401

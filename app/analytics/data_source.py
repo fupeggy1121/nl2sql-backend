@@ -46,6 +46,8 @@ def load_dataframe(config: Dict[str, Any]) -> pd.DataFrame:
         )
     elif source_type == "data":
         return _load_from_data(config["data"])
+    elif source_type == "nlquery":
+        return _load_from_nlquery(config["nlquery"], config.get("limit"))
     else:
         raise ValueError(f"不支持的数据源类型: {source_type}")
 
@@ -113,6 +115,23 @@ def _load_from_table(
     if rows is None:
         raise RuntimeError(f"表 {table} 查询失败")
     return pd.DataFrame(rows)
+
+
+def _load_from_nlquery(nl_text: str, limit: Optional[int] = None) -> pd.DataFrame:
+    """将自然语言转换为 SQL，再执行查询返回 DataFrame。"""
+    if not nl_text or not nl_text.strip():
+        raise ValueError("自然语言描述不能为空")
+    try:
+        from app.services.nl2sql_enhanced import get_enhanced_nl2sql_converter
+        converter = get_enhanced_nl2sql_converter()
+        result = converter.convert(nl_text)
+        sql = result.get("sql") if isinstance(result, dict) else getattr(result, "sql", None)
+        if not sql:
+            raise ValueError(f"NL→SQL 转换失败，未生成 SQL：{result}")
+        logger.info(f"[data_source] nlquery → SQL: {sql[:120]}")
+        return _load_from_sql(sql, limit)
+    except ImportError:
+        raise RuntimeError("NL2SQL 服务不可用，请检查后端配置")
 
 
 def _load_from_data(data: Optional[List[Dict[str, Any]]]) -> pd.DataFrame:

@@ -22,17 +22,24 @@ interface QueryTraceProps {
 
 // ── 步骤标签（完整覆盖所有节点名） ─────────────────────────
 const STEP_LABELS: Record<string, string> = {
-  intent_router:     '🧭 意图识别',
-  semantic_resolver: '🔗 语义解析',
-  query_planner:     '📋 查询规划',
-  sql_generator:     '⚙️ SQL 生成',
-  sql_validator:     '✅ SQL 验证',
-  query_executor:    '🗄️ 查询执行',
-  data_executor:     '🗄️ 数据执行',
-  result_analyzer:   '📊 结果分析',
-  chart_generator:   '📈 图表生成',
-  response_builder:  '📦 响应构建',
-  rag_chat:          '💬 智能问答',
+  // query_agent 节点
+  intent_router:              '🧭 意图识别',
+  semantic_resolver:          '🔗 语义解析',
+  query_planner:              '📋 查询规划',
+  sql_generator:              '⚙️ SQL 生成',
+  sql_validator:              '✅ SQL 验证',
+  query_executor:             '🗄️ 查询执行',
+  data_executor:              '🗄️ 数据执行',
+  result_analyzer:            '📊 结果分析',
+  chart_generator:            '📈 图表生成',
+  response_builder:           '📦 响应构建',
+  rag_chat:                   '💬 智能问答',
+  // analysis_agent 节点
+  analysis_method_selector:   '🔍 分析方法识别',
+  analysis_data_loader:       '🗄️ 数据加载 SQL',
+  analysis_preprocessor:      '🔧 数据预处理',
+  analysis_executor:          '🐍 Python 数据分析',
+  analysis_viz_generator:     '📈 图表生成',
 };
 
 // ── 状态颜色（含 skip）────────────────────────────────────
@@ -232,14 +239,75 @@ function Badge({ children, bg, fg, mono }: { children: React.ReactNode; bg: stri
   );
 }
 
+// ── analysis_executor (Python 逻辑) 专属面板 ──────────────
+function PythonDetail({ step }: { step: TraceStep }) {
+  const d = step.detail as Record<string, unknown> | undefined;
+  const logic = d?.logic as string | undefined;
+  const error = d?.error as string | undefined;
+  return (
+    <div style={{ padding: '10px 14px 14px', borderTop: '1px solid #1e2047', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 12, color: step.status === 'error' ? '#f87171' : '#818cf8' }}>{step.summary}</div>
+      {logic && (
+        <pre style={{
+          fontSize: 12, background: '#070810', color: '#bbf7d0',
+          padding: '12px 14px', borderRadius: 6, overflowX: 'auto',
+          margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+          lineHeight: 1.7, fontFamily: '"JetBrains Mono","Fira Code",Menlo,monospace',
+          border: '1px solid #14532d',
+        }}>
+          {logic}
+        </pre>
+      )}
+      {error && (
+        <pre style={{ fontSize: 11, background: '#1c0005', color: '#fca5a5', padding: '8px 12px', borderRadius: 6, margin: 0, whiteSpace: 'pre-wrap', border: '1px solid #7f1d1d' }}>
+          {error}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+// ── analysis_data_loader SQL 面板（复用 SqlDetail 结构但用 detail.sql） ──
+function AnalysisSqlDetail({ step }: { step: TraceStep }) {
+  const d = step.detail as Record<string, unknown> | undefined;
+  const sql = d?.sql as string | undefined;
+  const error = d?.error as string | undefined;
+  return (
+    <div style={{ padding: '10px 14px 14px', borderTop: '1px solid #1e2047', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 12, color: step.status === 'error' ? '#f87171' : '#818cf8' }}>{step.summary}</div>
+      {sql && (
+        <>
+          <div style={{ fontSize: 11, color: '#6b7298', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>数据取数 SQL</div>
+          <pre style={{
+            fontSize: 12, background: '#070810', color: '#7dd3fc',
+            padding: '12px 14px', borderRadius: 6, overflowX: 'auto',
+            margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+            lineHeight: 1.7, fontFamily: '"JetBrains Mono","Fira Code",Menlo,monospace',
+            border: '1px solid #1e3a5f',
+          }}>
+            {sql}
+          </pre>
+        </>
+      )}
+      {error && (
+        <pre style={{ fontSize: 11, background: '#1c0005', color: '#fca5a5', padding: '8px 12px', borderRadius: 6, margin: 0, whiteSpace: 'pre-wrap', border: '1px solid #7f1d1d' }}>
+          {error}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 // ── 根据步骤名选择详情面板 ───────────────────────────────
 function StepDetail({ step }: { step: TraceStep }) {
   switch (step.step) {
-    case 'sql_generator':     return <SqlDetail step={step} />;
-    case 'semantic_resolver': return <SemanticDetail step={step} />;
-    case 'intent_router':     return <IntentDetail step={step} />;
-    case 'sql_validator':     return <ValidatorDetail step={step} />;
-    default:                  return <GenericDetail step={step} />;
+    case 'sql_generator':              return <SqlDetail step={step} />;
+    case 'analysis_data_loader':       return <AnalysisSqlDetail step={step} />;
+    case 'analysis_executor':          return <PythonDetail step={step} />;
+    case 'semantic_resolver':          return <SemanticDetail step={step} />;
+    case 'intent_router':              return <IntentDetail step={step} />;
+    case 'sql_validator':              return <ValidatorDetail step={step} />;
+    default:                           return <GenericDetail step={step} />;
   }
 }
 
@@ -252,6 +320,7 @@ const QueryTrace: React.FC<QueryTraceProps> = ({ trace }) => {
 
   const totalMs = trace.reduce((sum, s) => sum + (s.elapsed_ms ?? 0), 0);
   const hasError = trace.some(s => s.status === 'error');
+  const showTiming = totalMs > 0;
 
   return (
     <div style={{
@@ -275,7 +344,7 @@ const QueryTrace: React.FC<QueryTraceProps> = ({ trace }) => {
         <span style={{ fontWeight: 500, color: '#c4c9e8' }}>
           {expanded ? '▼' : '▶'} 查询管道追踪
           <span style={{ color: '#6b7298', fontWeight: 400, marginLeft: 8 }}>
-            {trace.length} 步 · {totalMs.toFixed(0)}ms
+            {trace.length} 步{showTiming ? ` · ${totalMs.toFixed(0)}ms` : ''}
           </span>
           {hasError && (
             <span style={{ marginLeft: 8, fontSize: 11, padding: '1px 6px', borderRadius: 8, background: '#7f1d1d', color: '#fca5a5' }}>
@@ -295,7 +364,7 @@ const QueryTrace: React.FC<QueryTraceProps> = ({ trace }) => {
             const isExpanded = expandedStep === `${step.step}-${idx}`;
             const label    = STEP_LABELS[step.step] || step.step;
             const dotColor = STATUS_COLORS[step.status] ?? '#818cf8';
-            const isSqlGen = step.step === 'sql_generator';
+            const isSqlGen = step.step === 'sql_generator' || step.step === 'analysis_data_loader';
             const isError  = step.status === 'error';
 
             return (

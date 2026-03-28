@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import datetime, timedelta
 from typing import Any, Dict
 
 from app.agents.analysis_agent.state import AnalysisState
@@ -24,9 +25,13 @@ _KEYWORD_MAP = {
     r"ANOVA|方差分析|差异显著|t[-\s]?test|t检验|卡方|正态性": "hypothesis",
     r"帕累托|pareto|80/20|80%-20%": "pareto",
     r"回归|regression|线性分析|影响因素": "regression",
-    r"预测|predict|forecast|分类|良率预测|random forest|随机森林": "prediction",
+    r"预测|predict|forecast|分类|random forest|随机森林": "prediction",
     r"异常|anomaly|outlier|离群|孤立|3[σσ]|三倍标准差": "anomaly",
     r"描述性|分布|基础统计|均值|方差|直方图|descriptive": "descriptive",
+    # ── 报表类（须在通用分析关键词之前匹配，防止被"预测"等截获） ──
+    r"OEE|oee|综合效率|设备效率|可用率.*性能|availability.*performance": "oee_report",
+    r"良率报表|良率分析|yield.*report|合格率报表|pass.*rate.*report|不良率.*报表|工站良率|站点良率": "yield_report",
+    r"良率|yield rate|合格率|pass rate|不良率|ng.*rate|报表" : "yield_report",
 }
 
 
@@ -114,10 +119,17 @@ def method_selector_node(state: AnalysisState) -> dict:
             method, reason, params = "descriptive", "默认使用描述性统计", {}
 
     # 3. 构造 data_source_config（如果 state 中尚未有）
-    data_source_config = state.get("data_source_config") or {
-        "type": "data",
-        "data": state.get("raw_data") or [],
-    }
+    data_source_config = state.get("data_source_config")
+    if not data_source_config:
+        if method == "yield_report":
+            data_source_config = _build_yield_sql(user_input)
+        elif method == "oee_report":
+            data_source_config = _build_oee_sql(user_input)
+        else:
+            data_source_config = {
+                "type": "data",
+                "data": state.get("raw_data") or [],
+            }
 
     return {
         "suggested_method": method,
@@ -125,3 +137,107 @@ def method_selector_node(state: AnalysisState) -> dict:
         "method_params": params,
         "data_source_config": data_source_config,
     }
+
+
+# ── SQL 模板构建器 ────────────────────────────────────────────────────────────
+
+def _extract_date_range(user_input: str) -> tuple[str, str]:
+    """
+    从用户输入中提取日期范围。
+    支持: 今天/昨天/本周/上周/本月/上月/最近N天 + 具体日期（YYYY-MM-DD）。
+    默认: 最近 7 天。
+    """
+    today = datetime.now().date()
+
+    # 具体日期范围
+    date_range = re.search(r"(\d{4}-\d{2}-\d{2})\s*[到至~]\s*(\d{4}-\d{2}-\d{2})", user_input)
+    if date_range:
+        return date_range.group(1), date_range.group(2)
+
+    single_date = re.search(r"(\d{4}-\d{2}-\d{2})", user_input)
+    if single_date:
+        d = single_date.group(1)
+        return d, d
+
+    if re.search(r"今天|today", user_input, re.IGNORECASE):
+        return str(today), str(today)
+    if re.search(r"昨天|yesterday", user_input, re.IGNORECASE):
+        d = today - timedelta(days=1)
+        return str(d), str(d)
+    if re.search(r"本周|this\s*week", user_input, re.IGNORECASE):
+        start = today - timedelta(days=today.weekday())
+        return str(start), str(today)
+    if re.search(r"上周|last\s*week", user_input, re.IGNORECASE):
+        start = today - timedelta(days=today.weekday() + 7)
+        end = start + timedelta(days=6)
+        return str(start), str(end)
+    if re.search(r"本月|this\s*month", user_input, re.IGNORECASE):
+        start = today.replace(day=1)
+        return str(start), str(today)
+    if re.search(r"上月|last\s*month", user_input, re.IGNORECASE):
+        first_of_this = today.replace(day=1)
+        last_of_prev = first_of_this - timedelta(days=1)
+        start = last_of_prev.replace(day=1)
+        return str(start), str(last_of_prev)
+
+    n_days_match = re.search(r"最近\s*(\d+)\s*天", user_input)
+    if n_days_match:
+        n = int(n_days_match.group(1))
+        return str(today - timedelta(days=n - 1)), str(today)
+
+    # 默认最近 7 天
+    return str(today - timedelta(days=6)), str(today)
+
+
+def _build_yield_sql(user_input: str) -> Dict[str, Any]:
+    """构建良率报表数据查询 SQL。"""
+    start_date, end_date = _extract_date_range(user_input)
+    sql = f"""SELECT
+    DATE(ci.gmt_create)                                                   AS report_date,
+    ci.process_code,
+    ci.process_name,
+    ci.product_code,
+    ci.lot_code,
+    COALESCE(SUM(d.wafer_num), 0)                                         AS input_wafers,
+    COUNT(DISTINCT CASE
+        WHEN wdl.ng_code IS NOT NULL AND wdl.ng_code <> ''
+        THEN wdl.wafer_id END)                                            AS ng_wafers
+FROM matrix_routerx_operation_lot_batch_resume_log ci
+LEFT JOIN matrix_routerx_operation_lot_batch_resume_log_detail d
+       ON d.batch_resume_log_id = ci.id
+LEFT JOIN matrix_routerx_operation_lot_batch_resume_wafer_detail_log wdl
+       ON wdl.batch_resume_detail_log_id = d.id
+WHERE ci.operation_type = 8
+  AND (ci.deleted = 0 OR ci.deleted IS NULL)
+  AND ci.gmt_create >= '{start_date} 00:00:00'
+  AND ci.gmt_create <= '{end_date} 23:59:59'
+GROUP BY DATE(ci.gmt_create), ci.process_code, ci.process_name,
+         ci.product_code, ci.lot_code
+ORDER BY report_date DESC, ci.process_code"""
+    logger.info(f"[method_selector] yield_report SQL date range: {start_date} ~ {end_date}")
+    return {"type": "sql", "sql": sql, "limit": 10000}
+
+
+def _build_oee_sql(user_input: str) -> Dict[str, Any]:
+    """构建 OEE 日报数据查询 SQL。"""
+    start_date, end_date = _extract_date_range(user_input)
+    sql = f"""SELECT
+    e.operation_type,
+    e.lot_code,
+    e.process_code,
+    e.process_name,
+    e.product_code,
+    JSON_UNQUOTE(JSON_EXTRACT(e.extra, '$.equipment_id'))   AS eqp_id,
+    JSON_UNQUOTE(JSON_EXTRACT(e.extra, '$.equipment_name')) AS eqp_name,
+    e.gmt_create                                            AS event_time,
+    COALESCE(d.wafer_num, 0)                               AS wafer_num
+FROM matrix_routerx_operation_lot_batch_resume_log e
+LEFT JOIN matrix_routerx_operation_lot_batch_resume_log_detail d
+       ON d.batch_resume_log_id = e.id
+WHERE e.operation_type IN (8, 9)
+  AND (e.deleted = 0 OR e.deleted IS NULL)
+  AND e.gmt_create >= '{start_date} 00:00:00'
+  AND e.gmt_create <= '{end_date} 23:59:59'
+ORDER BY e.lot_code, e.process_code, e.gmt_create"""
+    logger.info(f"[method_selector] oee_report SQL date range: {start_date} ~ {end_date}")
+    return {"type": "sql", "sql": sql, "limit": 20000}

@@ -24,16 +24,26 @@ _ANALYSIS_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
+# ── 报表类意图关键词（良率报表、OEE 日报等须走 analysis_agent） ──
+_REPORT_KEYWORDS = re.compile(
+    r"良率报表|良率分析|yield.*report|合格率报表|不良率.*报表|工站良率|站点良率|"
+    r"OEE|oee|综合效率|设备效率|设备综合|可用率.*性能|日报|周报|月报|"
+    r"良率.*趋势|趋势.*良率|不良.*分析|NG.*分析|ng.*分析",
+    re.IGNORECASE,
+)
+
 
 def classify_agent_intent(user_input: str) -> Literal["query", "analyze", "report"]:
     """
     顶层意图预分类 — 决定路由到哪个子 Agent。
 
     当前策略: 关键词匹配。Phase 3 可升级为 LLM 分类。
+    优先级: report > analyze > query
     """
+    if _REPORT_KEYWORDS.search(user_input):
+        return "analyze"  # 报表走 analysis_agent（内部由 method_selector 选 yield_report/oee_report）
     if _ANALYSIS_KEYWORDS.search(user_input):
         return "analyze"
-    # report 暂不启用，后续通过关键词或 LLM 判断
     return "query"
 
 
@@ -125,8 +135,12 @@ async def _run_analysis_agent(
             "answer": f"分析 Agent 执行出错: {e}",
         }
 
+    # 透传 pipeline_trace（analysis_agent 在 viz_generator 中组装）
+    pipeline_trace = response.pop("pipeline_trace", None) or final_state.get("pipeline_trace") or []
+
     return {
         "response": response,
         "is_followup": False,
         "session_id": session_id,
+        "pipeline_trace": pipeline_trace,
     }

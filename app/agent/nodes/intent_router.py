@@ -21,7 +21,7 @@ INTENT_ROUTE_MAP = {
     "query_production": "query",
     "query_quality": "query",
     "query_equipment": "query",
-    "generate_report": "query",
+    "generate_report": "analyze",   # 报表类请求 → 走 analysis_agent（良率/OEE 等）
     "compare_analysis": "query",
     "chat": "chat",                         # Phase D: 路由到 rag_chat 节点
     "knowledge_qa": "chat",                 # Phase D: 知识问答

@@ -110,6 +110,20 @@ class SemanticContext:
     metrics: List[MetricDefinition] = field(default_factory=list)  # Phase 2: matched metric definitions
 
     # 快捷属性
+    @staticmethod
+    def _format_join_side(table: str, key: str) -> str:
+        """将 JOIN 一侧格式化为可读 SQL 片段。
+
+        - 普通列：table.column
+        - 表达式列（如 JSON_EXTRACT(...)）：原样返回，避免出现 table.JSON_EXTRACT(...) 这种无效形式
+        """
+        raw = (key or "").strip()
+        if not raw:
+            return table
+        if any(ch in raw for ch in ("(", " ", ")")):
+            return raw
+        return f"{table}.{raw}"
+
     @property
     def physical_tables(self) -> List[str]:
         """所有涉及的物理表名(去重)"""
@@ -149,8 +163,10 @@ class SemanticContext:
             lines.append("-- JOIN conditions")
             for j in self.joins:
                 for c in j.conditions:
+                    left = self._format_join_side(c.from_table, c.from_key)
+                    right = self._format_join_side(c.to_table, c.to_key)
                     lines.append(
-                        f"  {c.from_table}.{c.from_key} = {c.to_table}.{c.to_key}"
+                        f"  {left} = {right}"
                     )
         if self.filters:
             lines.append("")
@@ -214,8 +230,10 @@ class SemanticContext:
                     "logic_relation": j.logic_relation,
                     "strategy": j.strategy,
                     "conditions": [
-                        {"from": f"{c.from_table}.{c.from_key}",
-                         "to": f"{c.to_table}.{c.to_key}"}
+                        {
+                            "from": self._format_join_side(c.from_table, c.from_key),
+                            "to": self._format_join_side(c.to_table, c.to_key),
+                        }
                         for c in j.conditions
                     ],
                     "bridge_table": j.bridge_table,
@@ -1406,6 +1424,11 @@ class SemanticContextBuilder:
         prefer_input_rel = any(k in query_lower for k in [
             "源批次", "原批次", "输入批次", "作用批次",
         ])
+        # 拆批场景默认关注源批次（splitsFromLot）；
+        # 只有明确表达“新增/拆出/新批次/产出”时才切换为产出路径（producesLot）。
+        split_context = any(k in query_lower for k in ["拆批", "split"])
+        if split_context and not prefer_output_rel and not prefer_input_rel:
+            prefer_input_rel = True
 
         preferred_relation_tokens: List[str] = []
         if prefer_output_rel:
@@ -1432,6 +1455,37 @@ class SemanticContextBuilder:
                 source = physical_classes[i].logic_class
                 target = physical_classes[j].logic_class
                 endpoint_classes = {source, target}
+
+                # 拆批专用覆盖：当用户明确请求“新增/拆出/新批次/产出”时，
+                # SplitEventRecord -> ProductionLot 优先强制走两跳路径：
+                #   hasTransitionDetail(_resume_log → _detail) + producesLot(_detail.targetLotCode → lot)
+                # producesLot 的 domain 已更新为 SublotTransitionSnapshot（_detail），
+                # 因此需要先注入 hasTransitionDetail 桥接，再注入 producesLot。
+                if prefer_output_rel and endpoint_classes == {"semi:SplitEventRecord", "semi:ProductionLot"}:
+                    rm_td = self._mapping.get_join_path("semi:hasTransitionDetail")
+                    rm_pl = self._mapping.get_join_path("semi:producesLot")
+                    if rm_td and rm_pl:
+                        if "semi:hasTransitionDetail" not in seen_relations:
+                            seen_relations.add("semi:hasTransitionDetail")
+                            resolved.append(ResolvedJoin(
+                                logic_relation=rm_td.logic_relation,
+                                strategy=rm_td.strategy,
+                                conditions=rm_td.join_conditions,
+                                bridge_table=rm_td.bridge_table,
+                                order_by=rm_td.order_by,
+                                note="过滤 isSource=false，仅展示目标侧子批次快照（产出批次上下文）",
+                            ))
+                        if "semi:producesLot" not in seen_relations:
+                            seen_relations.add("semi:producesLot")
+                            resolved.append(ResolvedJoin(
+                                logic_relation=rm_pl.logic_relation,
+                                strategy=rm_pl.strategy,
+                                conditions=rm_pl.join_conditions,
+                                bridge_table=rm_pl.bridge_table,
+                                order_by=rm_pl.order_by,
+                                note=rm_pl.note,
+                            ))
+                        continue
 
                 # ── 优先：所有最短路径 + 语义验证 ──────────────────────────────
                 if join_graph and join_graph.is_ready:
@@ -1478,9 +1532,25 @@ class SemanticContextBuilder:
                         continue  # 本对已处理，跳到下一对
 
                 # ── Fallback：OntologyGraph（rdflib TTL 图）───────────────
-                path = self._ontology.find_path(source, target)
-                if path is None:
+                all_paths = self._ontology.find_all_paths(source, target)
+                if not all_paths:
                     continue
+
+                shortest_len = len(all_paths[0])
+                shortest_paths = [p for p in all_paths if len(p) == shortest_len]
+
+                if len(shortest_paths) > 1 and preferred_relation_tokens:
+                    def _score_onto_path(path_edges: List[Tuple[str, str, str]]) -> int:
+                        score = 0
+                        for _from_cls, rel_uri, _to_cls in path_edges:
+                            rel = rel_uri.lstrip("^").lower()
+                            if any(tok in rel for tok in preferred_relation_tokens):
+                                score += 10
+                        return score
+
+                    shortest_paths = sorted(shortest_paths, key=_score_onto_path, reverse=True)
+
+                path = shortest_paths[0]
 
                 for from_cls, rel_uri, to_cls in path:
                     actual_rel = rel_uri.lstrip("^")

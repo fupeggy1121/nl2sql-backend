@@ -42,3 +42,4 @@ class AnalysisState(TypedDict, total=False):
     # ── 最终输出 ──
     answer: str                          # 自然语言回答文本
     response: Dict[str, Any]             # 标准化响应（与 Query Agent 格式兼容）
+    pipeline_trace: List[Dict[str, Any]] # 全链路追踪步骤（供前端展示）
