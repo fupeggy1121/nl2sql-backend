@@ -367,6 +367,45 @@ semi:isInstanceOfEvent a owl:ObjectProperty ;
     rdfs:label "事件实例记录" ;
     rdfs:comment "该执行记录对应的事件类型（ProductionEvent 子类实例），关联 record → event 类型定义。各子类通过 owl:allValuesFrom 约束将 range 精化为对应 XxxEvent 子类：SplitEventRecord→SplitEvent / MergeEventRecord→MergeEvent / AccumulateEventRecord→AccumulateEvent / HoldEventRecord→HoldEvent / ReleaseEventRecord→ReleaseEvent / NGRecordEventRecord→NGRecordEvent / CheckInEventRecord→CheckInEvent / CheckOutEventRecord→CheckOutEvent。" .
 
+# 2.6a 生产执行记录 → 快照层桥接关系 (ProductionEventRecord → Snapshot Layer)
+semi:hasTransitionDetail a owl:ObjectProperty ;
+    rdfs:domain semi:ProductionEventRecord ;
+    rdfs:range semi:SublotTransitionSnapshot ;
+    rdfs:label "事件包含子批次迁移快照" ;
+    rdfs:comment "生产事件执行记录（主表 _resume_log）1:N 关联子批次粒度迁移快照（_detail 表，semi:SublotTransitionSnapshot）。物理路径：_resume_log.id = _detail.batch_resume_log_id。适用于全部 operation_type；谱系操作的源/目标侧语义通过 _detail.extra.isSource 区分。" .
+
+semi:hasWaferTransitionSnapshot a owl:ObjectProperty ;
+    rdfs:domain semi:ProductionEventRecord ;
+    rdfs:range semi:WaferTransitionSnapshot ;
+    rdfs:label "事件包含Wafer迁移快照" ;
+    rdfs:comment "生产事件执行记录经 _detail 到 _wafer_detail_log 的两跳路径，暴露逐片 Wafer 粒度迁移快照。物理路径：_resume_log.id → _detail.batch_resume_log_id → _wafer_detail_log.batch_resume_detail_log_id。_wafer_detail_log 携带 wafer_id/sub_lot_code/carrier_code/slot_no/ng_code 快照。" .
+
+# 2.6a-2 SublotTransitionSnapshot 快照层导航关系
+semi:snapshotOfSublot a owl:ObjectProperty ;
+    rdfs:domain semi:SublotTransitionSnapshot ;
+    rdfs:range semi:Sublot ;
+    rdfs:label "快照对应子批次" ;
+    rdfs:comment "子批次迁移快照（_detail）中 sub_lot_id FK 关联对应的子批次实体。物理路径：_detail.sub_lot_id → lot.id（WHERE parent_id!=0）。" .
+
+semi:transitionSnapshotAtStation a owl:ObjectProperty ;
+    rdfs:domain semi:SublotTransitionSnapshot ;
+    rdfs:range semi:ProcessStation ;
+    rdfs:label "快照时刻工艺站点" ;
+    rdfs:comment "子批次迁移快照（_detail）中 process_code 记录事件时刻所在工序节点。物理路径：_detail.process_code = process.code。" .
+
+# 2.6a-3 WaferTransitionSnapshot 快照层导航关系
+semi:transitionSnapshotOfWafer a owl:ObjectProperty ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:range semi:Wafer ;
+    rdfs:label "Wafer迁移快照对应晶圆" ;
+    rdfs:comment "Wafer 迁移快照（_wafer_detail_log）中 wafer_id FK 关联对应的晶圆实体。物理路径：_wafer_detail_log.wafer_id → lot_wafer.wafer_id。" .
+
+semi:transitionSnapshotInSublot a owl:ObjectProperty ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:range semi:Sublot ;
+    rdfs:label "Wafer快照时刻所属子批次" ;
+    rdfs:comment "Wafer 迁移快照（_wafer_detail_log）中 sub_lot_code 记录事件时刻 Wafer 所属子批次编码。物理路径：_wafer_detail_log.sub_lot_code = lot.current_lot_code（WHERE parent_id!=0）。" .
+
 semi:producesLot a owl:ObjectProperty ;
     rdfs:domain semi:SublotTransitionSnapshot ;
     rdfs:range semi:ProductionLot ;
@@ -1370,7 +1409,7 @@ semi:InboundBill a owl:Class ;
 #   它代表「一次入库单据中针对某个物料批次的一条入库明细」，通过 containsInboundDetail 从属于 InboundBill。
 semi:InboundEventRecord a owl:Class ;
     rdfs:label "入库记录明细" ;
-    rdfs:comment "入库操作的具体执行明细记录（行项目）。物理映射：warehouse_input_record_bill_detail 表（每行对应一个物料/批次的入库行项目，通过 record_bill_id 外键关联入库单主表 warehouse_input_record_bill）。【非 WarehouseEventRecord 子类】：本类是 InboundBill 的组成行，通过对象属性 semi:containsInboundDetail（InboundBill→InboundEventRecord）建立从属关系。核心关联：(1) inboundBatch → semi:MaterialBatch（batch_no/unique_code）；(2) inboundToLocation → semi:WarehouseLocation（warehouse_id）；(3) hasBillQty（count）、hasBillTime（gmt_create）、updatesBatch → semi:MaterialBatch（更新对应批次行的 hasStockQty）。" .
+    rdfs:comment "入库操作的快照明细记录（行项目）。物理映射：warehouse_input_record_bill_detail 表（每行对应一个物料/批次的入库行项目，通过 record_bill_id 外键关联入库单头表 warehouse_input_record_bill）。【非 WarehouseEventRecord 子类】：本类是 InboundBill 的组成行，通过对象属性 semi:containsInboundDetail（InboundBill→InboundEventRecord）建立从属关系。核心关联：(1) inboundToLocation → semi:WarehouseLocation（warehouse_id，本次入库的目标库位）；(2) updatesBatch → semi:MaterialBatch（batch_no/unique_code+warehouse_id，更新对应批次的 hasStockQty）；数据属性：hasBillQty（count）、hasBillTime（gmt_create）。" .
 
 # 7.10 出库事件定义 (OutboundEvent)
 semi:OutboundEvent a owl:Class ;
@@ -1474,22 +1513,12 @@ semi:hasParentLocation a owl:ObjectProperty ;
     rdfs:comment "通过 warehouse_model.parent_id 表达的行政或逻辑归属层级关系（自引用外键）。顶层仓库节点 parent_id=0，叶节点库位指向其所属的上级区域或仓库节点。支持任意深度的树状层级查询（如：库位 → 区域 → 仓库 → 工厂）。" .
 
 # 8.4 入库记录关联属性
-semi:inboundBatch a owl:ObjectProperty ;
-    rdfs:domain semi:InboundEventRecord ; rdfs:range semi:MaterialBatch ;
-    rdfs:label "入库物料批次" ;
-    rdfs:comment "本次入库操作涉及的物料批次实例（含 hasBatchNo；单件追踪型含 hasBoxNo）。" .
-
 semi:inboundToLocation a owl:ObjectProperty ;
     rdfs:domain semi:InboundEventRecord ; rdfs:range semi:WarehouseLocation ;
     rdfs:label "入库目标库位" ;
     rdfs:comment "本次入库操作的目标存储库位。" .
 
 # 8.5 出库记录关联属性
-semi:outboundBatch a owl:ObjectProperty ;
-    rdfs:domain semi:OutboundEventRecord ; rdfs:range semi:MaterialBatch ;
-    rdfs:label "出库物料批次" ;
-    rdfs:comment "本次出库操作涉及的物料批次实例。" .
-
 semi:outboundFromLocation a owl:ObjectProperty ;
     rdfs:domain semi:OutboundEventRecord ; rdfs:range semi:WarehouseLocation ;
     rdfs:label "出库源库位" ;
