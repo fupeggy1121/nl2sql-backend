@@ -2267,6 +2267,20 @@
       "note": "warehouse_output_record_bill_detail.warehouse_id → warehouse_model.id。记录本次出库操作从哪个库位（bin/shelf）领出物料，是出库溯源和库位扣减的关键外键。"
     },
     {
+      "logic_relation": "semi:inboundToLocation",
+      "description": "入库明细行入库到哪个库位（InboundEventRecord→WarehouseLocation）",
+      "strategy": "ForeignKey",
+      "join_logic": {
+        "source_table": "warehouse_input_record_bill_detail",
+        "source_key": "warehouse_id",
+        "target_table": "warehouse_model",
+        "target_key": "id"
+      },
+      "domain_class": "semi:InboundEventRecord",
+      "range_class": "semi:WarehouseLocation",
+      "note": "warehouse_input_record_bill_detail.warehouse_id → warehouse_model.id。记录本次入库操作入库到哪个库位，是入库溯源和库位入库历史查询的关键外键。与出库侧 semi:outboundFromLocation 对称。"
+    },
+    {
       "logic_relation": "semi:recordsBatch",
       "description": "出库明细行涉及的物料批次实例（明细→批次实例，通过batch_no/unique_code+warehouse_id联合定位）",
       "strategy": "CompositeKey",
@@ -2302,20 +2316,6 @@
       "domain_class": "semi:MaterialBatch",
       "range_class": "semi:WarehouseLocation",
       "note": "warehouse_inventory.warehouse_id → warehouse_model.id。建立批次实例↔库位之间的核心空间关系，支持“某批次在哪个库位”和“某库位有哪些批次/物料”双向查询。"
-    },
-    {
-      "logic_relation": "semi:batchOfMaterial",
-      "description": "物料批次实例对应的物料类型（MaterialBatch→Material）",
-      "strategy": "ForeignKey",
-      "join_logic": {
-        "source_table": "warehouse_inventory",
-        "source_key": "material_model_id",
-        "target_table": "material",
-        "target_key": "id"
-      },
-      "domain_class": "semi:MaterialBatch",
-      "range_class": "semi:Material",
-      "note": "warehouse_inventory.material_model_id → material.id。建立批次实例↔物料类型的归属关系，支持“某种物料有哪些批次在库”和“按物料统计库位库存分布”类查询。"
     },
     {
       "logic_relation": "semi:batchOfMaterial",
