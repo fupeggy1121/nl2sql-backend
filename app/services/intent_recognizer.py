@@ -388,7 +388,7 @@ class IntentRecognizer:
 - 出库 / 出库记录 / 出库明细 / 物料出库 / 领料记录 / 出库数量 → semi:OutboundEventRecord
 - 出库单 / 出库记录单 / 出库凭证 → semi:OutboundBill
 - 出库申请 / 领料申请 → semi:OutboundRequest
-- 库存 / 在库 / 库存量 / 库存分布 / 实时库存 → semi:Inventory
+- 库存 / 在库 / 库存量 / 库存分布 / 实时库存 → semi:MaterialBatch
 - 仓库 / 库位 / 库区 / 各仓库 → semi:WarehouseLocation
 - 物料批次 / 来料批次 / 入库批次 → semi:MaterialBatch
 
@@ -437,7 +437,7 @@ A: intent=generate_report, query_type=AGGREGATE, target_class_hints=["semi:Inbou
    intent_slots={{"subject":"入库记录","action":"统计聚合","dimension_by":"物料","metric":"入库数量","sort_order":"DESC","limit_n":3,"filter_hints":[],"reasoning":"按物料分组汇总入库数量，降序取前3"}}
 
 Q: "各仓库的库存分布"
-A: intent=generate_report, query_type=AGGREGATE, target_class_hints=["semi:Inventory","semi:WarehouseLocation"],
+A: intent=generate_report, query_type=AGGREGATE, target_class_hints=["semi:MaterialBatch","semi:WarehouseLocation"],
    semantic_filters=[],
    intent_slots={{"subject":"库存","action":"统计聚合","dimension_by":"仓库","metric":"库存数量","sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"按仓库维度统计库存分布"}}
 

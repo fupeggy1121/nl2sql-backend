@@ -170,6 +170,7 @@ CLASS_SYNONYMS: dict = {
         "label_cn": "拆批记录",
         "synonyms": [
             "拆批记录", "拆批操作记录", "拆批日志", "拆批历史",
+            "拆批", "每次拆批", "拆批时", "拆批操作",
             "split记录", "split日志", "split操作",
             "批次拆批记录",
             "splitrecord", "spliteventrecord",
@@ -374,16 +375,6 @@ CLASS_SYNONYMS: dict = {
     },
 
     # ── 仓库域 ────────────────────────────────────────────────────────────────
-    "semi:Inventory": {
-        "label_cn": "库存明细",
-        "synonyms": [
-            "库存", "库存明细", "库存分布", "库存情况", "库存数量",
-            "库存明细记录", "在库物料", "在库量", "在库数", "库存清单",
-            "物料库存", "当前库存", "实时库存", "库存快照",
-            "inventory", "warehouse_inventory",
-        ],
-    },
-
     "semi:WarehouseLocation": {
         "label_cn": "库位",
         "synonyms": [
@@ -395,13 +386,17 @@ CLASS_SYNONYMS: dict = {
     },
 
     "semi:MaterialBatch": {
-        "label_cn": "物料批次",
+        "label_cn": "物料批次（在库批次）",
         "synonyms": [
             # 注意: "批次"/"lot"/"batch"/"批号" 属于 MES semi:ProductionLot，不在此列
-            # MaterialBatch 仅表示 WMS 域的物料实例（来料/入库/在库的物料单元）
+            # MaterialBatch 表示 WMS 域的物料实例，也是唯一映射 warehouse_inventory 的类
             "物料批次", "物料实例", "物料批",
             "来料批次", "入库批次", "在库批次",
-            "material_batch",
+            # 库存相关词：MaterialBatch = warehouse_inventory，即"在库物料批次"
+            "库存", "库存明细", "库存分布", "库存情况", "库存数量",
+            "库存明细记录", "在库物料", "在库量", "在库数", "库存清单",
+            "物料库存", "当前库存", "实时库存", "库存快照",
+            "material_batch", "inventory", "warehouse_inventory",
         ],
     },
 
