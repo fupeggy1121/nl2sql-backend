@@ -206,40 +206,74 @@ def _xbar_r_analysis(
 
 def _make_xbar_chart(stats: Dict[str, Any]) -> Dict[str, Any]:
     xbars = stats["xbars"]
-    indices = list(range(1, len(xbars) + 1))
+    n = len(xbars)
+    ucl = round(float(stats["xbar_ucl"]), 4)
+    cl  = round(float(stats["xbar_bar"]), 4)
+    lcl = round(float(stats["xbar_lcl"]), 4)
+    y_data = [float(v) for v in xbars]
     return {
         "type": "xbar",
         "title": "X-bar 控制图（均值控制图）",
-        "data": [
-            {"x": indices, "y": xbars.tolist(), "mode": "lines+markers", "name": "X̄"},
-            {"x": indices, "y": [stats["xbar_ucl"]] * len(indices), "mode": "lines", "name": "UCL", "line": {"dash": "dash", "color": "red"}},
-            {"x": indices, "y": [stats["xbar_bar"]] * len(indices), "mode": "lines", "name": "CL", "line": {"dash": "solid", "color": "green"}},
-            {"x": indices, "y": [stats["xbar_lcl"]] * len(indices), "mode": "lines", "name": "LCL", "line": {"dash": "dash", "color": "red"}},
-        ],
-        "layout": {
-            "title": "X-bar 控制图",
-            "xaxis": {"title": "子组序号"},
-            "yaxis": {"title": "均值"},
+        "echarts": {
+            "tooltip": {"trigger": "axis"},
+            "xAxis": {"type": "value", "name": "子组序号", "min": 1, "max": n},
+            "yAxis": {"type": "value", "name": "均值"},
+            "series": [{
+                "name": "X̄",
+                "type": "line",
+                "data": [[i + 1, v] for i, v in enumerate(y_data)],
+                "showSymbol": False,
+                "lineStyle": {"width": 1, "color": "#3b82f6"},
+                "itemStyle": {"color": "#3b82f6"},
+                "markLine": {
+                    "silent": True,
+                    "symbol": ["none", "none"],
+                    "label": {"formatter": "{b}"},
+                    "data": [
+                        {"name": "UCL", "yAxis": ucl, "lineStyle": {"color": "#ef4444", "type": "dashed"}},
+                        {"name": "CL",  "yAxis": cl,  "lineStyle": {"color": "#22c55e"}},
+                        {"name": "LCL", "yAxis": lcl, "lineStyle": {"color": "#ef4444", "type": "dashed"}},
+                    ],
+                },
+            }],
+            "dataZoom": [{"type": "slider", "xAxisIndex": 0, "start": 0, "end": 100}],
         },
     }
 
 
 def _make_r_chart(stats: Dict[str, Any]) -> Dict[str, Any]:
     ranges = stats["ranges"]
-    indices = list(range(1, len(ranges) + 1))
+    n = len(ranges)
+    ucl = round(float(stats["r_ucl"]), 4)
+    cl  = round(float(stats["r_bar"]), 4)
+    lcl = round(float(stats["r_lcl"]), 4)
+    y_data = [float(v) for v in ranges]
     return {
         "type": "r_chart",
         "title": "R 控制图（极差控制图）",
-        "data": [
-            {"x": indices, "y": ranges.tolist(), "mode": "lines+markers", "name": "R"},
-            {"x": indices, "y": [stats["r_ucl"]] * len(indices), "mode": "lines", "name": "UCL", "line": {"dash": "dash", "color": "red"}},
-            {"x": indices, "y": [stats["r_bar"]] * len(indices), "mode": "lines", "name": "CL", "line": {"dash": "solid", "color": "green"}},
-            {"x": indices, "y": [stats["r_lcl"]] * len(indices), "mode": "lines", "name": "LCL", "line": {"dash": "dash", "color": "red"}},
-        ],
-        "layout": {
-            "title": "R 控制图",
-            "xaxis": {"title": "子组序号"},
-            "yaxis": {"title": "极差"},
+        "echarts": {
+            "tooltip": {"trigger": "axis"},
+            "xAxis": {"type": "value", "name": "子组序号", "min": 1, "max": n},
+            "yAxis": {"type": "value", "name": "极差"},
+            "series": [{
+                "name": "R",
+                "type": "line",
+                "data": [[i + 1, v] for i, v in enumerate(y_data)],
+                "showSymbol": False,
+                "lineStyle": {"width": 1, "color": "#8b5cf6"},
+                "itemStyle": {"color": "#8b5cf6"},
+                "markLine": {
+                    "silent": True,
+                    "symbol": ["none", "none"],
+                    "label": {"formatter": "{b}"},
+                    "data": [
+                        {"name": "UCL", "yAxis": ucl, "lineStyle": {"color": "#ef4444", "type": "dashed"}},
+                        {"name": "CL",  "yAxis": cl,  "lineStyle": {"color": "#22c55e"}},
+                        {"name": "LCL", "yAxis": lcl, "lineStyle": {"color": "#ef4444", "type": "dashed"}},
+                    ],
+                },
+            }],
+            "dataZoom": [{"type": "slider", "xAxisIndex": 0, "start": 0, "end": 100}],
         },
     }
 
@@ -280,52 +314,86 @@ def _individual_mr_analysis(values: np.ndarray) -> Dict[str, Any]:
 
 def _make_individual_chart(stats: Dict[str, Any]) -> Dict[str, Any]:
     values = stats["values"]
-    indices = list(range(1, len(values) + 1))
     anomaly_idx = stats["anomalies"]
 
-    traces = [
-        {"x": indices, "y": values.tolist(), "mode": "lines+markers", "name": "个体值"},
-        {"x": indices, "y": [stats["i_ucl"]] * len(indices), "mode": "lines", "name": "UCL", "line": {"dash": "dash", "color": "red"}},
-        {"x": indices, "y": [stats["mean"]] * len(indices), "mode": "lines", "name": "CL", "line": {"dash": "solid", "color": "green"}},
-        {"x": indices, "y": [stats["i_lcl"]] * len(indices), "mode": "lines", "name": "LCL", "line": {"dash": "dash", "color": "red"}},
-    ]
+    n = len(values)
+    ucl = round(float(stats["i_ucl"]), 4)
+    cl  = round(float(stats["mean"]), 4)
+    lcl = round(float(stats["i_lcl"]), 4)
+    y_data = [float(v) for v in values]
+    series: list = [{
+        "name": "个体值",
+        "type": "line",
+        "data": [[i + 1, v] for i, v in enumerate(y_data)],
+        "showSymbol": False,
+        "lineStyle": {"width": 1, "color": "#3b82f6"},
+        "itemStyle": {"color": "#3b82f6"},
+        "markLine": {
+            "silent": True,
+            "symbol": ["none", "none"],
+            "label": {"formatter": "{b}"},
+            "data": [
+                {"name": "UCL", "yAxis": ucl, "lineStyle": {"color": "#ef4444", "type": "dashed"}},
+                {"name": "CL",  "yAxis": cl,  "lineStyle": {"color": "#22c55e"}},
+                {"name": "LCL", "yAxis": lcl, "lineStyle": {"color": "#ef4444", "type": "dashed"}},
+            ],
+        },
+    }]
     if anomaly_idx:
-        traces.append({
-            "x": [i + 1 for i in anomaly_idx],
-            "y": [float(values[i]) for i in anomaly_idx],
-            "mode": "markers",
+        series.append({
             "name": "异常点",
-            "marker": {"color": "red", "size": 10, "symbol": "x"},
+            "type": "scatter",
+            "data": [[i + 1, float(values[i])] for i in anomaly_idx],
+            "symbolSize": 10,
+            "itemStyle": {"color": "#ef4444"},
+            "symbol": "diamond",
         })
-
     return {
         "type": "individual",
         "title": "I 控制图（单值控制图）",
-        "data": traces,
-        "layout": {
-            "title": "I 控制图",
-            "xaxis": {"title": "观测序号"},
-            "yaxis": {"title": "测量值"},
+        "echarts": {
+            "tooltip": {"trigger": "axis"},
+            "xAxis": {"type": "value", "name": "观测序号", "min": 1, "max": n},
+            "yAxis": {"type": "value", "name": "测量值"},
+            "series": series,
+            "dataZoom": [{"type": "slider", "xAxisIndex": 0, "start": 0, "end": 100}],
         },
     }
 
 
 def _make_mr_chart(stats: Dict[str, Any]) -> Dict[str, Any]:
     mrs = stats["mrs"]
-    indices = list(range(2, len(mrs) + 2))
+    n = len(mrs)
+    ucl = round(float(stats["mr_ucl"]), 4)
+    cl  = round(float(stats["mr_bar"]), 4)
+    lcl = round(float(stats["mr_lcl"]), 4)
+    y_data = [float(v) for v in mrs]
     return {
         "type": "mr_chart",
         "title": "MR 控制图（移动极差控制图）",
-        "data": [
-            {"x": indices, "y": mrs.tolist(), "mode": "lines+markers", "name": "MR"},
-            {"x": indices, "y": [stats["mr_ucl"]] * len(indices), "mode": "lines", "name": "UCL", "line": {"dash": "dash", "color": "red"}},
-            {"x": indices, "y": [stats["mr_bar"]] * len(indices), "mode": "lines", "name": "CL", "line": {"dash": "solid", "color": "green"}},
-            {"x": indices, "y": [stats["mr_lcl"]] * len(indices), "mode": "lines", "name": "LCL", "line": {"dash": "dash", "color": "red"}},
-        ],
-        "layout": {
-            "title": "MR 控制图",
-            "xaxis": {"title": "观测序号"},
-            "yaxis": {"title": "移动极差"},
+        "echarts": {
+            "tooltip": {"trigger": "axis"},
+            "xAxis": {"type": "value", "name": "观测序号", "min": 2, "max": n + 1},
+            "yAxis": {"type": "value", "name": "移动极差"},
+            "series": [{
+                "name": "MR",
+                "type": "line",
+                "data": [[i + 2, v] for i, v in enumerate(y_data)],
+                "showSymbol": False,
+                "lineStyle": {"width": 1, "color": "#8b5cf6"},
+                "itemStyle": {"color": "#8b5cf6"},
+                "markLine": {
+                    "silent": True,
+                    "symbol": ["none", "none"],
+                    "label": {"formatter": "{b}"},
+                    "data": [
+                        {"name": "UCL", "yAxis": ucl, "lineStyle": {"color": "#ef4444", "type": "dashed"}},
+                        {"name": "CL",  "yAxis": cl,  "lineStyle": {"color": "#22c55e"}},
+                        {"name": "LCL", "yAxis": lcl, "lineStyle": {"color": "#ef4444", "type": "dashed"}},
+                    ],
+                },
+            }],
+            "dataZoom": [{"type": "slider", "xAxisIndex": 0, "start": 0, "end": 100}],
         },
     }
 
