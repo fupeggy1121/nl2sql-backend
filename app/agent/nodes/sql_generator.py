@@ -253,15 +253,40 @@ def _enforce_physical_table_names(sql: str, semantic_ctx: dict) -> str:
         replacements[tbl] = replacement
 
     if not replacements:
-        return sql
+        corrected = sql
+    else:
+        corrected = sql
+        for bad, good in replacements.items():
+            corrected = re.sub(
+                rf'\b{re.escape(bad)}\b', good, corrected, flags=re.IGNORECASE
+            )
+            logger.info(
+                f"[sql_generator] 确定性表名修正: {bad!r} → {good!r} (语义引擎)"
+            )
 
-    corrected = sql
-    for bad, good in replacements.items():
-        corrected = re.sub(
-            rf'\b{re.escape(bad)}\b', good, corrected, flags=re.IGNORECASE
+    # ── 特殊修正：拆批快照层表名混淆 ───────────────────────────────────────
+    # LLM 常把 _resume_log 用作两个 alias，但第二张表应是 _resume_log_detail。
+    # 条件：semantic_ctx 的 physical_tables 同时包含 _resume_log 和 _detail，
+    #        且 SQL 里 _resume_log 出现 >= 2 次。
+    _log_tbl    = "matrix_routerx_operation_lot_batch_resume_log"
+    _detail_tbl = "matrix_routerx_operation_lot_batch_resume_log_detail"
+    pt_list = [t.lower() for t in semantic_ctx.get("physical_tables", [])]
+    if (
+        _log_tbl.lower() in pt_list
+        and _detail_tbl.lower() in pt_list
+        and corrected.lower().count(_log_tbl.lower()) >= 2
+        and _detail_tbl.lower() not in corrected.lower()
+    ):
+        # 把第 2 次（及之后的）_resume_log 出现替换为 _detail
+        first_idx = corrected.lower().find(_log_tbl.lower())
+        second_part = corrected[first_idx + len(_log_tbl):]
+        corrected = (
+            corrected[: first_idx + len(_log_tbl)]
+            + second_part.replace(_log_tbl, _detail_tbl, 1)
         )
         logger.info(
-            f"[sql_generator] 确定性表名修正: {bad!r} → {good!r} (语义引擎)"
+            "[sql_generator] 拆批快照修正: 第2次 %r → %r",
+            _log_tbl, _detail_tbl,
         )
 
     return corrected

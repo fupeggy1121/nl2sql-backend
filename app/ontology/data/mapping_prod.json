@@ -2895,8 +2895,8 @@
         "source_key": "JSON_EXTRACT(matrix_routerx_operation_lot_batch_resume_log_detail.extra, '$.targetLotCode')",
         "filter_condition": "JSON_EXTRACT(extra, '$.isSource') = false",
         "target_table": "matrix_routerx_operation_lot",
-        "target_key": "lot_code",
-        "note": "直接路径：_detail(isSource=false) → extra.targetLotCode = lot.lot_code。isSource=false 行为目标侧（产出批次）。物理表无 output_lot_id 列，禁止使用该列名生成 JOIN 条件。"
+        "target_key": "current_lot_code",
+        "note": "直接路径：_detail(isSource=false) → extra.targetLotCode = lot.current_lot_code。isSource=false 行为目标侧（产出批次）。物理表无 output_lot_id/lot_code 列，禁止使用这些列名生成 JOIN 条件；批次编码列名为 current_lot_code。"
       },
       "domain_class": "semi:SublotTransitionSnapshot",
       "range_class": "semi:ProductionLot"

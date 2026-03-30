@@ -168,6 +168,15 @@ class SemanticContext:
                     lines.append(
                         f"  {left} = {right}"
                     )
+                    # 当 from/to 表名极相似时，额外输出显式 INNER JOIN 片段避免 LLM 混淆
+                    if c.to_table and c.from_table != c.to_table and (
+                        c.to_table.startswith(c.from_table) or c.from_table.startswith(c.to_table)
+                    ):
+                        lines.append(
+                            f"  -- ⚠ 正确 JOIN 写法: INNER JOIN {c.to_table} ON {left} = {c.to_table}.{c.to_key}"
+                        )
+                if j.note:
+                    lines.append(f"  -- note: {j.note}")
         if self.filters:
             lines.append("")
             lines.append("-- Filters")
@@ -1465,15 +1474,50 @@ class SemanticContextBuilder:
                     rm_td = self._mapping.get_join_path("semi:hasTransitionDetail")
                     rm_pl = self._mapping.get_join_path("semi:producesLot")
                     if rm_td and rm_pl:
+                        # 注入 SublotTransitionSnapshot 为 matched_class，让 LLM 的
+                        # schema_snippet 中有 _detail 表的 TABLE 声明和列列表，
+                        # 否则 LLM 不知道该 JOIN 哪张表而使用 _resume_log 代替。
+                        # 注意：SublotTransitionSnapshot 在 mapping 中是 virtual=true，
+                        # 因此需绕过 virtual 过滤强制注入。
+                        sts_uri = "semi:SublotTransitionSnapshot"
+                        if sts_uri not in matched_class_uris:
+                            sts_pt = self._mapping.get_physical_table(sts_uri)
+                            if sts_pt and sts_pt.table_name:
+                                snapshot_mc = MatchedClass(
+                                    keyword="[系统注入:拆批快照层]",
+                                    logic_class=sts_uri,
+                                    label_cn=sts_pt.label_cn or "子批次迁移快照",
+                                    physical_table=sts_pt.table_name,
+                                    primary_key=sts_pt.primary_key,
+                                    display_column=sts_pt.display_column,
+                                    key_columns=sts_pt.key_columns,
+                                    properties=sts_pt.properties,
+                                    filter_condition=sts_pt.filter_condition,
+                                    virtual=False,  # 强制非虚拟，确保出现在 TABLE 声明
+                                )
+                                physical_classes.append(snapshot_mc)
+                                matched_class_uris.add(sts_uri)
+                                logger.info(
+                                    "[context_builder] 拆批覆盖：注入 SublotTransitionSnapshot"
+                                    " (%s) 至 matched_classes，确保 LLM schema 含 _detail 表",
+                                    sts_pt.table_name,
+                                )
                         if "semi:hasTransitionDetail" not in seen_relations:
                             seen_relations.add("semi:hasTransitionDetail")
+                            _rename_log   = "matrix_routerx_operation_lot_batch_resume_log"
+                            _rename_detail = "matrix_routerx_operation_lot_batch_resume_log_detail"
                             resolved.append(ResolvedJoin(
                                 logic_relation=rm_td.logic_relation,
                                 strategy=rm_td.strategy,
                                 conditions=rm_td.join_conditions,
                                 bridge_table=rm_td.bridge_table,
                                 order_by=rm_td.order_by,
-                                note="过滤 isSource=false，仅展示目标侧子批次快照（产出批次上下文）",
+                                note=(
+                                    f"⚠ 第二张表必须是 {_rename_detail}（_detail），"
+                                    f"绝对不能用 {_rename_log}（_resume_log）。"
+                                    f"正确写法：INNER JOIN {_rename_detail} brld"
+                                    f" ON brl.id = brld.batch_resume_log_id"
+                                ),
                             ))
                         if "semi:producesLot" not in seen_relations:
                             seen_relations.add("semi:producesLot")
