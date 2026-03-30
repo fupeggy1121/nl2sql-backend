@@ -46,6 +46,7 @@ class JoinCondition:
     from_key: str
     to_table: str
     to_key: str
+    filter_condition: Optional[str] = None   # JOIN 涉及的行级过滤条件，e.g. "JSON_EXTRACT(extra,'$.isSource')=false"
 
 
 @dataclass
@@ -313,6 +314,7 @@ class MappingDictionary:
                     from_key=jl["source_key"],
                     to_table=jl["target_table"],
                     to_key=jl["target_key"],
+                    filter_condition=jl.get("filter_condition"),
                 ))
             elif strategy == "JoinTable":
                 bridge = jl.get("bridge_table")
@@ -360,6 +362,7 @@ class MappingDictionary:
                         from_key=source_key,
                         to_table=via_table,
                         to_key=via_source_key,
+                        filter_condition=jl.get("filter_condition"),
                     ))
 
                 if via2_table:
