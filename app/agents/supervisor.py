@@ -14,6 +14,30 @@ import logging
 import re
 from typing import Dict, Any, Literal
 
+# ── 分析意图转原始数据查询 ──
+_ANALYSIS_VERBS = re.compile(r'^(分析|统计|评估|计算|对比)\s*')
+_ANALYSIS_SUFFIX = re.compile(
+    r'[，,]\s*(计算|分析|统计|评估)\s*(Cpk|Ppk|SPC|控制图|过程能力|制程能力|cp|ppk)[^，,]*',
+    re.IGNORECASE,
+)
+_ANALYSIS_SUBJECT_SUFFIX = re.compile(r'的(制程能力|过程能力|品质能力|能力指数|统计特性|控制图)[^，,]*')
+
+
+def _reformat_for_data_fetch(analysis_input: str) -> str:
+    """
+    将分析类查询转换为取原始数据查询，供两阶段管道的 Stage 1 使用。
+
+    例: "分析晶圆厚度测量值的制程能力，计算 Cpk"
+      → "查询晶圆厚度测量值的原始测量记录数据"
+    """
+    q = _ANALYSIS_VERBS.sub('', analysis_input)           # 去前置分析动词
+    q = _ANALYSIS_SUFFIX.sub('', q)                       # 去末尾的 "计算 Cpk" 等
+    q = _ANALYSIS_SUBJECT_SUFFIX.sub('', q)               # 去 "的制程能力" 等后缀
+    q = q.strip().rstrip('，, ')
+    if q and not q.startswith('查询'):
+        q = f"查询{q}的原始测量记录数据"
+    return q or analysis_input
+
 logger = logging.getLogger(__name__)
 
 # ── 分析意图关键词 ──
@@ -39,11 +63,16 @@ def classify_agent_intent(user_input: str) -> Literal["query", "analyze", "repor
 
     当前策略: 关键词匹配。Phase 3 可升级为 LLM 分类。
     优先级: report > analyze > query
+
+    路由规则:
+    - "report"  → _run_analysis_agent()              （良率/OEE 报表，有专属 SQL builder）
+    - "analyze" → _run_analysis_with_data_pipeline() （SPC/相关性等，先 query_agent 取数）
+    - "query"   → _run_query_agent()                 （普通查询）
     """
     if _REPORT_KEYWORDS.search(user_input):
-        return "analyze"  # 报表走 analysis_agent（内部由 method_selector 选 yield_report/oee_report）
+        return "report"   # 良率/OEE 报表 → analysis_agent 直接走（method_selector 内有专属 SQL builder）
     if _ANALYSIS_KEYWORDS.search(user_input):
-        return "analyze"
+        return "analyze"  # SPC/相关性等 → 两阶段管道（先 query_agent 取数，再 analysis_agent 分析）
     return "query"
 
 
@@ -72,6 +101,10 @@ async def route_to_agent(
             user_input, session_id, conversation_history, **kwargs
         )
     elif intent == "analyze":
+        return await _run_analysis_with_data_pipeline(
+            user_input, session_id, conversation_history, **kwargs
+        )
+    elif intent == "report":
         return await _run_analysis_agent(
             user_input, session_id, conversation_history, **kwargs
         )
@@ -101,6 +134,70 @@ async def _run_query_agent(
     return await agent.ainvoke(initial_state)
 
 
+async def _run_analysis_with_data_pipeline(
+    user_input: str,
+    session_id: str,
+    conversation_history: list | None = None,
+    **kwargs,
+) -> Dict[str, Any]:
+    """
+    两阶段分析管道（SPC / 相关性 / 异常检测 / 描述性统计等）:
+
+    Stage 1 — query_agent 利用完整本体语义生成并执行 SQL，获取原始 DataFrame
+    Stage 2 — analysis_agent 对原始数据执行统计分析并生成报告
+
+    优势：数据来源由本体语义自动解析，无需硬编码 SQL 模板。
+    """
+    from app.agents.analysis_agent.graph import get_analysis_agent_app
+
+    # ── Stage 1: query_agent 取原始数据 ──
+    # 将分析型查询转换为原始数据查询，避免 query_agent 预聚合导致数据量不足
+    data_query = _reformat_for_data_fetch(user_input)
+    logger.info(
+        f"[supervisor] two-stage pipeline → Stage 1: query_agent"
+        f"\n  original: {user_input[:80]}"
+        f"\n  data_query: {data_query[:80]}"
+    )
+    query_state = await _run_query_agent(
+        data_query, session_id, conversation_history, **kwargs
+    )
+    query_result = query_state.get("query_result") or {}
+    raw_data: list = query_result.get("data") or []
+    logger.info(f"[supervisor] two-stage → Stage 1 done: {len(raw_data)} rows retrieved")
+
+    # ── Stage 2: analysis_agent 接收 raw_data ──
+    logger.info(f"[supervisor] two-stage → Stage 2: analysis_agent")
+    initial_state = {
+        "user_input": user_input,
+        "session_id": session_id,
+        "raw_data": raw_data,
+    }
+
+    final_state: Dict[str, Any] = {}
+    try:
+        agent = get_analysis_agent_app()
+        final_state = await agent.ainvoke(initial_state)
+        response = final_state.get("response") or {
+            "success": False,
+            "answer": "分析 Agent 未返回结果",
+        }
+    except Exception as e:
+        logger.error(f"[supervisor] analysis_agent error: {e}", exc_info=True)
+        response = {"success": False, "answer": f"分析 Agent 执行出错: {e}"}
+
+    pipeline_trace = (
+        response.pop("pipeline_trace", None)
+        or final_state.get("pipeline_trace")
+        or []
+    )
+    return {
+        "response": response,
+        "is_followup": False,
+        "session_id": session_id,
+        "pipeline_trace": pipeline_trace,
+    }
+
+
 async def _run_analysis_agent(
     user_input: str,
     session_id: str,
@@ -108,7 +205,7 @@ async def _run_analysis_agent(
     **kwargs,
 ) -> Dict[str, Any]:
     """
-    路由到 Analysis Agent (Phase 3 实装)。
+    良率 / OEE 报表路由：analysis_agent 直接走（method_selector 内有专属 SQL builder）。
 
     委托给 app/agents/analysis_agent/graph.py 的独立 LangGraph。
     """

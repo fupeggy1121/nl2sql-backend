@@ -6,6 +6,7 @@ preprocessor 节点
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 
@@ -29,7 +30,7 @@ def preprocessor_node(state: AnalysisState) -> dict:
         return {"preprocess_steps": [], "preprocess_log": ["数据为空，跳过预处理"]}
 
     try:
-        df = pd.read_json(df_json, orient="records")
+        df = pd.read_json(io.StringIO(df_json), orient="records")
         df, logs = auto_preprocess(df)
         updated_json = df.to_json(orient="records", force_ascii=False, date_format="iso")
         steps = [s for s in logs]

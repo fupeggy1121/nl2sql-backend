@@ -6,6 +6,7 @@ analysis_executor 节点
 
 from __future__ import annotations
 
+import io
 import logging
 
 import pandas as pd
@@ -38,7 +39,7 @@ def analysis_executor_node(state: AnalysisState) -> dict:
         }
 
     try:
-        df = pd.read_json(df_json, orient="records")
+        df = pd.read_json(io.StringIO(df_json), orient="records")
     except Exception as e:
         return {
             "analysis_success": False,

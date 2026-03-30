@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import numbers
 import re
 from datetime import datetime, timedelta
 from typing import Any, Dict
@@ -130,6 +131,62 @@ def method_selector_node(state: AnalysisState) -> dict:
                 "type": "data",
                 "data": state.get("raw_data") or [],
             }
+
+    # 4. 若方法需要 value_column 且尚未指定，从 raw_data 列名 + 用户输入关键词自动推断
+    if method in ("spc", "correlation", "anomaly", "descriptive") and not params.get("value_column"):
+        raw_data = state.get("raw_data") or []
+        if raw_data and isinstance(raw_data[0], dict):
+            cols = list(raw_data[0].keys())
+
+            def _is_numeric(v: Any) -> bool:
+                """判断值是否为数值（含数值字符串，如 varchar 存储的测量值）。"""
+                if v is None:
+                    return False
+                if isinstance(v, numbers.Number) and not isinstance(v, bool):
+                    return True
+                if isinstance(v, str):
+                    try:
+                        float(v)
+                        return True
+                    except (ValueError, TypeError):
+                        return False
+                return False
+
+            # 排除计数/编码类列
+            _EXCLUDE = ("数量", "count", "个数", "编码", "编号", "_id", "code", "id")
+            candidate_cols = [
+                c for c in cols
+                if _is_numeric(raw_data[0].get(c))
+                and not any(exc in c.lower() for exc in _EXCLUDE)
+            ]
+            detected = None
+            # 优先：从用户输入中提取量纲关键词（厚度、宽度、电阻等），匹配含该词且含"值/均"的列
+            dim_match = re.search(
+                r"(厚度|宽度|深度|高度|长度|电阻|张力|压力|温度|湿度|粗糙度|应力"
+                r"|thickness|width|depth|height|resistance|pressure|temp)",
+                user_input, re.IGNORECASE,
+            )
+            if dim_match:
+                dim = dim_match.group(1)
+                detected = next(
+                    (c for c in candidate_cols
+                     if dim in c and any(kw in c for kw in ("值", "均", "value", "avg", "mean"))),
+                    None,
+                ) or next((c for c in candidate_cols if dim in c), None)
+            # 退回：第一个含 "值"/"均"/"value" 关键词的数值列
+            if detected is None:
+                _MEASURE_KEYWORDS = ("均值", "平均值", "测量值", "量测值", "value", "avg", "mean")
+                detected = next(
+                    (c for c in candidate_cols
+                     if any(kw in c.lower() for kw in _MEASURE_KEYWORDS)),
+                    None,
+                )
+            # 最后退回：第一个候选数值列
+            if detected is None:
+                detected = candidate_cols[0] if candidate_cols else None
+            if detected:
+                params = {**params, "value_column": detected}
+                logger.info(f"[method_selector] auto-detected value_column='{detected}'")
 
     return {
         "suggested_method": method,

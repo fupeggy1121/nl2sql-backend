@@ -138,7 +138,14 @@ def _load_from_data(data: Optional[List[Dict[str, Any]]]) -> pd.DataFrame:
     """从行内数据构建 DataFrame（来自上轮 NL2SQL 查询结果）。"""
     if not data:
         raise ValueError("data 字段不能为空")
-    return pd.DataFrame(data)
+    df = pd.DataFrame(data)
+    # 自动将数值字符串列转换为数值类型（数据库 varchar 字段常以字符串存储数值）
+    for col in df.select_dtypes(include=["object"]).columns:
+        converted = pd.to_numeric(df[col], errors="coerce")
+        # 若超过 50% 的行能成功转换，则认为该列是数值列
+        if converted.notna().sum() > len(df) * 0.5:
+            df[col] = converted
+    return df
 
 
 def _execute_mysql(sql: str, params: tuple = None) -> Optional[List[Dict]]:
