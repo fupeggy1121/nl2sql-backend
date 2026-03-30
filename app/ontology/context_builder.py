@@ -1374,11 +1374,21 @@ class SemanticContextBuilder:
     # 作为未被查询提及的中间节点时，路径会引入隐式业务过滤，导致语义与查询意图相悖。
     # 判断标准：具有状态字段、时间戳、业务过滤条件的记录类，而非分组/分类/配置类。
     _RECORD_CLASSES: Set[str] = {
-        "semi:ProductionLot",    # 批次主表，status 表示 WIP 状态
-        "semi:Sublot",           # 子批次，process_id 表示当前在哪个站点
-        "semi:Wafer",            # 晶圆单片
-        "semi:Action",           # 操作日志流水
-        "semi:ProductionOrder",  # 生产工单
+        "semi:ProductionLot",              # 批次主表，status 表示 WIP 状态
+        "semi:Sublot",                     # 子批次，process_id 表示当前在哪个站点
+        "semi:Wafer",                      # 晶圆单片
+        "semi:Action",                     # 操作日志流水
+        "semi:ProductionOrder",            # 生产工单
+        # ── 量测事件类 ──
+        # ProcessStation 与 Equipment 之间通过 WaferMeasurementSnapshot 存在2跳路径
+        # （snapshotAtStation + snapshotOnEquipment），与 EquipmentGroup 路径等长，
+        # 若未明确查询量测数据，量测路径会引入 process_measure_data JOIN，导致
+        # "按站点统计设备列表" 等查询生成错误 SQL。
+        # 加入此集合后，仅当查询明确包含量测语义（WaferMeasurementSnapshot 在
+        # matched_classes 中）时才允许量测路径作桥接，否则过滤，
+        # ProcessStation→Equipment 唯一化为正确的 EquipmentGroup 路径。
+        "semi:WaferMeasurementSnapshot",   # 量测快照（逐参数记录层）
+        "semi:MeasurementPassRecord",      # 量测录入事件（事件层）
     }
 
     def _path_has_unmentioned_record_class(
