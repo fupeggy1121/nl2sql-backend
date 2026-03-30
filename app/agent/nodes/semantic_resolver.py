@@ -114,7 +114,7 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
 
     # ── B2: 语义缓存查找（追问不使用缓存，避免上下文依赖）──
     # v4: 本体类版本前缀——当规则/模板发生重大变更时更新版本号可立即淘汰旧缓存
-    _SEMANTIC_CACHE_VERSION = "v20"  # v20: SplitEventRecord 同义词补充"拆批/每次拆批/拆批时/拆批操作"；TTL 新增 hasTransitionDetail/hasWaferTransitionSnapshot 等6个 ObjectProperty 声明
+    _SEMANTIC_CACHE_VERSION = "v21"  # v21: 拆批模型精简——删除 SublotTransitionSnapshot 类、合并为 hasWaferTransitionDetail、producesLot/splitsFromLot 迁移至 WaferTransitionSnapshot 层
     _cache_key = f"{_SEMANTIC_CACHE_VERSION}:{effective_input}"
     _cache_hit = False
     if not is_followup:

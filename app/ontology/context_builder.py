@@ -157,7 +157,7 @@ class SemanticContext:
                 if remaining:
                     lines.append(f"  -- 其余列: {', '.join(remaining)}")
                 if mc.filter_condition:
-                    lines.append(f"  -- ⚠ 同表多类过滤: WHERE {mc.filter_condition}")
+                    lines.append(f"  -- ⚠ 必须应用行过滤: WHERE {mc.filter_condition}")
         if self.joins:
             lines.append("")
             lines.append("-- JOIN conditions")
@@ -174,6 +174,10 @@ class SemanticContext:
                     ):
                         lines.append(
                             f"  -- ⚠ 正确 JOIN 写法: INNER JOIN {c.to_table} ON {left} = {c.to_table}.{c.to_key}"
+                        )
+                    if c.filter_condition:
+                        lines.append(
+                            f"  -- ⚠ 额外过滤条件(必须加入 WHERE 或 JOIN ON): {c.filter_condition}"
                         )
                 if j.note:
                     lines.append(f"  -- note: {j.note}")
@@ -242,6 +246,7 @@ class SemanticContext:
                         {
                             "from": self._format_join_side(c.from_table, c.from_key),
                             "to": self._format_join_side(c.to_table, c.to_key),
+                            **({"filter_condition": c.filter_condition} if c.filter_condition else {}),
                         }
                         for c in j.conditions
                     ],
@@ -1453,7 +1458,7 @@ class SemanticContextBuilder:
         preferred_relation_tokens: List[str] = []
         if prefer_output_rel:
             preferred_relation_tokens.extend([
-                "produceslot", "producessublot", "assignswafertolot", "assignswafertosublot",
+                "produceslot", "producessublot", "haswafertransitiondetail",
             ])
         if prefer_input_rel:
             preferred_relation_tokens.extend([
@@ -1475,73 +1480,6 @@ class SemanticContextBuilder:
                 source = physical_classes[i].logic_class
                 target = physical_classes[j].logic_class
                 endpoint_classes = {source, target}
-
-                # 拆批专用覆盖：当用户明确请求“新增/拆出/新批次/产出”时，
-                # SplitEventRecord -> ProductionLot 优先强制走两跳路径：
-                #   hasTransitionDetail(_resume_log → _detail) + producesLot(_detail.targetLotCode → lot)
-                # producesLot 的 domain 已更新为 SublotTransitionSnapshot（_detail），
-                # 因此需要先注入 hasTransitionDetail 桥接，再注入 producesLot。
-                if prefer_output_rel and endpoint_classes == {"semi:SplitEventRecord", "semi:ProductionLot"}:
-                    rm_td = self._mapping.get_join_path("semi:hasTransitionDetail")
-                    rm_pl = self._mapping.get_join_path("semi:producesLot")
-                    if rm_td and rm_pl:
-                        # 注入 SublotTransitionSnapshot 为 matched_class，让 LLM 的
-                        # schema_snippet 中有 _detail 表的 TABLE 声明和列列表，
-                        # 否则 LLM 不知道该 JOIN 哪张表而使用 _resume_log 代替。
-                        # 注意：SublotTransitionSnapshot 在 mapping 中是 virtual=true，
-                        # 因此需绕过 virtual 过滤强制注入。
-                        sts_uri = "semi:SublotTransitionSnapshot"
-                        if sts_uri not in matched_class_uris:
-                            sts_pt = self._mapping.get_physical_table(sts_uri)
-                            if sts_pt and sts_pt.table_name:
-                                snapshot_mc = MatchedClass(
-                                    keyword="[系统注入:拆批快照层]",
-                                    logic_class=sts_uri,
-                                    label_cn=sts_pt.label_cn or "子批次迁移快照",
-                                    physical_table=sts_pt.table_name,
-                                    primary_key=sts_pt.primary_key,
-                                    display_column=sts_pt.display_column,
-                                    key_columns=sts_pt.key_columns,
-                                    properties=sts_pt.properties,
-                                    filter_condition=sts_pt.filter_condition,
-                                    virtual=False,  # 强制非虚拟，确保出现在 TABLE 声明
-                                )
-                                physical_classes.append(snapshot_mc)
-                                injected_classes.append(snapshot_mc)  # 同步回传给 ctx.matched_classes
-                                matched_class_uris.add(sts_uri)
-                                logger.info(
-                                    "[context_builder] 拆批覆盖：注入 SublotTransitionSnapshot"
-                                    " (%s) 至 matched_classes，确保 LLM schema 含 _detail 表",
-                                    sts_pt.table_name,
-                                )
-                        if "semi:hasTransitionDetail" not in seen_relations:
-                            seen_relations.add("semi:hasTransitionDetail")
-                            _rename_log   = "matrix_routerx_operation_lot_batch_resume_log"
-                            _rename_detail = "matrix_routerx_operation_lot_batch_resume_log_detail"
-                            resolved.append(ResolvedJoin(
-                                logic_relation=rm_td.logic_relation,
-                                strategy=rm_td.strategy,
-                                conditions=rm_td.join_conditions,
-                                bridge_table=rm_td.bridge_table,
-                                order_by=rm_td.order_by,
-                                note=(
-                                    f"⚠ 第二张表必须是 {_rename_detail}（_detail），"
-                                    f"绝对不能用 {_rename_log}（_resume_log）。"
-                                    f"正确写法：INNER JOIN {_rename_detail} brld"
-                                    f" ON brl.id = brld.batch_resume_log_id"
-                                ),
-                            ))
-                        if "semi:producesLot" not in seen_relations:
-                            seen_relations.add("semi:producesLot")
-                            resolved.append(ResolvedJoin(
-                                logic_relation=rm_pl.logic_relation,
-                                strategy=rm_pl.strategy,
-                                conditions=rm_pl.join_conditions,
-                                bridge_table=rm_pl.bridge_table,
-                                order_by=rm_pl.order_by,
-                                note=rm_pl.note,
-                            ))
-                        continue
 
                 # ── 优先：所有最短路径 + 语义验证 ──────────────────────────────
                 if join_graph and join_graph.is_ready:
