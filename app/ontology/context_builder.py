@@ -711,8 +711,12 @@ class SemanticContextBuilder:
             )
 
         # Step 3: 路径发现 + JOIN 翻译
-        joins = self._resolve_joins(matched, user_query)
+        joins, injected_classes = self._resolve_joins(matched, user_query)
         ctx.joins = joins
+        # 将路径发现过程中注入的中间类合并回 matched_classes，
+        # 确保 schema_snippet 中的 TABLE 声明包含所有 JOIN 涉及的物理表
+        if injected_classes:
+            ctx.matched_classes = matched + injected_classes
         if joins:
             logger.info("Resolved %d join paths", len(joins))
 
@@ -1394,7 +1398,9 @@ class SemanticContextBuilder:
                 return True
         return False
 
-    def _resolve_joins(self, classes: List[MatchedClass], query: str = "") -> List[ResolvedJoin]:
+    def _resolve_joins(
+        self, classes: List[MatchedClass], query: str = ""
+    ) -> tuple:
         """
         对匹配到的类两两做路径发现，然后将每一跳的本体关系翻译为物理 JOIN。
 
@@ -1406,9 +1412,14 @@ class SemanticContextBuilder:
         语义验证原则：
           当多条最短路径存在时，优先选择中间节点不包含未被查询提及的记录类的路径。
           此原则直接使用 domain_class/range_class 已有信息，不需要额外语义标注。
+
+        Returns:
+            (List[ResolvedJoin], List[MatchedClass]) — joins 列表 + 中间路径注入的额外 MatchedClass 列表
         """
         if len(classes) < 2:
-            return []
+            return [], []
+
+        injected_classes: List[MatchedClass] = []  # 路径发现过程中注入的中间类
 
         resolved: List[ResolvedJoin] = []
         seen_relations: Set[str] = set()
@@ -1416,7 +1427,7 @@ class SemanticContextBuilder:
         # 取非虚拟类来做 JOIN
         physical_classes = [c for c in classes if not c.virtual and c.physical_table]
         if len(physical_classes) < 2:
-            return []
+            return [], []
 
         join_graph = get_join_graph()  # 全局单例，lifespan 初始化后可用
 
@@ -1496,6 +1507,7 @@ class SemanticContextBuilder:
                                     virtual=False,  # 强制非虚拟，确保出现在 TABLE 声明
                                 )
                                 physical_classes.append(snapshot_mc)
+                                injected_classes.append(snapshot_mc)  # 同步回传给 ctx.matched_classes
                                 matched_class_uris.add(sts_uri)
                                 logger.info(
                                     "[context_builder] 拆批覆盖：注入 SublotTransitionSnapshot"
@@ -1613,7 +1625,7 @@ class SemanticContextBuilder:
                             note=rm.note,
                         ))
 
-        return resolved
+        return resolved, injected_classes
 
     # ----------------------------------------------------------------- #
     # Step 4: 业务规则
