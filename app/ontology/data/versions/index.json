@@ -14,5 +14,21 @@
     "message": "Version 2",
     "author": "web-ui",
     "size_bytes": 8720
+  },
+  {
+    "version": 3,
+    "filename": "v0003.ttl",
+    "timestamp": "2026-03-31T06:36:13.195915+00:00",
+    "message": "批次扣留/释放快照层建模：新增 HoldDetailSnapshot（子批次粒度快照）和 WaferHoldSnapshot（Wafer粒度快照），补全三层事件—快照—实体结构。operation_type=4（扣留）/5（释放）均使用同一套快照路径。",
+    "author": "Copilot",
+    "size_bytes": 129839
+  },
+  {
+    "version": 4,
+    "filename": "v0004.ttl",
+    "timestamp": "2026-03-31T06:36:50.108501+00:00",
+    "message": "批次扣留/释放快照层建模：新增 HoldDetailSnapshot（子批次粒度快照）和 WaferHoldSnapshot（Wafer粒度快照），补全三层事件—快照—实体结构。operation_type=4（扣留）/5（释放）均使用同一套快照路径。",
+    "author": "Copilot",
+    "size_bytes": 129839
   }
 ]

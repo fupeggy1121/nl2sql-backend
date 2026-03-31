@@ -446,16 +446,6 @@ A: intent=query_quality, query_type=TREND, target_class_hints=["semi:ProductionL
    semantic_filters=[{{"attribute":"timeRange","semantic_value":"last_7_days"}}],
    intent_slots={{"subject":"批次","action":"趋势分析","dimension_by":"日期","metric":"良率","sort_order":"ASC","limit_n":null,"filter_hints":["时间范围=过去7天"],"reasoning":"按日期分组统计良率趋势"}}
 
-Q: "按站点统计设备列表"
-A: intent=direct_query, query_type=AGGREGATE, target_class_hints=["semi:ProcessStation","semi:Equipment"],
-   semantic_filters=[],
-   intent_slots={{"subject":"设备","action":"统计聚合","dimension_by":"站点","metric":"设备列表","sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"按站点（ProcessStation）分组列出各站点可用设备（Equipment），通过设备组（EquipmentGroup）关联；不涉及子批次/载具组/在制品"}}
-
-Q: "查询各工序对应的机台列表"
-A: intent=direct_query, query_type=AGGREGATE, target_class_hints=["semi:ProcessStation","semi:Equipment"],
-   semantic_filters=[],
-   intent_slots={{"subject":"设备/机台","action":"统计聚合","dimension_by":"工序","metric":"机台列表","sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"按工序分组列出各工序下设备（via设备组），主数据查询，不涉及在制品/子批次/载具组"}}
-
 Q: "你好"
 A: intent=chat, query_type=LIST, target_class_hints=[], semantic_filters=[],
    intent_slots={{"subject":null,"action":null,"dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"闲聊，无业务查询意图"}}
@@ -504,7 +494,7 @@ A: intent=need_clarification, query_type=LIST, target_class_hints=["semi:CheckIn
 {{
     "intent": "direct_query|query_production|query_quality|query_equipment|generate_report|compare_analysis|chat|knowledge_qa|explain|write_action|need_clarification",
     "query_type": "LIST|COUNT|AGGREGATE|TREND",
-    "target_class_hints": ["semi:Carrier"],
+    "target_class_hints": ["semi:Carrier"],  // 查询直接涉及的语义主对象类列表；第一个为查询主体（对应 FROM 主表），后续为关联维度类；仅列出用户明确查询的业务对象，不需要枚举 JOIN 中间类或路径推导类
     "semantic_filters": [{{"attribute": "status", "semantic_value": "Available"}}],
     "clarification_question": "仅在 intent=need_clarification 时填写，其余填 null",
     "intent_slots": {{

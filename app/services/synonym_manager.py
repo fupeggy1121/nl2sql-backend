@@ -47,10 +47,15 @@ class SynonymManagerService:
         return executor
 
     def _get_supabase(self):
-        """获取 Supabase 客户端 (单例)"""
+        """获取 Supabase 客户端 (单例)。
+        注意：同义词存储始终走 Supabase，与 DB_BACKEND 配置无关。
+        DB_BACKEND 控制主数据查询（如 MySQL），不影响同义词持久层。
+        """
         if self._supabase_client is None:
-            from app.services.supabase_client import get_supabase_client
-            self._supabase_client = get_supabase_client()
+            # 直接实例化 SupabaseClient，绕过 get_supabase_client() 中对
+            # DB_BACKEND 的判断（该判断仅适用于主数据查询链路）
+            from app.services.supabase_client import SupabaseClient
+            self._supabase_client = SupabaseClient()
         if not self._supabase_client or not self._supabase_client.client:
             raise ConnectionError("Supabase 客户端不可用")
         return self._supabase_client.client
@@ -59,9 +64,12 @@ class SynonymManagerService:
         """清空缓存，下次调用时重建"""
         self._cache = None
         self._table_cache = None
-        # 同时清空原有静态模块缓存
-        import app.config.table_synonyms as ts
-        ts._SYNONYM_TO_TABLE_CACHE = None
+        # 同时清空原有静态模块缓存（兼容旧版，模块不存在时静默忽略）
+        try:
+            import app.config.table_synonyms as ts
+            ts._SYNONYM_TO_TABLE_CACHE = None
+        except (ImportError, AttributeError):
+            pass
 
     # ------------------------------------------------------------------
     # 查询 / 读取
@@ -129,8 +137,20 @@ class SynonymManagerService:
             query = query.order('target_uri').order('synonym')
             response = query.execute()
             if response.data:  # non-empty list — class_synonyms table is populated
-                logger.info(f"✅ Supabase REST class_synonyms: {len(response.data)} 条")
-                return response.data
+                db_rows = response.data
+                logger.info(f"✅ Supabase REST class_synonyms: {len(db_rows)} 条")
+                # Merge with static fallback — show builtin synonyms not already in DB
+                existing_keys = {(r['target_uri'], r['synonym']) for r in db_rows}
+                static_rows = self._fallback_get_all(uri_filter)
+                if source:
+                    static_rows = [r for r in static_rows if r.get('source') == source]
+                if is_active is not None:
+                    static_rows = [r for r in static_rows if r.get('is_active') == is_active]
+                supplemental = [r for r in static_rows if (r['target_uri'], r['synonym']) not in existing_keys]
+                merged = db_rows + supplemental
+                merged.sort(key=lambda r: (r.get('target_uri', ''), r.get('synonym', '')))
+                logger.info(f"✅ 合并后: {len(merged)} 条（含 {len(supplemental)} 条静态补充）")
+                return merged
         except Exception as e:
             logger.warning(f"Supabase REST class_synonyms 查询失败: {e}")
 

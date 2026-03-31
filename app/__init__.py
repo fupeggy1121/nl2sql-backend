@@ -90,3 +90,11 @@ def register_blueprints(app):
                  sum(1 for r in app.url_map.iter_rules() if '/api/mapping' in r.rule))
     except Exception as exc:  # noqa: BLE001
         log.error("❌ Failed to register mapping_manager blueprint: %s", exc, exc_info=True)
+
+    # 本体建模技能 Blueprint
+    try:
+        from app.routes import ontology_skill_routes
+        app.register_blueprint(ontology_skill_routes.bp)
+        log.info("✅ ontology_skill blueprint registered at /api/ontology-skill")
+    except Exception as exc:  # noqa: BLE001
+        log.error("❌ Failed to register ontology_skill blueprint: %s", exc, exc_info=True)

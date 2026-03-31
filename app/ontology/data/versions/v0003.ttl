@@ -476,20 +476,20 @@ semi:hasConstraint a owl:ObjectProperty ;
 
 semi:hasDetentionCode a owl:DatatypeProperty ;
     rdfs:label "扣留代码" ;
-    rdfs:comment "扣留或释放操作的扣留类型代码，如 QTIME_HOLD。【扣留/释放事件专用，仅 op=4/5 有效】物理路径：_wafer_detail_log.batch_resume_detail_log_id = _detail.id → JSON_EXTRACT(_detail.extra, '$.detentionCode')（_wafer_detail_log.extra 始终为空，禁止读取 _wafer_detail_log.extra）。可用于过滤/统计特定扣留原因的批次操作记录。" ;
-    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:comment "扣留或释放操作的扣留类型代码，如 QTIME_HOLD。物理映射：JSON_EXTRACT(_detail.extra, '$.detentionCode')。可用于过滤/统计特定扣留原因的批次操作记录。" ;
+    rdfs:domain semi:HoldDetailSnapshot ;
     rdfs:range xsd:string .
 
 semi:hasDetentionProcessCode a owl:DatatypeProperty ;
     rdfs:label "扣留/释放站点编码" ;
-    rdfs:comment "扣留或释放操作绑定的工序站点编码，如 degumingVI。【扣留/释放事件专用，仅 op=4/5 有效】物理路径：_wafer_detail_log.batch_resume_detail_log_id = _detail.id → JSON_EXTRACT(_detail.extra, '$.detentionProcessCode')。预扣留场景中，此字段标记批次流转至该工序时自动触发扣留的站点编码。" ;
-    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:comment "扣留或释放操作绑定的工序站点编码，如 degumingVI。物理映射：JSON_EXTRACT(_detail.extra, '$.detentionProcessCode')。预扣留场景中，此字段标记批次流转至该工序时自动触发扣留的站点编码（与 HoldEvent.preHoldProcessCode 语义对应，存储于 extra JSON）。" ;
+    rdfs:domain semi:HoldDetailSnapshot ;
     rdfs:range xsd:string .
 
 semi:hasDetentionRemark a owl:DatatypeProperty ;
     rdfs:label "扣留备注" ;
-    rdfs:comment "扣留或释放操作的备注信息。【扣留/释放事件专用，仅 op=4/5 有效】物理路径：_wafer_detail_log.batch_resume_detail_log_id = _detail.id → JSON_EXTRACT(_detail.extra, '$.detentionRemark')。" ;
-    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:comment "扣留或释放操作的备注信息。物理映射：JSON_EXTRACT(_detail.extra, '$.detentionRemark')。" ;
+    rdfs:domain semi:HoldDetailSnapshot ;
     rdfs:range xsd:string .
 
 semi:hasEquipmentCode a owl:DatatypeProperty ;
@@ -576,7 +576,17 @@ semi:hasGeoLocation a owl:DatatypeProperty ;
     rdfs:domain semi:WarehouseLocation ;
     rdfs:range xsd:string .
 
+semi:hasHoldDetail a owl:ObjectProperty ;
+    rdfs:label "扣留事件包含子批次快照" ;
+    rdfs:comment "批次扣留事件记录（HoldEventRecord, op=4）1:N 关联扣留时刻各子批次的快照（HoldDetailSnapshot）。物理路径：_resume_log.id = _detail.batch_resume_log_id。HoldEventRecord 的 filter_condition=operation_type=4 隐式过滤，保证只返回扣留事件的子批次快照行。快照行的 before_state/after_state 记录子批次状态变化；extra 含扣留代码/备注/站点。与 hasReleaseDetail 成对覆盖扣留/释放两端子批次状态。" ;
+    rdfs:domain semi:HoldEventRecord ;
+    rdfs:range semi:HoldDetailSnapshot .
 
+semi:hasHoldWaferSnapshot a owl:ObjectProperty ;
+    rdfs:label "扣留/释放子批次快照关联Wafer粒度快照" ;
+    rdfs:comment "扣留/释放子批次快照（HoldDetailSnapshot）1:N 关联 Wafer 粒度快照（WaferHoldSnapshot）。物理路径：_detail.id = _wafer_detail_log.batch_resume_detail_log_id。三层完整路径：HoldEventRecord →(hasHoldDetail)→ HoldDetailSnapshot →(hasHoldWaferSnapshot)→ WaferHoldSnapshot，可查询每次扣留/释放操作时每片 wafer 所在的子批次、载具及槽位。" ;
+    rdfs:domain semi:HoldDetailSnapshot ;
+    rdfs:range semi:WaferHoldSnapshot .
 
 semi:hasInspectionRecord a owl:ObjectProperty ;
     rdfs:label "批次入库检验参数记录集" ;
@@ -896,7 +906,11 @@ semi:hasRecordingTime a owl:DatatypeProperty ;
     rdfs:domain semi:MeasurementPassRecord ;
     rdfs:range xsd:dateTime .
 
-
+semi:hasReleaseDetail a owl:ObjectProperty ;
+    rdfs:label "释放事件包含子批次快照" ;
+    rdfs:comment "批次释放事件记录（ReleaseEventRecord, op=5）1:N 关联释放时刻各子批次的快照（HoldDetailSnapshot）。物理路径：_resume_log.id = _detail.batch_resume_log_id（与 hasHoldDetail 同结构）。快照类复用 HoldDetailSnapshot（同一物理表，同一 extra 结构，语义上区分为释放操作）；extra.detentionCode 为被解除的扣留代码；before_state=释放前状态（80 Staged），after_state=释放后状态（恢复正常流转）。" ;
+    rdfs:domain semi:ReleaseEventRecord ;
+    rdfs:range semi:HoldDetailSnapshot .
 
 semi:hasRemainingLife a owl:DatatypeProperty ;
     rdfs:label "剩余寿命" ;
@@ -1124,14 +1138,14 @@ semi:hasWarehouseName a owl:DatatypeProperty ;
 
 semi:holdSnapshotOfSublot a owl:ObjectProperty ;
     rdfs:label "扣留/释放快照对应子批次实体" ;
-    rdfs:comment "扣留/释放事件的 WaferTransitionSnapshot 快照行所对应的子批次实体（Sublot）。【扣留/释放事件专用，仅 op=4/5 有效】物理路径：_wafer_detail_log.sub_lot_code = matrix_routerx_operation_lot.current_lot_code（WHERE parent_id != 0 即子批次）。支持从快照层导航到被扣留/释放的子批次实体，访问其当前状态/所处工序等字段。" ;
-    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:comment "HoldDetailSnapshot 快照行所对应的子批次实体（Sublot）。物理路径：_detail.sub_lot_id = matrix_routerx_operation_lot.id（WHERE parent_id != 0）。提供从快照到子批次实体的导航，支持查询被操作子批次当前状态/所处工序。" ;
+    rdfs:domain semi:HoldDetailSnapshot ;
     rdfs:range semi:Sublot .
 
 semi:holdSnapshotOfWafer a owl:ObjectProperty ;
     rdfs:label "Wafer扣留/释放快照对应晶圆实体" ;
-    rdfs:comment "扣留/释放事件的 WaferTransitionSnapshot 快照行所对应的晶圆实体（Wafer）。【扣留/释放事件专用，仅 op=4/5 有效】物理路径：_wafer_detail_log.wafer_id = matrix_routerx_operation_lot_wafer.wafer_id。wafer_id 是全局唯一不变锚点，连接快照记录与晶圆实体。支持查询被操作晶圆的当前状态/所属批次。" ;
-    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:comment "WaferHoldSnapshot 快照行所对应的晶圆实体（Wafer）。物理路径：_wafer_detail_log.wafer_id = matrix_routerx_operation_lot_wafer.wafer_id。提供从 Wafer 粒度快照到晶圆实体的导航，支持查询被操作晶圆的当前状态/所属批次。" ;
+    rdfs:domain semi:WaferHoldSnapshot ;
     rdfs:range semi:Wafer .
 
 semi:hostsRecipe a owl:ObjectProperty ;
@@ -1199,6 +1213,12 @@ semi:locatedAt a owl:ObjectProperty ;
     rdfs:comment "物料批次实例当前存放的库位（warehouse_inventory.warehouse_id → warehouse_model.id）。建立批次实例↔库位之间的核心空间关系，支持'某批次在哪个库位'和'某库位有哪些批次/物料'双向查询。" ;
     rdfs:domain semi:MaterialBatch ;
     rdfs:range semi:WarehouseLocation .
+
+semi:mergedFrom a owl:ObjectProperty ;
+    rdfs:label "攒批自" ;
+    rdfs:comment "攒批/合批(Merge)操作：多个源批次合并为一个新批次。在谱系DAG中表现为多对一的汇聚节点，是追溯断点的最常见来源。" ;
+    rdfs:domain semi:ProductionLot ;
+    rdfs:range semi:ProductionLot .
 
 semi:mergesIntoLot a owl:ObjectProperty ;
     rdfs:label "并入目标批次" ;
@@ -1454,7 +1474,7 @@ semi:HoldEvent a owl:Class ;
 semi:HoldEventRecord a owl:Class ;
     rdfs:label "批次扣留记录" ;
     semi:tableFilter "operation_type = 4" ;
-    rdfs:comment "批次扣留操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 4。【关联语义】被扣留批次（操作主体）由 lot_id/lot_code 确定；该批次 WIPStatus 执行后转为 Hold。⚠ 该操作不产生新批次（producesLot 不适用）。extra 字段可包含预扣留工序信息（preHoldProcessId/preHoldProcessCode）。【统一快照路径】HoldEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot（Wafer粒度，_wafer_detail_log，含 sub_lot_code/carrier_code/slot_no）→(holdSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(holdSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）；扣留元数据（专用）：WaferTransitionSnapshot.hasDetentionCode/hasDetentionRemark/hasDetentionProcessCode（join _detail.extra via batch_resume_detail_log_id）。" ;
+    rdfs:comment "批次扣留操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 4。【关联语义】被扣留批次（操作主体）由 lot_id/lot_code 与快照上下文共同确定；该批次 WIPStatus 执行后转为 Hold。⚠ 该操作不产生新批次（producesLot 不适用，不出现在本子类的 SQL 关联中）。区别于拆批：拆批存在源批次与产出批次；扣留操作仅对单批次做状态变更，无产出批次。extra 字段可包含预扣留工序信息（preHoldProcessId/preHoldProcessCode）。" ;
     rdfs:subClassOf [ a owl:Restriction ;
             owl:allValuesFrom semi:HoldEvent ;
             owl:onProperty semi:isInstanceOfEvent ],
@@ -1538,7 +1558,7 @@ semi:ReleaseEvent a owl:Class ;
 semi:ReleaseEventRecord a owl:Class ;
     rdfs:label "批次释放记录" ;
     semi:tableFilter "operation_type = 5" ;
-    rdfs:comment "批次释放操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 5。【关联语义】被释放批次由 lot_id/lot_code 确定；该批次 WIPStatus 执行后从 Hold 恢复为 Run 或 IDLE（由 process_status 推导）。⚠ 该操作不产生新批次（producesLot 不适用）。【统一快照路径】ReleaseEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot（Wafer粒度，_wafer_detail_log，含 sub_lot_code/carrier_code/slot_no）→(holdSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(holdSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）；扣留元数据（专用）：WaferTransitionSnapshot.hasDetentionCode/hasDetentionRemark/hasDetentionProcessCode（join _detail.extra via batch_resume_detail_log_id）；extra.detentionCode 为被解除的扣留代码，before_state=80/Staged，after_state=恢复态。与 HoldEventRecord 共用 hasWaferTransitionDetail/holdSnapshotOfWafer/holdSnapshotOfSublot 路径。" ;
+    rdfs:comment "批次释放操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 5。【关联语义】被扣留待释放的批次（操作主体）由 lot_id/lot_code 与快照上下文确定；该批次 WIPStatus 执行后从 Hold 恢复为 Run 或 IDLE。⚠ 该操作不产生新批次（producesLot 不适用）。WIPStatus 的转变由推导逻辑决定：释放后不再满足激活扣留条件（EXISTS HoldEventRecord 且无 ReleaseEventRecord），WIPStatus 恢复为 process_status 决定的 Run 或 IDLE。区别于拆批：拆批存在源批次→产出批次的谱系关系；释放/扣留操作均为单批次状态变更，不涉及批次谱系生成。" ;
     rdfs:subClassOf [ a owl:Restriction ;
             owl:allValuesFrom semi:ReleaseEvent ;
             owl:onProperty semi:isInstanceOfEvent ],
@@ -1555,7 +1575,9 @@ semi:SplitEvent a owl:Class ;
     rdfs:comment "定义拆批（Split）操作的规则/类型模板。将源批次中的指定晶圆析出，由 MES 系统自动生成新批次 ID。拆批不涉及物理设备加工，仅执行批次谱系切割与 Wafer 归属迁移。执行记录层见 semi:SplitEventRecord。" ;
     rdfs:subClassOf semi:ProductionEvent .
 
-
+semi:WaferHoldSnapshot a owl:Class ;
+    rdfs:label "Wafer扣留/释放快照(WaferHoldSnapshot)" ;
+    rdfs:comment "批次扣留（op=4）或释放（op=5）操作的 Wafer 粒度快照，对应 _wafer_detail_log（matrix_routerx_operation_lot_batch_resume_wafer_detail_log）表行。记录操作时刻每片 wafer 所属子批次（sub_lot_code）、载具（carrier_code）及槽位（slot_no）。通过 HoldDetailSnapshot → hasHoldWaferSnapshot 访问（三层路径：EventRecord → 子批次快照 → Wafer快照）；通过 holdSnapshotOfWafer 导航至晶圆实体（Wafer）。注意：同一物理表 _wafer_detail_log 也承载谱系操作（WaferTransitionSnapshot），扣留/释放场景每片 wafer 只写一行（无 isSource 侧别区分），extra 为空 {}，禁止读取 extra JSON 路径。" .
 
 semi:InboundRequestDetail a owl:Class ;
     rdfs:label "入库申请明细" ;
@@ -1693,7 +1715,9 @@ semi:Auxiliary a owl:Class ;
     rdfs:comment "加工过程中的消耗性资源（如化学药液、特气）。" ;
     rdfs:subClassOf semi:Material .
 
-
+semi:HoldDetailSnapshot a owl:Class ;
+    rdfs:label "扣留/释放子批次快照(HoldDetailSnapshot)" ;
+    rdfs:comment "批次扣留（op=4）或释放（op=5）操作的子批次粒度快照，对应 _detail（matrix_routerx_operation_lot_batch_resume_log_detail）表行。记录操作时刻子批次的状态变化（before_state/after_state）及扣留/释放信息（extra.detentionCode/detentionRemark/detentionProcessCode）。通过 hasHoldDetail（op=4）或 hasReleaseDetail（op=5）从 EventRecord 层访问；通过 hasHoldWaferSnapshot 向下关联 WaferHoldSnapshot 层；通过 holdSnapshotOfSublot 导航至子批次实体。" .
 
 semi:InboundEventRecord a owl:Class ;
     rdfs:label "入库记录明细" ;

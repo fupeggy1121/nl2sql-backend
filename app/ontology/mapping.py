@@ -67,6 +67,10 @@ class RelationMapping:
     # forbidden_intents:  禁止此关系参与路径的意图标签列表
     applicable_intents: List[str] = field(default_factory=list)
     forbidden_intents: List[str] = field(default_factory=list)
+    # 适用的 EventRecord 子类列表（空列表=全部适用）
+    # 当同名 relation 对不同事件类型有不同物理路径时，用此字段区分各条目
+    # e.g. semi:producesLot 对 SplitEventRecord 走 _wafer_detail_log.extra，对 AccumulateEventRecord 走 _detail.extra
+    applicable_record_types: List[str] = field(default_factory=list)
 
 @dataclass
 class RecursiveMapping:
@@ -255,6 +259,7 @@ class MappingDictionary:
         self._table_by_label: Dict[str, PhysicalTable] = {}          # "晶圆" → PhysicalTable
         self._table_by_physical: Dict[str, PhysicalTable] = {}       # "wafers" → PhysicalTable
         self._relation_map: Dict[str, RelationMapping] = {}          # "semi:belongsToLot" → RelationMapping
+        self._relation_map_list: List[RelationMapping] = []           # 全部条目（含同名多 domain 覆盖项）
         self._recursive_map: Dict[str, RecursiveMapping] = {}        # "semi:hasParentLot" → RecursiveMapping
         self._value_map: Dict[str, Dict[str, ValueMapping]] = {}     # "semi:WaferState" -> {"WIP": ValueMapping}
         self._business_rules: List[BusinessRule] = []
@@ -438,8 +443,10 @@ class MappingDictionary:
                 note=jl.get("note"),
                 applicable_intents=item.get("intent_tags", {}).get("applicable", []),
                 forbidden_intents=item.get("intent_tags", {}).get("forbidden", []),
+                applicable_record_types=item.get("applicable_record_types", []),
             )
             self._relation_map[rm.logic_relation] = rm
+            self._relation_map_list.append(rm)
 
     def _parse_value_mappings(self, data: Dict[str, Dict]) -> None:
         for domain, values in data.items():
@@ -596,8 +603,8 @@ class MappingDictionary:
         return results
 
     def list_all_relations(self) -> List[RelationMapping]:
-        """返回所有关系映射"""
-        return list(self._relation_map.values())
+        """返回所有关系映射（含同一关系名的多 domain 变体）"""
+        return list(self._relation_map_list)
 
     # ----------------------------------------------------------------- #
     # 3. 语义值 → SQL 条件
@@ -812,7 +819,7 @@ SELECT * FROM {cte_alias}{order_clause}"""
             "object_mappings_total": len(self._table_by_class),
             "physical_tables": physical_count,
             "virtual_classes": virtual_count,
-            "relation_mappings": len(self._relation_map),
+            "relation_mappings": len(self._relation_map_list),
             "recursive_relations": len(self._recursive_map),
             "value_domains": len(self._value_map),
             "business_rules": len(self._business_rules),

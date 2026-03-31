@@ -414,8 +414,10 @@ def reload_synonyms_from_db() -> int:
     """
     global _supabase_synonym_overlay
     try:
-        from app.services.supabase_client import get_supabase_client
-        sc = get_supabase_client()
+        # 直接实例化 SupabaseClient，绕过 get_supabase_client() 中对
+        # DB_BACKEND 的判断，确保 DB_BACKEND=mysql 时同义词仍可从 Supabase 加载
+        from app.services.supabase_client import SupabaseClient
+        sc = SupabaseClient()
         if not sc or not sc.client:
             logger.warning("[synonym_reload] Supabase 客户端不可用，跳过 DB 同义词加载")
             return 0

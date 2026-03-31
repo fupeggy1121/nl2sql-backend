@@ -13,11 +13,12 @@
  *   import MappingManager from './MappingManager';
  *   <MappingManager />
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import mermaid from 'mermaid';
 import {
   Plus, Search, RefreshCw, Trash2, Edit2, ChevronDown, ChevronRight,
   History, Database, GitBranch, Tag, FileText, AlertCircle, X, Check,
-  Book, BarChart2, Link2
+  Book, BarChart2, Link2, Eye
 } from 'lucide-react';
 import { mappingApi } from '../services/mappingApi';
 import { ontologyApi } from '../services/ontologyApi';
@@ -52,6 +53,8 @@ interface RelationMapping {
   description: string;
   strategy: string;
   join_logic: Record<string, any>;
+  per_record_type_join?: Record<string, { strategy: string; description?: string; join_logic: Record<string, any> }>;
+  applicable_record_types?: string[];
   domain_class?: string;
   range_class?: string;
   confidence?: string;
@@ -877,6 +880,7 @@ const STRATEGIES = [
   'EventLog',
   'ValueLookup',
   'Virtual',
+  'per_record_type',
 ];
 
 type RelationViewMode = 'list' | 'path';
@@ -944,12 +948,21 @@ function summarizeJoinLogic(joinLogic: Record<string, any> | undefined): string 
   if (joinLogic.via_table) parts.push(`via:${joinLogic.via_table}`);
   if (joinLogic.via_source_key) parts.push(`viaSrc:${joinLogic.via_source_key}`);
   if (joinLogic.via_target_key) parts.push(`viaTgt:${joinLogic.via_target_key}`);
-  if (joinLogic.via_filter) parts.push(`filter:${joinLogic.via_filter}`);
+  if (joinLogic.filter_condition || joinLogic.via_filter) parts.push(`filter:${joinLogic.filter_condition || joinLogic.via_filter}`);
   if (joinLogic.via2_table) parts.push(`via2:${joinLogic.via2_table}`);
   if (joinLogic.target_table) parts.push(`tgt:${joinLogic.target_table}`);
   if (joinLogic.target_key) parts.push(`tgtKey:${joinLogic.target_key}`);
   if (joinLogic.target_via_expr) parts.push(`expr:${joinLogic.target_via_expr}`);
   return parts.length ? parts.join(' | ') : '—';
+}
+
+function summarizePerRecordTypeJoin(
+  perJoin: Record<string, { strategy: string; join_logic: Record<string, any> }> | undefined
+): string {
+  if (!perJoin) return '—';
+  return Object.entries(perJoin)
+    .map(([type, cfg]) => `${type.replace('semi:', '')}(${cfg.strategy}): ${summarizeJoinLogic(cfg.join_logic)}`)
+    .join(' \n');
 }
 
 function formatClassName(cls?: unknown): string {
@@ -1021,7 +1034,7 @@ function buildChainText(preset: ScenarioPreset, relationMap: Map<string, Relatio
       if (!review) {
         lines.push(`${stepIndex + 1}. ${rel.logic_relation} | ${formatClassName(rel.domain_class)} -> ${formatClassName(rel.range_class)} | ${rel.strategy}`);
         lines.push(`   风险：${getRiskLabel(risk.level)} | ${risk.reasons.join('；')}`);
-        lines.push(`   JOIN摘要：${summarizeJoinLogic(rel.join_logic)}`);
+        lines.push(`   JOIN摘要：${rel.strategy === 'per_record_type' ? summarizePerRecordTypeJoin(rel.per_record_type_join) : summarizeJoinLogic(rel.join_logic)}`);
       } else {
         lines.push(`[${stepIndex + 1}] ${rel.logic_relation}`);
         lines.push(`- 层级：${classifyRelationLayer(rel) === 'event' ? '事件层' : classifyRelationLayer(rel) === 'snapshot' ? '快照层' : '实体层'}`);
@@ -1030,7 +1043,7 @@ function buildChainText(preset: ScenarioPreset, relationMap: Map<string, Relatio
         lines.push(`- Strategy：${rel.strategy || '—'}`);
         lines.push(`- 风险：${getRiskLabel(risk.level)}`);
         lines.push(`- 风险原因：${risk.reasons.join('；')}`);
-        lines.push(`- JOIN摘要：${summarizeJoinLogic(rel.join_logic)}`);
+        lines.push(`- JOIN摘要：${rel.strategy === 'per_record_type' ? summarizePerRecordTypeJoin(rel.per_record_type_join) : summarizeJoinLogic(rel.join_logic)}`);
         lines.push(`- 描述：${rel.description || '—'}`);
         lines.push('- 审查问题：');
         lines.push('  [ ] 语义是否准确？');
@@ -1065,6 +1078,72 @@ function buildChainMermaid(preset: ScenarioPreset, relationMap: Map<string, Rela
   return lines.join('\n');
 }
 
+// ══════════════════════════════════════════════════════════════════
+// Mermaid Preview Modal
+// ══════════════════════════════════════════════════════════════════
+
+mermaid.initialize({ startOnLoad: false, theme: 'default', flowchart: { curve: 'basis' } });
+
+function MermaidPreviewModal({ code, onClose }: { code: string; onClose: () => void }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !code) return;
+    const id = `mermaid-preview-${Date.now()}`;
+    el.innerHTML = '';
+    mermaid.render(id, code)
+      .then(({ svg }) => { el.innerHTML = svg; })
+      .catch(e => setError(String(e)));
+  }, [code]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden m-4"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
+          <span className="text-sm font-semibold text-gray-800">Mermaid 图预览</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCopy}
+              className="px-3 py-1.5 text-xs border border-emerald-300 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              {copied ? '已复制 ✓' : '复制代码'}
+            </button>
+            <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-700 rounded-md hover:bg-gray-100">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+        {/* Diagram */}
+        <div className="overflow-auto flex-1 p-6 flex items-start justify-center bg-gray-50">
+          {error
+            ? <pre className="text-xs text-red-600 bg-red-50 border border-red-200 rounded p-4 whitespace-pre-wrap">{error}</pre>
+            : <div ref={containerRef} className="[&_svg]:max-w-full [&_svg]:h-auto" />
+          }
+        </div>
+        {/* Raw code */}
+        <details className="border-t border-gray-200">
+          <summary className="px-5 py-2 text-xs text-gray-500 cursor-pointer select-none hover:bg-gray-50">查看 Mermaid 代码</summary>
+          <pre className="px-5 py-3 text-xs text-gray-700 bg-gray-50 overflow-auto max-h-48 whitespace-pre-wrap font-mono">{code}</pre>
+        </details>
+      </div>
+    </div>
+  );
+}
+
 function matchScenario(item: RelationMapping, scenario: string): boolean {
   if (!scenario) return true;
   const corpus = `${item.logic_relation || ''} ${item.description || ''} ${item.domain_class || ''} ${item.range_class || ''}`.toLowerCase();
@@ -1090,6 +1169,7 @@ function RelationMappingsTab() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [mermaidCode, setMermaidCode] = useState<string | null>(null);
 
   const load = useCallback(async (q = search, conf = filterConf) => {
     setLoading(true);
@@ -1114,7 +1194,13 @@ function RelationMappingsTab() {
   };
 
   const openEdit = (item: RelationMapping) => {
-    setEditItem({ ...item, join_logic: { ...item.join_logic } });
+    const cloned: Partial<RelationMapping> = { ...item, join_logic: { ...(item.join_logic || {}) } };
+    if (item.per_record_type_join) {
+      cloned.per_record_type_join = Object.fromEntries(
+        Object.entries(item.per_record_type_join).map(([k, v]) => [k, { ...v, join_logic: { ...v.join_logic } }])
+      );
+    }
+    setEditItem(cloned);
     setIsEditing(true);
     setShowModal(true);
   };
@@ -1180,6 +1266,69 @@ function RelationMappingsTab() {
     const setJl = (key: string, val: any) =>
       setEditItem({ ...editItem, join_logic: { ...jl, [key]: val } });
 
+    if (editItem.strategy === 'per_record_type') {
+      const perJoin = editItem.per_record_type_join || {};
+      const setPerJoinField = (type: string, key: string, val: any) => {
+        const existing = perJoin[type] || { strategy: 'ForeignKey', join_logic: {} };
+        setEditItem({
+          ...editItem,
+          per_record_type_join: {
+            ...perJoin,
+            [type]: { ...existing, join_logic: { ...existing.join_logic, [key]: val } },
+          },
+        });
+      };
+      return (
+        <div className="space-y-4">
+          <p className="text-xs text-gray-400">每个事件类型独立配置 join_logic（只读展示，如需修改请直接编辑 JSON）</p>
+          {Object.entries(perJoin).map(([type, cfg]) => (
+            <div key={type} className="border border-blue-100 rounded-lg p-3 bg-blue-50/40">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-semibold text-blue-700 bg-blue-100 rounded px-2 py-0.5">{type.replace('semi:', '')}</span>
+                <span className="text-xs text-gray-500">{cfg.strategy}</span>
+                {cfg.description && <span className="text-xs text-gray-400 truncate max-w-xs" title={cfg.description}>{cfg.description}</span>}
+              </div>
+              <pre className="text-xs text-gray-600 bg-white border border-blue-100 rounded p-2 overflow-x-auto whitespace-pre-wrap">
+                {JSON.stringify(cfg.join_logic, null, 2)}
+              </pre>
+              <div className="mt-2">
+                <Field label={`${type.replace('semi:', '')} join_logic（JSON 编辑）`} hint="修改后回车生效">
+                  <textarea
+                    defaultValue={JSON.stringify(cfg.join_logic, null, 2)}
+                    onChange={e => {
+                      try {
+                        const parsed = JSON.parse(e.target.value);
+                        const existing = perJoin[type] || { strategy: 'ForeignKey', join_logic: {} };
+                        setEditItem({
+                          ...editItem,
+                          per_record_type_join: {
+                            ...perJoin,
+                            [type]: { ...existing, join_logic: parsed },
+                          },
+                        });
+                      } catch { }
+                    }}
+                    className={textareaCls}
+                    rows={5}
+                  />
+                </Field>
+              </div>
+            </div>
+          ))}
+          <Field label="per_record_type_join（完整 JSON）" hint="直接编辑整个结构">
+            <textarea
+              defaultValue={JSON.stringify(perJoin, null, 2)}
+              onChange={e => {
+                try { setEditItem({ ...editItem, per_record_type_join: JSON.parse(e.target.value) }); } catch { }
+              }}
+              className={textareaCls}
+              rows={10}
+            />
+          </Field>
+        </div>
+      );
+    }
+
     switch (editItem.strategy) {
       case 'ForeignKey':
         return (
@@ -1211,7 +1360,7 @@ function RelationMappingsTab() {
             <Field label="via_table（中间表）"><input value={jl.via_table || ''} onChange={e => setJl('via_table', e.target.value)} className={inputCls} /></Field>
             <Field label="via_source_key"><input value={jl.via_source_key || ''} onChange={e => setJl('via_source_key', e.target.value)} className={inputCls} /></Field>
             <Field label="via_target_key"><input value={jl.via_target_key || ''} onChange={e => setJl('via_target_key', e.target.value)} className={inputCls} /></Field>
-            <Field label="via_filter（可选）"><input value={jl.via_filter || ''} onChange={e => setJl('via_filter', e.target.value)} className={inputCls} /></Field>
+            <Field label="filter_condition（可选）" hint="中间表行级过滤，e.g. JSON_EXTRACT(t.extra,'$.isSource')=true"><input value={jl.filter_condition || ''} onChange={e => setJl('filter_condition', e.target.value)} className={inputCls} /></Field>
             <Field label="target_table"><input value={jl.target_table || ''} onChange={e => setJl('target_table', e.target.value)} className={inputCls} /></Field>
             <Field label="target_key"><input value={jl.target_key || ''} onChange={e => setJl('target_key', e.target.value)} className={inputCls} /></Field>
             <Field label="via2_table（第二跳，可选）"><input value={jl.via2_table || ''} onChange={e => setJl('via2_table', e.target.value)} className={inputCls} /></Field>
@@ -1318,7 +1467,7 @@ function RelationMappingsTab() {
             </select>
             <button onClick={() => copyText(buildChainText(currentPreset, relationMap, false), '已复制简版链路')} className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50">复制简版链路</button>
             <button onClick={() => copyText(buildChainText(currentPreset, relationMap, true), '已复制审查版链路')} className="px-3 py-2 text-sm border border-blue-300 rounded-lg bg-blue-600 text-white hover:bg-blue-700">复制审查版链路</button>
-            <button onClick={() => copyText(buildChainMermaid(currentPreset, relationMap), '已复制当前场景 Mermaid')} className="px-3 py-2 text-sm border border-emerald-300 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">导出 Mermaid</button>
+            <button onClick={() => setMermaidCode(buildChainMermaid(currentPreset, relationMap))} className="flex items-center gap-1.5 px-3 py-2 text-sm border border-emerald-300 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"><Eye size={14} />预览 Mermaid</button>
             <span className="text-xs text-gray-500">{currentPreset.description}</span>
             {copyMessage && <span className="text-xs text-green-600">{copyMessage}</span>}
           </div>
@@ -1331,7 +1480,7 @@ function RelationMappingsTab() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <button onClick={() => copyText(buildChainText(currentPreset, relationMap, false, chain, index), `已复制链路 ${index + 1} 简版`)} className="px-2.5 py-1 text-xs border border-gray-300 rounded-md bg-white text-gray-700 hover:bg-gray-50">复制本链路</button>
                     <button onClick={() => copyText(buildChainText(currentPreset, relationMap, true, chain, index), `已复制链路 ${index + 1} 审查版`)} className="px-2.5 py-1 text-xs border border-blue-300 rounded-md bg-blue-600 text-white hover:bg-blue-700">复制本链路审查版</button>
-                    <button onClick={() => copyText(buildChainMermaid(currentPreset, relationMap, [chain]), `已复制链路 ${index + 1} Mermaid`)} className="px-2.5 py-1 text-xs border border-emerald-300 rounded-md bg-emerald-600 text-white hover:bg-emerald-700">Mermaid</button>
+                    <button onClick={() => setMermaidCode(buildChainMermaid(currentPreset, relationMap, [chain]))} className="flex items-center gap-1 px-2.5 py-1 text-xs border border-emerald-300 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"><Eye size={12} />Mermaid</button>
                   </div>
                 </div>
 
@@ -1353,7 +1502,7 @@ function RelationMappingsTab() {
                         </div>
                         <div className="mt-1 text-xs text-gray-600">{formatClassName(rel.domain_class)} → {formatClassName(rel.range_class)}</div>
                         <div className="mt-1 text-xs text-amber-700">风险原因：{risk.reasons.join('；')}</div>
-                        <div className="mt-1 text-xs text-gray-500 break-all">JOIN摘要：{summarizeJoinLogic(rel.join_logic)}</div>
+                        <div className="mt-1 text-xs text-gray-500 break-all">JOIN摘要：{rel.strategy === 'per_record_type' ? summarizePerRecordTypeJoin(rel.per_record_type_join) : summarizeJoinLogic(rel.join_logic)}</div>
                       </div>
                     );
                   })}
@@ -1426,10 +1575,28 @@ function RelationMappingsTab() {
                         <Badge text={getRiskLabel(risk.level)} colorCls={getRiskBadgeColor(risk.level)} />
                         <span className="text-xs text-amber-700">风险原因：{risk.reasons.join('；')}</span>
                       </div>
-                      <div className="text-xs text-gray-500 break-all">JOIN摘要：{summarizeJoinLogic(item.join_logic)}</div>
-                      <pre className="text-xs text-gray-600 bg-white border border-gray-200 rounded-lg p-3 overflow-x-auto">
-                        {JSON.stringify(item.join_logic, null, 2)}
-                      </pre>
+                      <div className="text-xs text-gray-500 break-all">
+                        JOIN摘要：{item.strategy === 'per_record_type'
+                          ? summarizePerRecordTypeJoin(item.per_record_type_join)
+                          : summarizeJoinLogic(item.join_logic)}
+                      </div>
+                      {item.strategy === 'per_record_type' && item.per_record_type_join ? (
+                        <div className="space-y-2">
+                          {Object.entries(item.per_record_type_join).map(([type, cfg]) => (
+                            <div key={type} className="bg-white border border-gray-200 rounded-lg p-3">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-semibold text-blue-700 bg-blue-50 rounded px-2 py-0.5">{type.replace('semi:', '')}</span>
+                                <span className="text-xs text-gray-500">{cfg.strategy}</span>
+                              </div>
+                              <pre className="text-xs text-gray-600 overflow-x-auto">{JSON.stringify(cfg.join_logic, null, 2)}</pre>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <pre className="text-xs text-gray-600 bg-white border border-gray-200 rounded-lg p-3 overflow-x-auto">
+                          {JSON.stringify(item.join_logic, null, 2)}
+                        </pre>
+                      )}
                       {item.domain_class && <div className="text-xs text-gray-400">domain: {item.domain_class} → range: {item.range_class}</div>}
                     </td>
                   </tr>
@@ -1464,8 +1631,15 @@ function RelationMappingsTab() {
           </Field>
 
           <Field label="策略" required>
-            <select value={editItem.strategy || 'ForeignKey'} onChange={e => setEditItem({ ...editItem, strategy: e.target.value, join_logic: {} })}
-              className={inputCls}>
+            <select value={editItem.strategy || 'ForeignKey'} onChange={e => {
+              const strat = e.target.value;
+              setEditItem({
+                ...editItem,
+                strategy: strat,
+                join_logic: {},
+                per_record_type_join: strat === 'per_record_type' ? editItem.per_record_type_join || {} : undefined,
+              });
+            }} className={inputCls}>
               {STRATEGIES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </Field>
@@ -1475,6 +1649,11 @@ function RelationMappingsTab() {
             {renderJoinLogicForm()}
           </div>
         </Modal>
+      )}
+
+      {/* Mermaid Preview Modal */}
+      {mermaidCode !== null && (
+        <MermaidPreviewModal code={mermaidCode} onClose={() => setMermaidCode(null)} />
       )}
     </div>
   );

@@ -106,9 +106,17 @@ def sql_generator_node(state: AgentState) -> dict:
     if sql and semantic_ctx:
         sql = _enforce_physical_table_names(sql, semantic_ctx)
     # ── 4.6 确定性 EmbeddedJSON 语法修正──
-    # 如果 LLM 仍然生成了 CROSS JOIN <表名>(...) 而不是 CROSS JOIN JSON_TABLE(...)，在此兴正
+    # 如果 LLM 仍然生成了 CROSS JOIN <表名>(...) 而不是 CROSS JOIN JSON_TABLE(...)，在此修正
     if sql:
         sql = _fix_embedded_json_syntax(sql, semantic_ctx)
+    # ── 4.7 object_csv 格式双格式兼容修正 ──
+    # 对 {"id":"77,79,105"} 格式字段（如 equipment_group.equipments）的错误 JSON_TABLE 展开做确定性修正
+    if sql:
+        sql = _fix_object_csv_json_joins(sql)
+    # ── 4.8 equipment_group_list 等值/JSON_CONTAINS JOIN 修正 ──
+    # equipment_group_list 是标量整数数组，必须 JSON_TABLE 展开，不能等值JOIN 或 JSON_CONTAINS
+    if sql:
+        sql = _fix_equipment_group_list_join(sql)
     # 读取本次 LLM 调用的 token 用量
     from app.services.llm_provider import get_last_llm_usage
     llm_usage = get_last_llm_usage()
@@ -319,6 +327,122 @@ def _fix_embedded_json_syntax(sql: str, semantic_ctx: dict) -> str:
         return m.group(0)
 
     return pattern.sub(replacer, sql)
+
+
+def _fix_equipment_group_list_join(sql: str) -> str:
+    """
+    确定性修正：equipment_group_list 是 JSON 整数数组（如 [1, 2]），
+    必须用 JSON_TABLE 展开，而非等值 JOIN / JSON_CONTAINS。
+
+    修正以下错误模式：
+      ① JOIN equipment_group eg ON p.equipment_group_list = eg.id
+      ② JOIN equipment_group eg ON JSON_CONTAINS(p.equipment_group_list, CAST(eg.id AS JSON)...)
+    统一替换为：
+      CROSS JOIN JSON_TABLE(p.equipment_group_list, '$[*]'
+          COLUMNS (eg_id BIGINT PATH '$')) AS jt_eg
+      INNER JOIN equipment_group eg ON eg.id = jt_eg.eg_id
+    """
+    if not sql or "equipment_group" not in sql.lower():
+        return sql
+    if "equipment_group_list" not in sql.lower():
+        return sql
+
+    import re
+
+    # 提取 matrix_routerx_config_process 的别名
+    from_alias_m = re.search(
+        r'\bFROM\s+matrix_routerx_config_process\s+(\w+)',
+        sql, re.IGNORECASE
+    )
+    p_alias = from_alias_m.group(1) if from_alias_m else "p"
+
+    # 模式①: (LEFT|INNER|CROSS|) JOIN equipment_group <eg_alias> ON <any>.equipment_group_list = <eg_alias>.id
+    pat_eq = re.compile(
+        r'(?:LEFT\s+|INNER\s+|CROSS\s+)?JOIN\s+equipment_group\s+(\w+)\s+ON\s+'
+        r'(?:\w+\.)?equipment_group_list\s*=\s*\w+\.id',
+        re.IGNORECASE,
+    )
+    # 模式②: (LEFT|INNER|CROSS|) JOIN equipment_group <eg_alias> ON JSON_CONTAINS(... equipment_group_list ...)
+    pat_jc = re.compile(
+        r'(?:LEFT\s+|INNER\s+|CROSS\s+)?JOIN\s+equipment_group\s+(\w+)\s+ON\s+'
+        r'JSON_CONTAINS\s*\([^)]*equipment_group_list[^)]*\)',
+        re.IGNORECASE,
+    )
+
+    def _replacement(eg_alias: str) -> str:
+        logger.warning(
+            f"[sql_generator] equipment_group_list JOIN修正: "
+            f"错误等值/JSON_CONTAINS → JSON_TABLE展开"
+        )
+        return (
+            f"CROSS JOIN JSON_TABLE({p_alias}.equipment_group_list, '$[*]' "
+            f"COLUMNS (eg_id BIGINT PATH '$')) AS jt_eg "
+            f"INNER JOIN equipment_group {eg_alias} ON {eg_alias}.id = jt_eg.eg_id"
+        )
+
+    result = pat_eq.sub(lambda m: _replacement(m.group(1)), sql)
+    result = pat_jc.sub(lambda m: _replacement(m.group(1)), result)
+    return result
+
+
+def _fix_object_csv_json_joins(sql: str) -> str:
+    """
+    双格式兼容修正（安全网）：当 LLM 仍然对 object_csv 格式的 JSON 字段
+    （如 equipment_group.equipments，实际格式 {"id":"77,79,105"}）
+    误用 JSON_TABLE($[*]) 展开时，确定性替换为正确的 FIND_IN_SET 写法。
+
+    错误模式:
+      CROSS JOIN JSON_TABLE(eg.equipments, '$[*]' COLUMNS (e_id BIGINT PATH '$')) AS jt_e
+      INNER JOIN equipment e ON e.id = jt_e.e_id
+    修正为:
+      INNER JOIN equipment e
+        ON FIND_IN_SET(CAST(e.id AS CHAR),
+           JSON_UNQUOTE(JSON_EXTRACT(eg.equipments, '$.id'))) > 0
+    """
+    if not sql or "equipments" not in sql.lower():
+        return sql
+
+    import re
+
+    # Step 1: 捕获并移除 CROSS JOIN JSON_TABLE(<eg_alias>.equipments, '$[*]'...) AS <jt_alias>
+    jt_pattern = re.compile(
+        r"CROSS\s+JOIN\s+JSON_TABLE\s*\(\s*(\w+)\.equipments\s*,"
+        r"\s*[\'\"]?\$\[\*\][\'\"]?\s+COLUMNS\s*\([^)]+\)\s*\)\s+AS\s+(\w+)",
+        re.IGNORECASE | re.DOTALL,
+    )
+    matches = list(jt_pattern.finditer(sql))
+    if not matches:
+        return sql
+
+    eg_alias = matches[0].group(1)
+    jt_alias = matches[0].group(2)
+    sql_step1 = jt_pattern.sub("", sql)
+
+    # Step 2: 将 INNER JOIN equipment <e_alias> ON <e_alias>.id = <jt_alias>.<col>
+    #         替换为 FIND_IN_SET 写法
+    ij_pattern = re.compile(
+        r"INNER\s+JOIN\s+equipment\s+(\w+)\s+ON\s+\1\.id\s*=\s*"
+        + re.escape(jt_alias) + r"\.\w+",
+        re.IGNORECASE,
+    )
+
+    def _replace_ij(m: re.Match) -> str:
+        e_alias = m.group(1)
+        logger.warning(
+            f"[sql_generator] object_csv双格式修正: "
+            f"JSON_TABLE({eg_alias}.equipments,'$[*]') "
+            f"→ FIND_IN_SET({e_alias}.id,...) > 0"
+        )
+        return (
+            f"INNER JOIN equipment {e_alias} ON "
+            f"FIND_IN_SET(CAST({e_alias}.id AS CHAR), "
+            f"JSON_UNQUOTE(JSON_EXTRACT({eg_alias}.equipments, '$.id'))) > 0"
+        )
+
+    sql_step2 = ij_pattern.sub(_replace_ij, sql_step1)
+    # 清理因移除 CROSS JOIN 行产生的多余空行
+    sql_step2 = re.sub(r"\n(\s*\n){2,}", "\n\n", sql_step2)
+    return sql_step2
 
 
 def _build_optimized_query(
@@ -685,20 +809,50 @@ def _format_semantic_context(semantic_ctx: dict) -> str:
                     if "->>'" in json_col_key:
                         json_col, json_key = json_col_key.split("->>'", 1)
                         json_key = json_key.rstrip("'")
+                        is_scalar_array = False
                     elif "->>" in json_col_key:
                         json_col, json_key = json_col_key.split("->>")
+                        is_scalar_array = False
                     else:
-                        json_col, json_key = json_col_key, "id"
+                        # 无 ->> 说明 from_key 就是列名本身，数组元素是标量整数（非对象）
+                        json_col = json_col_key
+                        json_key = "id"
+                        is_scalar_array = True
                     lines.append(
                         f"  [EmbeddedJSON展开] 源表={src_table}, JSON列={json_col}, "
-                        f"数组元素键={json_key}, 关联目标={tgt_table}.{tgt_col}"
+                        + (f"数组元素=整数ID, " if is_scalar_array else f"数组元素键={json_key}, ")
+                        + f"关联目标={tgt_table}.{tgt_col}"
                     )
-                    lines.append(
-                        f"  ⚠ 展开该 JSON 数组必须用 MySQL 内置函数 JSON_TABLE（不是表名）："
-                        f"CROSS JOIN JSON_TABLE({src_table}别名.{json_col}, '$[*]' "
-                        f"COLUMNS (seq FOR ORDINALITY, {json_key} INT PATH '$.{json_key}')) AS jt "
-                        f"INNER JOIN {tgt_table} ON {tgt_table}.{tgt_col} = jt.{json_key} ORDER BY jt.seq"
-                    )
+                    # ── 双格式兼容：detect object_csv 格式（note 中含 FIND_IN_SET 声明）──
+                    _join_note = j.get("note", "")
+                    if "FIND_IN_SET" in _join_note.upper():
+                        # 该 JSON 字段实际是对象格式（如 {"id":"77,79,105"}），不是数组
+                        lines.append(
+                            f"  ⚠ 【重要 - 非数组格式】{json_col} 字段存储为 JSON 对象"
+                            f"（如 {{\"id\":\"77,79,105\"}}），"
+                            f"禁止使用 JSON_TABLE({src_table}别名.{json_col}, '$[*]')！"
+                            f"必须用 FIND_IN_SET 写法："
+                            f"INNER JOIN {tgt_table} {tgt_table[0]} "
+                            f"ON FIND_IN_SET(CAST({tgt_table[0]}.{tgt_col} AS CHAR), "
+                            f"JSON_UNQUOTE(JSON_EXTRACT({src_table}别名.{json_col}, '$.{json_key}'))) > 0"
+                        )
+                    elif is_scalar_array:
+                        # 标量整数数组（如 [1,2]），每个元素直接是 ID，必须用 PATH '$'
+                        lines.append(
+                            f"  ⚠ 展开该 JSON 整数数组（元素直接是整数ID，如[1,2]）必须用 JSON_TABLE：\n"
+                            f"  CROSS JOIN JSON_TABLE({src_table}别名.{json_col}, '$[*]' "
+                            f"COLUMNS (eg_id BIGINT PATH '$')) AS jt_eg\n"
+                            f"  INNER JOIN {tgt_table} ON {tgt_table}.{tgt_col} = jt_eg.eg_id\n"
+                            f"  ⛔ 禁止写 {src_table}别名.{json_col} = {tgt_table}.{tgt_col} 等值JOIN！"
+                            f"禁止使用 JSON_CONTAINS！"
+                        )
+                    else:
+                        lines.append(
+                            f"  ⚠ 展开该 JSON 数组必须用 MySQL 内置函数 JSON_TABLE（不是表名）："
+                            f"CROSS JOIN JSON_TABLE({src_table}别名.{json_col}, '$[*]' "
+                            f"COLUMNS (seq FOR ORDINALITY, {json_key} INT PATH '$.{json_key}')) AS jt "
+                            f"INNER JOIN {tgt_table} ON {tgt_table}.{tgt_col} = jt.{json_key} ORDER BY jt.seq"
+                        )
                 else:
                     lines.append(f"  {c['from']} = {c['to']}")
             if j.get("note"):

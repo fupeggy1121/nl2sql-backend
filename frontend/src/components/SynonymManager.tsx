@@ -231,10 +231,22 @@ function DetailPanel({ group, allUris, onRefresh }: {
     const words = newWord.split(/[,，\n]/).map(w => w.trim()).filter(Boolean);
     if (!words.length) return;
     setAdding(true);
-    if (words.length === 1) {
-      await synonymApi.addSynonym(group.uri, words[0]);
-    } else {
-      await synonymApi.addSynonymsBatch(group.uri, words);
+    try {
+      let res: any;
+      if (words.length === 1) {
+        res = await synonymApi.addSynonym(group.uri, words[0]);
+      } else {
+        res = await synonymApi.addSynonymsBatch(group.uri, words);
+      }
+      if (res && res.success === false) {
+        alert(`添加失败：${res.error || '未知错误'}`);
+        setAdding(false);
+        return;
+      }
+    } catch (e: any) {
+      alert(`添加失败：${e.message || String(e)}`);
+      setAdding(false);
+      return;
     }
     setNewWord('');
     await triggerPipelineReload();
