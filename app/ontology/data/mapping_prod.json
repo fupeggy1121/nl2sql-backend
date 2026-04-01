@@ -1136,7 +1136,52 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "不良录入操作执行记录，filter_condition = operation_type=6。具体不良 Wafer 明细通过 hasWaferTransitionSnapshot 关系记录于 _wafer_detail_log（ng_code 字段标注不良类型）。不改变批次 status，不产出新批次，output_lot_id 为 null。"
+      "note": "不良录入操作执行记录，filter_condition = operation_type=6。被标记不良的批次由 lot_id/lot_code 确定；操作员录入不良晶圆的 ng_code（不良代码）及 wafer_type=reject。不改变批次 status，不产出新批次，output_lot_id 为 null。【三层快照路径】NGRecordEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(ngSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(ngSnapshotOfSublot)→ Sublot；快照含 wafer_type=reject/ng_code/ng_reason/slot_no/carrier_code。每片 wafer 写一行快照，无 isSource 侧别。取消不良操作见 semi:CancelNGEventRecord（op=7）。"
+    },
+    {
+      "logic_class": "semi:CancelNGEvent",
+      "physical_table": null,
+      "label_cn": "取消不良事件类型",
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "note": "Type层定义，对应 LotOperationType operation_type=7（取消不良）的规则/类型模板。操作员对已标记不良的晶圆执行取消操作，wafer_type 由 reject 恢复为 null/good，ng_code/ng_reason 清空。执行记录见 semi:CancelNGEventRecord。"
+    },
+    {
+      "logic_class": "semi:CancelNGEventRecord",
+      "physical_table": "matrix_routerx_operation_lot_batch_resume_log",
+      "primary_key": "id",
+      "label_cn": "取消不良操作执行记录",
+      "display_column": "lot_code",
+      "filter_condition": "operation_type = 7",
+      "virtual": false,
+      "properties": {
+        "semi:hasEventStartTime": "gmt_create",
+        "semi:hasOperatorId": "create_user_id",
+        "semi:hasOperator": "create_user"
+      },
+      "key_columns": [
+        "id",
+        "operation_type",
+        "lot_id",
+        "lot_code",
+        "product_id",
+        "product_code",
+        "product_name",
+        "process_id",
+        "process_code",
+        "process_name",
+        "extra",
+        "create_user_id",
+        "create_user",
+        "gmt_create",
+        "update_user_id",
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "trace_id"
+      ],
+      "operation_type_ref": "value_mappings.semi:LotOperationType",
+      "note": "取消不良操作执行记录，filter_condition = operation_type=7。对已标记不良的晶圆执行取消操作，恢复 wafer_type 为 null/good 并清除 ng_code/ng_reason。不改变批次 status，不产出新批次，output_lot_id 为 null。【三层快照路径】CancelNGEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(ngSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(ngSnapshotOfSublot)→ Sublot；快照中 wafer_type=null/good，ng_code/ng_reason 字段被清空。每片 wafer 写一行快照，无 isSource 侧别。与 NGRecordEventRecord（op=6）互为逆操作，共用 ngSnapshotOfWafer/ngSnapshotOfSublot 快照路径。"
     },
     {
       "logic_class": "semi:CheckInEvent",
@@ -1352,7 +1397,7 @@
         "sub_lot_num",
         "wafer_num"
       ],
-      "note": "【迁移快照层（Wafer粒度，含源侧+目标侧）】ProductionEventRecord 经 hasWaferTransitionDetail（_detail 无 isSource 过滤，全量快照行）到 _wafer_detail_log 的快照实体。每个谱系操作每片 wafer 写两行：isSource=true（操作前源侧）和 isSource=false（操作后目标侧），通过 batch_resume_detail_log_id → _detail.extra.isSource（semi:isSourceSide）区分。sub_lot_code/carrier_code/slot_no 记录该快照时刻 wafer 所属子批次及载具槽位；ng_code/ng_reason 记录不良原因。拆批场景 extra JSON 含四维批次谱系（sourceLotCode/sourceSubLotCode/targetLotCode/targetSubLotCode）；并批/攒批场景 extra 为空({})，批次血缘经 batch_resume_detail_log_id → _detail.extra 反向读取。各血缘关系的 isSource 过滤在 relation_mappings 各条目的 filter_condition 中维护。【扣留/释放场景特殊说明】op=4/5 时每片 wafer 只写一行（无 isSource 侧别区分），_wafer_detail_log.extra 始终为空 {}；扣留专用属性（hasDetentionCode/hasDetentionRemark/hasDetentionProcessCode）须反向关联 _detail（batch_resume_detail_log_id = _detail.id）读取 _detail.extra JSON；通过 holdSnapshotOfSublot 导航至子批次实体，通过 holdSnapshotOfWafer 导航至晶圆实体。",
+      "note": "【迁移快照层（Wafer粒度，含源侧+目标侧）】ProductionEventRecord 经 hasWaferTransitionDetail（_detail 无 isSource 过滤，全量快照行）到 _wafer_detail_log 的快照实体。每个谱系操作每片 wafer 写两行：isSource=true（操作前源侧）和 isSource=false（操作后目标侧），通过 batch_resume_detail_log_id → _detail.extra.isSource（semi:isSourceSide）区分。sub_lot_code/carrier_code/slot_no 记录该快照时刻 wafer 所属子批次及载具槽位；ng_code/ng_reason 记录不良原因。拆批场景 extra JSON 含四维批次谱系（sourceLotCode/sourceSubLotCode/targetLotCode/targetSubLotCode）；并批/攒批场景 extra 为空({})，批次血缘经 batch_resume_detail_log_id → _detail.extra 反向读取。各血缘关系的 isSource 过滤在 relation_mappings 各条目的 filter_condition 中维护。【扣留/释放场景特殊说明】op=4/5 时每片 wafer 只写一行（无 isSource 侧别区分），_wafer_detail_log.extra 始终为空 {}；扣留专用属性（hasDetentionCode/hasDetentionRemark/hasDetentionProcessCode）须反向关联 _detail（batch_resume_detail_log_id = _detail.id）读取 _detail.extra JSON；通过 holdSnapshotOfSublot 导航至子批次实体，通过 holdSnapshotOfWafer 导航至晶圆实体。【不良录入/取消不良场景说明】op=6/7 时每片 wafer 只写一行（无 isSource 侧别区分）；不良录入快照：wafer_type=reject，ng_code/ng_reason 存储不良信息；取消不良快照：wafer_type=null/good，ng_code/ng_reason 被清空；通过 ngSnapshotOfSublot 导航至子批次实体，通过 ngSnapshotOfWafer 导航至晶圆实体。",
       "property_constraints": {
         "semi:hasDetentionCode": {
           "applicable_record_types": [
@@ -1394,9 +1439,10 @@
             "semi:CheckOutEventRecord",
             "semi:SplitEventRecord",
             "semi:AccumulateEventRecord",
-            "semi:NGRecordEventRecord"
+            "semi:NGRecordEventRecord",
+            "semi:CancelNGEventRecord"
           ],
-          "note": "wafer_type 直接列，null=good(良品)/reject(不良)/loss(报销)；SQL查询时需 COALESCE(wafer_type,'good') 处理 null 值"
+          "note": "wafer_type 直接列，null=good(良品)/reject(不良)/loss(报销)；SQL查询时需 COALESCE(wafer_type,'good') 处理 null 值。不良录入(op=6)后 wafer_type=reject；取消不良(op=7)后 wafer_type=null/good"
         }
       }
     },
@@ -3152,6 +3198,43 @@
       },
       "domain_class": "semi:WaferTransitionSnapshot",
       "range_class": "semi:ProcessStation"
+    },
+    {
+      "logic_relation": "semi:ngSnapshotOfSublot",
+      "description": "不良录入/取消不良事件快照对应子批次实体（不良操作专用，仅 op=6/7）",
+      "strategy": "ForeignKey",
+      "applicable_record_types": [
+        "semi:NGRecordEventRecord",
+        "semi:CancelNGEventRecord"
+      ],
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
+        "source_key": "sub_lot_code",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "current_lot_code",
+        "filter_condition": "parent_id != 0",
+        "note": "路径：_wafer_detail_log.sub_lot_code = matrix_routerx_operation_lot.current_lot_code（WHERE parent_id != 0 即子批次）。不良录入/取消不良操作每片 wafer 写一行快照（无 isSource 侧别），sub_lot_code 记录操作时刻 wafer 所属子批次编码，通过编码匹配定位子批次实体。与 holdSnapshotOfSublot/stationSnapshotOfSublot 同构。"
+      },
+      "domain_class": "semi:WaferTransitionSnapshot",
+      "range_class": "semi:Sublot"
+    },
+    {
+      "logic_relation": "semi:ngSnapshotOfWafer",
+      "description": "不良录入/取消不良事件快照对应晶圆实体（不良操作专用，仅 op=6/7）",
+      "strategy": "ForeignKey",
+      "applicable_record_types": [
+        "semi:NGRecordEventRecord",
+        "semi:CancelNGEventRecord"
+      ],
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
+        "source_key": "wafer_id",
+        "target_table": "matrix_routerx_operation_lot_wafer",
+        "target_key": "wafer_id",
+        "note": "路径：_wafer_detail_log.wafer_id = matrix_routerx_operation_lot_wafer.wafer_id。wafer_id 是全局唯一不变锚点，连接快照记录与晶圆实体。不良录入/取消不良操作每片 wafer 写一行快照（无 isSource 侧别区分）。与 holdSnapshotOfWafer/stationSnapshotOfWafer 同构。"
+      },
+      "domain_class": "semi:WaferTransitionSnapshot",
+      "range_class": "semi:Wafer"
     }
   ],
   "value_mappings": {
