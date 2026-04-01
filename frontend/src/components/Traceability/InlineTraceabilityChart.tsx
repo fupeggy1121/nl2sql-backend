@@ -16,11 +16,15 @@ interface StateTransition {
   process_code?: string;
   process_name?: string;
   operator?: string;
+  operator_id?: string;
   time?: string;
   has_measurements?: boolean;
   measurements?: Array<{ name: string; value: string; unit: string }>;
   station?: string;
+  station_id?: string;
+  equipment?: string;
   wafer_count?: number;
+  child_lot?: string;
   note?: string;
 }
 
@@ -51,17 +55,18 @@ const EVENT_COLOR: Record<string, string> = {
 };
 
 function nodeStyle(nodeId: string, _rootLot: string) {
-  if (nodeId.endsWith('@创建'))     return { color: '#6b7280', size: 24, symbol: 'roundRect' };
-  if (nodeId.endsWith('@完成批次')) return { color: '#047857', size: 24, symbol: 'roundRect' };
-  const label = nodeId.includes('@') ? nodeId.split('@')[1] : nodeId;
-  if (label === '进站')             return { color: '#3b82f6', size: 18, symbol: 'circle' };
-  if (label === '出站')             return { color: '#10b981', size: 18, symbol: 'circle' };
-  if (label === '拆批' || label === '拆父批') return { color: '#f59e0b', size: 20, symbol: 'diamond' };
-  if (label === '并批' || label === '攒批')   return { color: '#8b5cf6', size: 20, symbol: 'diamond' };
-  if (label === '返工')             return { color: '#ef4444', size: 20, symbol: 'triangle' };
-  if (label === '不良录入')         return { color: '#dc2626', size: 18, symbol: 'circle' };
-  if (label === '暂停')             return { color: '#d97706', size: 16, symbol: 'circle' };
-  return { color: '#94a3b8', size: 16, symbol: 'circle' };
+  const atIdx = nodeId.indexOf('@');
+  const label = atIdx >= 0 ? nodeId.substring(atIdx + 1) : nodeId;
+  if (label === '投料' || label === '创建')           return { color: '#6b7280', size: 24, symbol: 'roundRect' };
+  if (label === '完成' || label === '完成批次')        return { color: '#047857', size: 24, symbol: 'roundRect' };
+  if (label.endsWith('-进站') || label === '进站')     return { color: '#3b82f6', size: 20, symbol: 'circle' };
+  if (label.endsWith('-出站') || label === '出站')     return { color: '#10b981', size: 20, symbol: 'circle' };
+  if (label.includes('拆'))                           return { color: '#f59e0b', size: 22, symbol: 'diamond' };
+  if (label.includes('并') || label.includes('攒'))   return { color: '#8b5cf6', size: 22, symbol: 'diamond' };
+  if (label === '返工')                               return { color: '#ef4444', size: 22, symbol: 'triangle' };
+  if (label === '不良录入')                           return { color: '#dc2626', size: 20, symbol: 'circle' };
+  if (label === '暂停')                               return { color: '#d97706', size: 18, symbol: 'circle' };
+  return { color: '#94a3b8', size: 18, symbol: 'circle' };
 }
 
 function computeDAGLayout(transitions: StateTransition[]): Map<string, { x: number; y: number }> {
@@ -91,7 +96,9 @@ function computeDAGLayout(transitions: StateTransition[]): Map<string, { x: numb
   for (const n of allNodes) if (!level.has(n)) level.set(n, 0);
   const byLevel = new Map<number, string[]>();
   for (const [n, lv] of level) { if (!byLevel.has(lv)) byLevel.set(lv, []); byLevel.get(lv)!.push(n); }
-  const LEVEL_GAP = 120; const NODE_GAP = 160;
+  for (const nodes of byLevel.values()) nodes.sort();
+
+  const LEVEL_GAP = 200; const NODE_GAP = 260;
   const positions = new Map<string, { x: number; y: number }>();
   for (const [lv, nodesAtLevel] of byLevel) {
     const totalW = (nodesAtLevel.length - 1) * NODE_GAP;
@@ -103,27 +110,50 @@ function computeDAGLayout(transitions: StateTransition[]): Map<string, { x: numb
 function buildGenealogyOption(transitions: StateTransition[], rootLot: string) {
   if (!transitions || transitions.length === 0) return null;
   const positions = computeDAGLayout(transitions);
+
+  // 各节点的入边映射，用于 hover 时展示事件属性
+  const nodeToIncoming = new Map<string, StateTransition[]>();
+  for (const t of transitions) {
+    if (!nodeToIncoming.has(t.to_node)) nodeToIncoming.set(t.to_node, []);
+    nodeToIncoming.get(t.to_node)!.push(t);
+  }
+
+  // 将坐标偏移至全正区域
+  const posValues = Array.from(positions.values());
+  const minX = posValues.length ? Math.min(...posValues.map((p) => p.x)) : 0;
+  const OX = -minX + 60;
+  const OY = 50;
+
   const nodeIds = new Set<string>();
   transitions.forEach((t) => { nodeIds.add(t.from_node); nodeIds.add(t.to_node); });
 
   const nodes = Array.from(nodeIds).map((id) => {
     const s = nodeStyle(id, rootLot);
-    const atIdx = id.indexOf('@');
-    const opLabel = atIdx >= 0 ? id.substring(atIdx + 1) : id;
-    const preAt = atIdx >= 0 ? id.substring(0, atIdx) : '';
-    const procCode = preAt.includes('#') ? preAt.split('#')[0] : preAt;
-    const isStartEnd = opLabel === '创建' || opLabel === '完成批次';
+    const atIdx     = id.indexOf('@');
+    const stateLabel = atIdx >= 0 ? id.substring(atIdx + 1) : id;
+    const lotCode   = atIdx >= 0 ? id.substring(0, atIdx) : '';
+    const lotShort  = lotCode.split('-').pop() ?? lotCode;
+    const dashIdx   = stateLabel.lastIndexOf('-');
+    const eventKind  = dashIdx >= 0 ? stateLabel.substring(dashIdx + 1) : stateLabel;
+    const stationStr = dashIdx >= 0 ? stateLabel.substring(0, dashIdx) : '';
+    const isStartEnd = stateLabel === '投料' || stateLabel === '创建' || stateLabel === '完成' || stateLabel === '完成批次';
     const pos = positions.get(id) ?? { x: 0, y: 0 };
+    const incoming = nodeToIncoming.get(id) ?? [];
+
     return {
       id, name: id,
+      x: pos.x + OX,
+      y: pos.y + OY,
       symbolSize: s.size,
       symbol: s.symbol,
       itemStyle: { color: s.color },
       label: {
         show: true,
         formatter: isStartEnd
-          ? `{bold|${procCode.length > 12 ? procCode.slice(-10) : procCode}}`
-          : `{state|${opLabel}}\n{proc|${procCode}}`,
+          ? `{bold|${lotShort}}`
+          : stationStr
+            ? `{state|${eventKind}}\n{proc|${stationStr}}`
+            : `{state|${stateLabel}}\n{proc|${lotShort}}`,
         rich: {
           bold:  { fontSize: 10, color: '#1f2937', fontWeight: 'bold', lineHeight: 15 },
           state: { fontSize: 10, color: '#1f2937', fontWeight: 'bold', lineHeight: 15 },
@@ -131,28 +161,18 @@ function buildGenealogyOption(transitions: StateTransition[], rootLot: string) {
         },
         position: 'bottom',
       },
+      _incoming: incoming,
     };
   });
 
   const links = transitions.map((t) => ({
     source: t.from_node,
     target: t.to_node,
-    _meta: t,
-    label: {
-      show: true,
-      formatter: t.event,
-      fontSize: 9,
-      color: '#1f2937',
-      backgroundColor: (EVENT_COLOR[t.event_type] ?? '#94a3b8') + '22',
-      borderColor: EVENT_COLOR[t.event_type] ?? '#94a3b8',
-      borderWidth: 1,
-      borderRadius: 4,
-      padding: [2, 4],
-    },
+    label: { show: false },
     lineStyle: {
       color: EVENT_COLOR[t.event_type] ?? '#94a3b8',
       width: ['CHECKIN', 'CHECKOUT'].includes(t.event_type) ? 1.5 : 2.5,
-      curveness: ['SPLIT', 'REWORK'].includes(t.event_type) ? 0.3 : 0.1,
+      curveness: ['SPLIT', 'REWORK'].includes(t.event_type) ? 0.25 : 0,
       type: t.event_type === 'CHECKIN' ? 'dashed' : 'solid',
     },
   }));
@@ -162,41 +182,62 @@ function buildGenealogyOption(transitions: StateTransition[], rootLot: string) {
     backgroundColor: '#f8fafc',
     tooltip: {
       trigger: 'item',
+      enterable: false,
       formatter: (p: any) => {
-        if (p.dataType === 'node') {
-          const nid = p.data.id as string;
-          const ai = nid.indexOf('@');
-          const opLabel = ai >= 0 ? nid.substring(ai + 1) : nid;
-          const preAt   = ai >= 0 ? nid.substring(0, ai) : '';
-          const procCode = preAt.includes('#') ? preAt.split('#')[0] : preAt;
-          return `<b>${procCode}</b><br/>${opLabel}`;
+        if (p.dataType !== 'node') return '';
+        const id = p.data.id as string;
+        const incoming = (p.data._incoming ?? []) as StateTransition[];
+        const atIdx     = id.indexOf('@');
+        const stateLabel = atIdx >= 0 ? id.substring(atIdx + 1) : id;
+        const lotCode   = atIdx >= 0 ? id.substring(0, atIdx) : id;
+        const lotShort  = lotCode.split('-').slice(-2).join('-');
+        const dashIdx   = stateLabel.lastIndexOf('-');
+        const eventKind  = dashIdx >= 0 ? stateLabel.substring(dashIdx + 1) : stateLabel;
+        const stationStr = dashIdx >= 0 ? stateLabel.substring(0, dashIdx) : '';
+        const t = incoming[0];
+        const row = (label: string, val: string | number | undefined, icon = '') =>
+          val != null && val !== '' && val !== 0
+            ? `<tr><td style="color:#9ca3af;padding:2px 8px 2px 0;white-space:nowrap">${icon}${label}</td><td style="color:#1f2937">${val}</td></tr>`
+            : '';
+        let html = `<div style="max-width:280px;font-size:11px;line-height:1.6;font-family:sans-serif">`;
+        html += `<div style="font-weight:700;font-size:12px;color:#111827;margin-bottom:5px;border-bottom:1px solid #e5e7eb;padding-bottom:3px">`;
+        html += stationStr ? `${stationStr} · ${eventKind}` : stateLabel;
+        html += `</div>`;
+        if (t) {
+          const operator = t.operator_id || t.operator || '';
+          const station  = t.station || stationStr || '';
+          const stId     = t.station_id ? ` (${t.station_id})` : '';
+          html += `<table style="border-collapse:collapse">`;
+          html += row('批次号',   lotCode);
+          html += row('事件',     t.event);
+          html += row('时间',     t.time, '⏱ ');
+          html += row('操作人',   operator, '👤 ');
+          html += row('工序站点', station + stId, '🏭 ');
+          html += row('设备',     t.equipment, '⚙️ ');
+          html += row('批次规模', t.wafer_count ? `${t.wafer_count} 片` : '', '📦 ');
+          html += row('子批次',   t.child_lot, '🔀 ');
+          html += `</table>`;
+          if (t.event_type === 'CHECKIN' && t.wafer_count) {
+            html += `<div style="margin-top:6px;border-top:1px solid #e5e7eb;padding-top:5px">`;
+            html += `<div style="font-size:10px;font-weight:600;color:#6b7280;margin-bottom:2px">📸 进站快照</div>`;
+            html += `<div style="font-size:10px;color:#374151">批次: <b>${lotShort}</b> · ${t.wafer_count} 片 Wafer</div>`;
+            html += `</div>`;
+          } else if (t.event_type === 'SPLIT' && t.child_lot) {
+            html += `<div style="margin-top:6px;border-top:1px solid #e5e7eb;padding-top:5px">`;
+            html += `<div style="font-size:10px;font-weight:600;color:#6b7280;margin-bottom:2px">🔀 拆批快照</div>`;
+            html += `<div style="font-size:10px;color:#374151">母批 <b>${lotShort}</b> → 子批 <b>${t.child_lot.split('-').slice(-2).join('-')}</b></div>`;
+            html += `</div>`;
+          }
+        } else {
+          html += `<div style="color:#6b7280;font-size:10px">${lotCode}</div>`;
         }
-        const m = p.data._meta as StateTransition;
-        if (!m) return '';
-        const parts = [
-          `<b>${m.event}</b>`,
-          m.process_name ? `🏭 ${m.process_name}` : '',
-          m.time         ? `⏱ ${m.time}` : '',
-          m.operator     ? `👤 ${m.operator}` : '',
-        ].filter(Boolean);
-        if (m.measurements && m.measurements.length > 0) {
-          const mRows = m.measurements
-            .map((r) => `🔬 ${r.name}: ${r.value}${r.unit ? ' ' + r.unit : ''}`)
-            .join('<br/>');
-          parts.push(`<br/><b>量测数据</b><br/>${mRows}`);
-        }
-        return parts.join('<br/>');
+        html += `</div>`;
+        return html;
       },
     },
     series: [{
       type: 'graph',
-      layout: 'force',
-      force: {
-        repulsion: 280,
-        gravity: 0.1,
-        edgeLength: [70, 180],
-        layoutAnimation: false,
-      },
+      layout: 'none',
       data: nodes,
       links,
       roam: true,
