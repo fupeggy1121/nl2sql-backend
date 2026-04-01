@@ -1177,7 +1177,7 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "批次进站操作执行记录，filter_condition = operation_type=8。进站后 Sublot.process_status 转为 40（加工中），表示批次已进站等待加工指令。【快照导航路径】CheckInEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(stationSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(stationSnapshotOfSublot)→ Sublot；WaferTransitionSnapshot →(snapshotAtStation)→ ProcessStation（当前进站工序，2-hop：_detail.batch_resume_log_id → _resume_log.process_code → config_process.code）；WaferTransitionSnapshot.usedEquipmentCode（设备编码，_detail.extra.equipmentCode via batch_resume_detail_log_id）。每片 wafer 写一行快照，无 isSource 侧别。快照含 wafer_type(类型)/ng_code(不良码)/ng_reason(不良描述)。"
+      "note": "批次进站操作执行记录，filter_condition = operation_type=8。进站后 Sublot.process_status 转为 40（加工中），表示批次已进站等待加工指令。【快照导航路径】CheckInEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(stationSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(stationSnapshotOfSublot)→ Sublot；WaferTransitionSnapshot →(snapshotAtStation)→ ProcessStation（当前进站工序，直接 FK：_detail.process_id → config_process.id）；WaferTransitionSnapshot.usedEquipmentCode（设备编码，_detail.extra.equipmentCode via batch_resume_detail_log_id）。每片 wafer 写一行快照，无 isSource 侧别。快照含 wafer_type(类型)/ng_code(不良码)/ng_reason(不良描述)。"
     },
     {
       "logic_class": "semi:CheckOutEvent",
@@ -1218,7 +1218,7 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "批次出站操作执行记录，filter_condition = operation_type=9。出站后 Sublot.process_status 转为 10/20（待进站下道工序），批次流转至下道工序等待调度。【快照导航路径】CheckOutEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(stationSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(stationSnapshotOfSublot)→ Sublot；WaferTransitionSnapshot →(snapshotAtStation)→ ProcessStation（当前出站工序，2-hop：_detail.batch_resume_log_id → _resume_log.process_code → config_process.code）；WaferTransitionSnapshot →(transfersToStation)→ ProcessStation（出站后流转目标站点，JSON_EXTRACT(_detail.extra,'$.nextProcessCode')）；WaferTransitionSnapshot.usedEquipmentCode（设备编码）/ WaferTransitionSnapshot.hasNextProcessCode（下一站点工序编码），均从 _detail.extra 读取（via batch_resume_detail_log_id）。每片 wafer 写一行快照，无 isSource 侧别。与 CheckInEventRecord 成对构成完整过站周期。"
+      "note": "批次出站操作执行记录，filter_condition = operation_type=9。出站后 Sublot.process_status 转为 10/20（待进站下道工序），批次流转至下道工序等待调度。【快照导航路径】CheckOutEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(stationSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(stationSnapshotOfSublot)→ Sublot；WaferTransitionSnapshot →(snapshotAtStation)→ ProcessStation（当前出站工序，直接 FK：_detail.process_id → config_process.id）；WaferTransitionSnapshot →(transfersToStation)→ ProcessStation（出站后流转目标站点，JSON_EXTRACT(_detail.extra,'$.nextProcessCode')）；WaferTransitionSnapshot.usedEquipmentCode（设备编码）/ WaferTransitionSnapshot.hasNextProcessCode（下一站点工序编码），均从 _detail.extra 读取（via batch_resume_detail_log_id）。每片 wafer 写一行快照，无 isSource 侧别。与 CheckInEventRecord 成对构成完整过站周期。"
     },
     {
       "logic_class": "semi:AccumulateEvent",
@@ -1344,7 +1344,13 @@
         "ng_code",
         "ng_reason",
         "extra",
-        "gmt_create"
+        "gmt_create",
+        "process_id",
+        "process_code",
+        "process_name",
+        "sub_lot_id",
+        "sub_lot_num",
+        "wafer_num"
       ],
       "note": "【迁移快照层（Wafer粒度，含源侧+目标侧）】ProductionEventRecord 经 hasWaferTransitionDetail（_detail 无 isSource 过滤，全量快照行）到 _wafer_detail_log 的快照实体。每个谱系操作每片 wafer 写两行：isSource=true（操作前源侧）和 isSource=false（操作后目标侧），通过 batch_resume_detail_log_id → _detail.extra.isSource（semi:isSourceSide）区分。sub_lot_code/carrier_code/slot_no 记录该快照时刻 wafer 所属子批次及载具槽位；ng_code/ng_reason 记录不良原因。拆批场景 extra JSON 含四维批次谱系（sourceLotCode/sourceSubLotCode/targetLotCode/targetSubLotCode）；并批/攒批场景 extra 为空({})，批次血缘经 batch_resume_detail_log_id → _detail.extra 反向读取。各血缘关系的 isSource 过滤在 relation_mappings 各条目的 filter_condition 中维护。【扣留/释放场景特殊说明】op=4/5 时每片 wafer 只写一行（无 isSource 侧别区分），_wafer_detail_log.extra 始终为空 {}；扣留专用属性（hasDetentionCode/hasDetentionRemark/hasDetentionProcessCode）须反向关联 _detail（batch_resume_detail_log_id = _detail.id）读取 _detail.extra JSON；通过 holdSnapshotOfSublot 导航至子批次实体，通过 holdSnapshotOfWafer 导航至晶圆实体。",
       "property_constraints": {
@@ -3111,21 +3117,18 @@
     },
     {
       "logic_relation": "semi:snapshotAtStation",
-      "description": "进/出站快照所在当前工序站点（快照层 WaferTransitionSnapshot，仅 op=8/9）",
-      "strategy": "JoinVia",
+      "description": "进/出站快照所在当前工序站点（快照层 WaferTransitionSnapshot，仅 op=8/9，直接 FK）",
+      "strategy": "ForeignKey",
       "applicable_record_types": [
         "semi:CheckInEventRecord",
         "semi:CheckOutEventRecord"
       ],
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_log_detail",
-        "source_key": "batch_resume_log_id",
-        "via_table": "matrix_routerx_operation_lot_batch_resume_log",
-        "via_source_key": "id",
-        "via_target_key": "process_code",
+        "source_key": "process_id",
         "target_table": "matrix_routerx_config_process",
-        "target_key": "code",
-        "note": "起点为 WaferTransitionSnapshot 的 _detail 侧（batch_resume_log_id 桥接主表）。路径：_detail.batch_resume_log_id → _resume_log.id → _resume_log.process_code → config_process.code（2-hop JoinVia）。进站(op=8)/出站(op=9)快照均适用，表达该快照发生时所在的当前工序站点。区别 transfersToStation（出站后下一个流转站点，仅 op=9）。"
+        "target_key": "id",
+        "note": "路径：_detail.process_id = config_process.id（整型 PK FK，效率优于字符串 code 匹配）。_detail 表直接带有 process_id/process_code/process_name（与主表 _resume_log 对称），无需经过 _resume_log 2-hop 跳转。进站(op=8)/出站(op=9)快照均适用，表达该快照发生时所在的当前工序站点。区别 transfersToStation（出站后下一个流转站点，仅 op=9，来自 _detail.extra.nextProcessCode）。"
       },
       "domain_class": "semi:WaferTransitionSnapshot",
       "range_class": "semi:ProcessStation"
