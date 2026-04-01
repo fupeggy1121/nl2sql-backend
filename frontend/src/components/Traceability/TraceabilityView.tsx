@@ -13,15 +13,18 @@ interface StateTransition {
   id: string;
   from_node: string;
   to_node: string;
-  event: string;       // 显示在边上的标签
-  event_type: string;  // CHECKIN | CHECKOUT | SPLIT | REWORK | MERGE | DONE
+  event: string;       // 显示在边上的标签（中文操作名）
+  event_type: string;  // CHECKIN|CHECKOUT|SPLIT|MERGE|REWORK|NG|HOLD|RELEASE|DONE|OTHER
   lot_code: string;
-  station?: string;
+  process_code?: string;
+  process_name?: string;
+  operator?: string;
   time?: string;
+  has_measurements?: boolean;
+  measurements?: Array<{ name: string; value: string; unit: string }>;
+  station?: string;
   wafer_count?: number;
-  operator_id?: string;
   note?: string;
-  child_lot?: string;
 }
 
 interface LotTraceabilityData {
@@ -58,23 +61,90 @@ function parseParams(raw: string): { lotCode?: string; waferCode?: string } {
 
 // 颜色映射
 const EVENT_COLOR: Record<string, string> = {
-  CHECKIN:  '#3b82f6',  // 蓝 — 进站
-  CHECKOUT: '#10b981',  // 绿 — 出站
-  SPLIT:    '#f59e0b',  // 橙 — 拆批
-  MERGE:    '#8b5cf6',  // 紫 — 攒批
-  REWORK:   '#ef4444',  // 红 — 返工
-  DONE:     '#6b7280',  // 灰 — 完成
+  CHECKIN:  '#3b82f6',  // 蓝   — 进站
+  CHECKOUT: '#10b981',  // 绿   — 出站
+  SPLIT:    '#f59e0b',  // 橙   — 拆批/拆父批
+  MERGE:    '#8b5cf6',  // 紫   — 并批/攒批
+  REWORK:   '#ef4444',  // 红   — 返工
+  NG:       '#dc2626',  // 深红 — 不良录入
+  HOLD:     '#d97706',  // 琥珀 — 暂停
+  RELEASE:  '#059669',  // 青绿 — 释放
+  DONE:     '#047857',  // 深绿 — 完成批次
+  OTHER:    '#94a3b8',  // 灰   — 其他
 };
 
-// 节点样式 — 根据标签语义区分
-function nodeStyle(nodeId: string, rootLot: string) {
-  if (nodeId.endsWith('@投料'))   return { color: '#1d4ed8', size: 32, symbol: 'roundRect' };
-  if (nodeId.endsWith('@完成'))   return { color: '#047857', size: 32, symbol: 'roundRect' };
-  if (nodeId.includes('@投料') && !nodeId.startsWith(rootLot))
-                                  return { color: '#7c3aed', size: 26, symbol: 'circle' };
-  if (nodeId.includes('-进站'))   return { color: '#60a5fa', size: 20, symbol: 'circle' };
-  if (nodeId.includes('-出站'))   return { color: '#34d399', size: 20, symbol: 'circle' };
+// 节点样式 — 解析 {proc_code}#{op_id}@{op_zh} 格式
+function nodeStyle(nodeId: string, _rootLot: string) {
+  if (nodeId.endsWith('@创建'))     return { color: '#6b7280', size: 28, symbol: 'roundRect' };
+  if (nodeId.endsWith('@完成批次')) return { color: '#047857', size: 28, symbol: 'roundRect' };
+  const label = nodeId.includes('@') ? nodeId.split('@')[1] : nodeId;
+  if (label === '进站')             return { color: '#3b82f6', size: 20, symbol: 'circle' };
+  if (label === '出站')             return { color: '#10b981', size: 20, symbol: 'circle' };
+  if (label === '拆批' || label === '拆父批') return { color: '#f59e0b', size: 22, symbol: 'diamond' };
+  if (label === '并批' || label === '攒批')   return { color: '#8b5cf6', size: 22, symbol: 'diamond' };
+  if (label === '返工')             return { color: '#ef4444', size: 22, symbol: 'triangle' };
+  if (label === '不良录入')         return { color: '#dc2626', size: 20, symbol: 'circle' };
+  if (label === '暂停')             return { color: '#d97706', size: 18, symbol: 'circle' };
   return { color: '#94a3b8', size: 18, symbol: 'circle' };
+}
+
+// 拓扑排序 + 分层布局，返回每个节点的固定 (x, y) 坐标
+function computeDAGLayout(
+  transitions: StateTransition[],
+): Map<string, { x: number; y: number }> {
+  const outEdges = new Map<string, Set<string>>();
+  const inDegree  = new Map<string, number>();
+  const allNodes  = new Set<string>();
+
+  for (const t of transitions) {
+    allNodes.add(t.from_node);
+    allNodes.add(t.to_node);
+    if (!outEdges.has(t.from_node)) outEdges.set(t.from_node, new Set());
+    outEdges.get(t.from_node)!.add(t.to_node);
+    inDegree.set(t.to_node, (inDegree.get(t.to_node) ?? 0) + 1);
+  }
+  for (const n of allNodes) if (!inDegree.has(n)) inDegree.set(n, 0);
+
+  // Kahn's BFS：计算每个节点的最晚层次（最长路径）
+  const level = new Map<string, number>();
+  const tempIn = new Map(inDegree);
+  const queue: string[] = [];
+  for (const [n, d] of inDegree) if (d === 0) { queue.push(n); level.set(n, 0); }
+
+  while (queue.length) {
+    const node = queue.shift()!;
+    const lv = level.get(node) ?? 0;
+    for (const nb of outEdges.get(node) ?? []) {
+      level.set(nb, Math.max(level.get(nb) ?? 0, lv + 1));
+      const deg = (tempIn.get(nb) ?? 1) - 1;
+      tempIn.set(nb, deg);
+      if (deg === 0) queue.push(nb);
+    }
+  }
+  // 未被访问的节点（环）给予默认层次
+  for (const n of allNodes) if (!level.has(n)) level.set(n, 0);
+
+  // 按层分组后排序（保持稳定的列顺序）
+  const byLevel = new Map<number, string[]>();
+  for (const [n, lv] of level) {
+    if (!byLevel.has(lv)) byLevel.set(lv, []);
+    byLevel.get(lv)!.push(n);
+  }
+
+  const LEVEL_GAP = 130;   // 层间距（Y方向）
+  const NODE_GAP  = 180;   // 同层节点间距（X方向）
+  const positions = new Map<string, { x: number; y: number }>();
+
+  for (const [lv, nodesAtLevel] of byLevel) {
+    const totalW = (nodesAtLevel.length - 1) * NODE_GAP;
+    nodesAtLevel.forEach((n, i) => {
+      positions.set(n, {
+        x: i * NODE_GAP - totalW / 2,
+        y: lv * LEVEL_GAP,
+      });
+    });
+  }
+  return positions;
 }
 
 function buildGenealogyOption(
@@ -83,16 +153,20 @@ function buildGenealogyOption(
 ) {
   if (!transitions || transitions.length === 0) return null;
 
+  const positions = computeDAGLayout(transitions);
+
   // 收集所有节点
   const nodeIds = new Set<string>();
   transitions.forEach((t) => { nodeIds.add(t.from_node); nodeIds.add(t.to_node); });
 
   const nodes = Array.from(nodeIds).map((id) => {
     const s = nodeStyle(id, rootLot);
-    // 标签只显示 @ 后的状态部分，避免批次号重复占版面
-    const label = id.includes('@') ? id.split('@')[1] : id;
-    const lotPart = id.includes('@') ? id.split('@')[0] : '';
-    const isOtherLot = lotPart && lotPart !== rootLot;
+    const atIdx = id.indexOf('@');
+    const opLabel = atIdx >= 0 ? id.substring(atIdx + 1) : id;
+    const preAt = atIdx >= 0 ? id.substring(0, atIdx) : '';
+    const procCode = preAt.includes('#') ? preAt.split('#')[0] : preAt;
+    const isStartEnd = opLabel === '创建' || opLabel === '完成批次';
+    const pos = positions.get(id) ?? { x: 0, y: 0 };
     return {
       id, name: id,
       symbolSize: s.size,
@@ -100,15 +174,18 @@ function buildGenealogyOption(
       itemStyle: { color: s.color },
       label: {
         show: true,
-        formatter: isOtherLot ? `{lot|${lotPart.split('-').slice(-2).join('-')}}\n{state|${label}}` : `{state|${label}}`,
+        formatter: isStartEnd
+          ? `{bold|${procCode.length > 12 ? procCode.slice(-10) : procCode}}`
+          : `{state|${opLabel}}\n{proc|${procCode}}`,
         rich: {
-          lot:   { fontSize: 9,  color: '#6b7280', lineHeight: 14 },
-          state: { fontSize: 11, color: '#1f2937', fontWeight: 'bold' },
+          bold:  { fontSize: 11, color: '#1f2937', fontWeight: 'bold', lineHeight: 16 },
+          state: { fontSize: 11, color: '#1f2937', fontWeight: 'bold', lineHeight: 16 },
+          proc:  { fontSize: 9,  color: '#6b7280', lineHeight: 14 },
         },
         position: 'bottom',
       },
       tooltip: {
-        formatter: `<b>${id}</b>`,
+        formatter: `<b>${procCode}</b><br/>${opLabel}`,
       },
     };
   });
@@ -141,21 +218,34 @@ function buildGenealogyOption(
   }));
 
   return {
+    animation: false,
     backgroundColor: '#f8fafc',
     tooltip: {
       trigger: 'item',
       formatter: (p: any) => {
-        if (p.dataType === 'node') return `<b>${p.data.id}</b>`;
+        if (p.dataType === 'node') {
+          const nid = p.data.id as string;
+          const ai = nid.indexOf('@');
+          const opLabel = ai >= 0 ? nid.substring(ai + 1) : nid;
+          const preAt   = ai >= 0 ? nid.substring(0, ai) : '';
+          const procCode = preAt.includes('#') ? preAt.split('#')[0] : preAt;
+          return `<b>${procCode}</b><br/>${opLabel}`;
+        }
         const m = p.data._meta as StateTransition;
         if (!m) return '';
-        return [
+        const parts = [
           `<b>${m.event}</b>`,
-          m.time    ? `⏱ ${m.time}` : '',
-          m.station ? `🏭 ${m.station}` : '',
-          m.operator_id ? `👤 ${m.operator_id}` : '',
-          m.wafer_count != null ? `🔢 ${m.wafer_count} 片` : '',
-          m.note    ? `📝 ${m.note}` : '',
-        ].filter(Boolean).join('<br/>');
+          m.process_name ? `🏭 ${m.process_name}` : '',
+          m.time         ? `⏱ ${m.time}` : '',
+          m.operator     ? `👤 ${m.operator}` : '',
+        ].filter(Boolean);
+        if (m.measurements && m.measurements.length > 0) {
+          const mRows = m.measurements
+            .map((r) => `🔬 ${r.name}: ${r.value}${r.unit ? ' ' + r.unit : ''}`)
+            .join('<br/>');
+          parts.push(`<br/><b>量测数据</b><br/>${mRows}`);
+        }
+        return parts.join('<br/>');
       },
     },
     legend: {
@@ -167,10 +257,10 @@ function buildGenealogyOption(
       type: 'graph',
       layout: 'force',
       force: {
-        repulsion: 500,
-        gravity: 0.03,
-        edgeLength: [80, 160],
-        layoutAnimation: true,
+        repulsion: 300,
+        gravity: 0.1,
+        edgeLength: [80, 200],
+        layoutAnimation: false,
       },
       data: nodes,
       links,

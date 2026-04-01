@@ -429,17 +429,6 @@ async def get_lot_traceability(lot_code: str):
             f"ORDER BY gmt_create"
         )
 
-        # ── 状态变更日志（lot_log）— 每行记录一个 process_status 变更 ──
-        lot_log_rows: list = []
-        if lot_db_id:
-            lot_log_rows = await _run(
-                f"SELECT id, lot_id, process_id, process_code, process_status, "
-                f"  status, create_user, gmt_create "
-                f"FROM matrix_routerx_operation_lot_log "
-                f"WHERE lot_id = {lot_db_id} "
-                f"ORDER BY gmt_create, id"
-            )
-
         # ── 谱系事件：拆批(1)、并批(2)、返工(12)、拆父批(14)、攒批(16) ──
         _GENEALOGY_OPS = {1, 2, 12, 14, 16}
         _OP_TYPE_LABEL = {
@@ -451,57 +440,71 @@ async def get_lot_traceability(lot_code: str):
             20: "ExperimentSkip", 21: "CancelCreateLocalLot", 22: "CancelOpenLot",
             23: "CompleteLot",
         }
-        _PS_LABEL = {
-            0: "待创建", 50: "待入站", 100: "进站中", 150: "出站中", 200: "已完成",
-        }
         genealogy_events = [
             {**row, "event_type": _OP_TYPE_LABEL.get(row.get("operation_type"), str(row.get("operation_type", "")))}
             for row in all_ops if row.get("operation_type") in _GENEALOGY_OPS
         ]
 
-        # ── 状态机转移：从 lot_log 的连续 process_status 变化构建 DAG 边 ──
+        # ── 操作类型：中文名（DAG 节点标签）& 颜色键 ──
+        _OP_TYPE_ZH = {
+            1: "拆批", 2: "并批", 3: "载具转移", 4: "暂停", 5: "释放",
+            6: "不良录入", 7: "撤销不良", 8: "进站", 9: "出站",
+            10: "回库", 11: "跳过", 12: "返工", 13: "撤销返工",
+            14: "拆父批", 15: "切子路线", 16: "攒批",
+            17: "载具更换", 18: "创建本批", 19: "开批",
+            20: "实验跳过", 21: "撤销创建本批", 22: "撤销开批", 23: "完成批次",
+        }
+        _OP_TYPE_KEY = {
+            8: "CHECKIN", 9: "CHECKOUT", 1: "SPLIT", 2: "MERGE", 14: "SPLIT",
+            16: "MERGE", 12: "REWORK", 4: "HOLD", 5: "RELEASE", 6: "NG", 23: "DONE",
+        }
+
+        # ── 量测数据按工序聚合（用于关联到操作履历节点） ──
+        measure_by_process: dict = {}
+        try:
+            meas_rows = await _run(
+                f"SELECT process_code, param_name, value, unit FROM process_measure_data "
+                f"WHERE wafer_id LIKE '{lot_code}%' ORDER BY gmt_create LIMIT 500"
+            )
+            for m in meas_rows:
+                pc = m.get("process_code", "")
+                if pc:
+                    measure_by_process.setdefault(pc, []).append(m)
+        except Exception:
+            pass
+
+        # ── 操作履历 DAG：每条 resume_log 记录 = 一条节点/边 ──
         state_transitions = []
-        if lot_log_rows:
-            prev = lot_log_rows[0]
-            for idx, cur in enumerate(lot_log_rows[1:], start=1):
-                from_ps = _PS_LABEL.get(prev.get("process_status"), str(prev.get("process_status")))
-                to_ps   = _PS_LABEL.get(cur.get("process_status"),  str(cur.get("process_status")))
-                from_proc = prev.get("process_code", "")
-                to_proc   = cur.get("process_code", "")
-                state_transitions.append({
-                    "id":          str(cur.get("id", idx)),
-                    "from_node":   f"{from_proc}@{from_ps}" if from_proc else f"{lot_code}@{from_ps}",
-                    "to_node":     f"{to_proc}@{to_ps}" if to_proc else f"{lot_code}@{to_ps}",
-                    "event":       f"{from_proc}→{to_proc}" if from_proc != to_proc else to_proc,
-                    "event_type":  "STATUS_CHANGE",
-                    "lot_code":    lot_code,
-                    "process_code": cur.get("process_code", ""),
-                    "process_status": cur.get("process_status"),
-                    "operator":    cur.get("create_user", ""),
-                    "time":        str(cur.get("gmt_create", "")),
-                })
-                prev = cur
-        else:
-            # lot_log 无数据时退化：以 resume_log 每条记录作一个转移节点
-            prev_node = f"{lot_code}@创建"
-            for idx, op in enumerate(all_ops):
-                op_type  = op.get("operation_type")
-                op_label = _OP_TYPE_LABEL.get(op_type, str(op_type))
-                cur_node = f"{op.get('process_code', '')}@{op_label}"
-                state_transitions.append({
-                    "id":          str(op.get("id", idx)),
-                    "from_node":   prev_node,
-                    "to_node":     cur_node,
-                    "event":       op_label,
-                    "event_type":  op_label,
-                    "lot_code":    lot_code,
-                    "operation_type": op_type,
-                    "process_code": op.get("process_code", ""),
-                    "process_name": op.get("process_name", ""),
-                    "operator":    op.get("create_user", ""),
-                    "time":        str(op.get("gmt_create", "")),
-                })
-                prev_node = cur_node
+        prev_node = f"{lot_code}@创建"
+        for idx, op in enumerate(all_ops):
+            op_type   = op.get("operation_type")
+            op_zh     = _OP_TYPE_ZH.get(op_type, str(op_type))
+            op_key    = _OP_TYPE_KEY.get(op_type, "OTHER")
+            op_id     = op.get("id", idx)
+            proc_code = op.get("process_code", "")
+            proc_name = op.get("process_name", "") or proc_code
+            cur_node  = f"{proc_code}#{op_id}@{op_zh}"
+            meas_list = measure_by_process.get(proc_code, [])
+            meas_summary = [
+                {"name": m.get("param_name", ""), "value": m.get("value", ""), "unit": m.get("unit", "")}
+                for m in meas_list[:5]
+            ]
+            state_transitions.append({
+                "id":               str(op_id),
+                "from_node":        prev_node,
+                "to_node":          cur_node,
+                "event":            op_zh,
+                "event_type":       op_key,
+                "lot_code":         lot_code,
+                "operation_type":   op_type,
+                "process_code":     proc_code,
+                "process_name":     proc_name,
+                "operator":         op.get("create_user", ""),
+                "time":             str(op.get("gmt_create", "")),
+                "has_measurements": len(meas_summary) > 0,
+                "measurements":     meas_summary,
+            })
+            prev_node = cur_node
 
         # ── 过站记录：进站(8) + 出站(9) ──
         pass_records = [r for r in all_ops if r.get("operation_type") in (8, 9)]
@@ -511,7 +514,7 @@ async def get_lot_traceability(lot_code: str):
         try:
             measurement_records = await _run(
                 f"SELECT * FROM process_measure_data "
-                f"WHERE lot_code = '{lot_code}' "
+                f"WHERE wafer_id LIKE '{lot_code}%' "
                 f"ORDER BY gmt_create LIMIT 500"
             )
         except Exception:

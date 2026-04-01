@@ -897,33 +897,98 @@ const SCENARIO_PRESETS: ScenarioPreset[] = [
   {
     id: 'split',
     label: '拆批链路',
-    description: '拆批事件的事件层→快照层→实体层主路径',
+    description: '拆批事件（operation_type=1）：事件层→快照层→实体层',
     chains: [
-      ['semi:hasTransitionDetail', 'semi:snapshotOfSublot'],
-      ['semi:hasWaferTransitionSnapshot', 'semi:transitionSnapshotOfWafer'],
-      ['semi:producesLot', 'semi:producesSublot'],
-      ['semi:splitsFromSublot', 'semi:chooseSourceWafer', 'semi:assignsWaferToSublot']
+      // 快照层 → 源批次（拆自哪个 Lot / Sublot）
+      ['semi:hasWaferTransitionDetail', 'semi:splitsFromLot'],
+      ['semi:hasWaferTransitionDetail', 'semi:splitsFromSublot'],
+      // 快照层 → 新产出实体（拆出的 Lot / Sublot）
+      ['semi:hasWaferTransitionDetail', 'semi:producesLot'],
+      ['semi:hasWaferTransitionDetail', 'semi:producesSublot'],
     ]
   },
   {
-    id: 'genealogy',
-    label: '谱系通用链路',
-    description: '适用于拆批/并批/攒批等谱系操作的通用快照路径',
+    id: 'merge',
+    label: '并批链路',
+    description: '并批事件（operation_type=2）：事件层→快照层→实体层',
     chains: [
-      ['semi:hasTransitionDetail', 'semi:snapshotOfSublot', 'semi:transitionSnapshotAtStation'],
-      ['semi:hasWaferTransitionSnapshot', 'semi:transitionSnapshotOfWafer', 'semi:transitionSnapshotInSublot']
+      // 快照层 → 目标 Lot（并入哪个批次）
+      ['semi:hasWaferTransitionDetail', 'semi:mergesIntoLot'],
+      // 快照层 → 产出 Sublot
+      ['semi:hasWaferTransitionDetail', 'semi:producesSublot'],
+    ]
+  },
+  {
+    id: 'accumulate',
+    label: '攒批链路',
+    description: '攒批事件（operation_type=16）：事件层→快照层→实体层',
+    chains: [
+      // 快照层 → 源批次（从哪些 Lot/Sublot 聚合）
+      ['semi:hasWaferTransitionDetail', 'semi:accumulatesFromLot'],
+      ['semi:hasWaferTransitionDetail', 'semi:accumulatesFromSublot'],
+      // 快照层 → 产出批次
+      ['semi:hasWaferTransitionDetail', 'semi:producesLot'],
+      ['semi:hasWaferTransitionDetail', 'semi:producesSublot'],
+    ]
+  },
+  {
+    id: 'checkin',
+    label: '进站链路',
+    description: '进站事件（operation_type=8）：事件层→快照层→实体层',
+    chains: [
+      // 快照层 → 目标站点
+      ['semi:hasWaferTransitionDetail', 'semi:transfersToStation'],
+      // 快照层 → 批次/Wafer 粒度锚定
+      ['semi:hasWaferTransitionDetail', 'semi:stationSnapshotOfSublot'],
+      ['semi:hasWaferTransitionDetail', 'semi:stationSnapshotOfWafer'],
+    ]
+  },
+  {
+    id: 'checkout',
+    label: '出站链路',
+    description: '出站事件（operation_type=9）：事件层→快照层→实体层',
+    chains: [
+      // 快照层 → 目标站点
+      ['semi:hasWaferTransitionDetail', 'semi:transfersToStation'],
+      // 快照层 → 批次/Wafer 粒度锚定
+      ['semi:hasWaferTransitionDetail', 'semi:stationSnapshotOfSublot'],
+      ['semi:hasWaferTransitionDetail', 'semi:stationSnapshotOfWafer'],
+      // 快照层 → 产出 Lot（出站后产出批次）
+      ['semi:hasWaferTransitionDetail', 'semi:producesLot'],
+    ]
+  },
+  {
+    id: 'hold',
+    label: '暂停链路',
+    description: '批次暂停事件（operation_type=4）：事件层→快照层→实体层',
+    chains: [
+      ['semi:hasWaferTransitionDetail', 'semi:holdSnapshotOfSublot'],
+      ['semi:hasWaferTransitionDetail', 'semi:holdSnapshotOfWafer'],
+    ]
+  },
+  {
+    id: 'rework',
+    label: '返工链路',
+    description: '返工事件（operation_type=12）：事件层→快照层→实体层',
+    chains: [
+      // 快照层 → 暂停快照（返工前置暂停）
+      ['semi:hasWaferTransitionDetail', 'semi:holdSnapshotOfSublot'],
+      ['semi:hasWaferTransitionDetail', 'semi:holdSnapshotOfWafer'],
+      // 实体层：返工目标批次
+      ['semi:reworkedAs'],
     ]
   },
   {
     id: 'measurement',
     label: '量测链路',
-    description: '量测事件与量测快照语义路径',
+    description: '量测事件（MeasurementPassRecord）：事件层→快照层→实体层',
     chains: [
       ['semi:hasSnapshot', 'semi:snapshotOfWafer'],
       ['semi:hasSnapshot', 'semi:snapshotAtStation'],
-      ['semi:hasSnapshot', 'semi:snapshotInLot', 'semi:snapshotInSublot']
+      ['semi:hasSnapshot', 'semi:snapshotInLot'],
+      ['semi:hasSnapshot', 'semi:snapshotInSublot'],
     ]
-  }
+  },
 ];
 
 function classifyRelationLayer(item: RelationMapping): RelationLayer {
@@ -1061,19 +1126,38 @@ function buildChainMermaid(preset: ScenarioPreset, relationMap: Map<string, Rela
   const lines: string[] = ['flowchart LR'];
   const targetChains = chains || preset.chains;
   const sanitize = (value: string) => value.replace(/[^a-zA-Z0-9_]/g, '_');
-  targetChains.forEach((chain, chainIndex) => {
-    chain.forEach((relName, stepIndex) => {
+
+  // 用类名本身作节点 ID，相同类在所有链路中共享同一节点，实现串联
+  const declaredNodes = new Set<string>();
+  const declaredEdges = new Set<string>();
+
+  targetChains.forEach((chain) => {
+    chain.forEach((relName) => {
       const rel = relationMap.get(relName);
       if (!rel) return;
-      const domain = formatClassName(rel.domain_class);
-      const range = formatClassName(rel.range_class);
-      const a = `${sanitize(domain)}_${chainIndex}_${stepIndex}_d`;
-      const b = `${sanitize(range)}_${chainIndex}_${stepIndex}_r`;
-      lines.push(`  ${a}["${domain}"]`);
-      lines.push(`  ${b}["${range}"]`);
-      lines.push(`  ${a} -->|${rel.logic_relation}\\n${rel.strategy}| ${b}`);
+      const domain = formatClassName(rel.domain_class || '');
+      const range  = formatClassName(rel.range_class  || '');
+      const aId = sanitize(domain);
+      const bId = sanitize(range);
+
+      if (!declaredNodes.has(aId)) {
+        lines.push(`  ${aId}["${domain}"]`);
+        declaredNodes.add(aId);
+      }
+      if (!declaredNodes.has(bId)) {
+        lines.push(`  ${bId}["${range}"]`);
+        declaredNodes.add(bId);
+      }
+
+      const edgeKey = `${aId}--${rel.logic_relation}--${bId}`;
+      if (!declaredEdges.has(edgeKey)) {
+        const shortRel = rel.logic_relation.replace('semi:', '');
+        lines.push(`  ${aId} -->|"${shortRel}\\n${rel.strategy}"| ${bId}`);
+        declaredEdges.add(edgeKey);
+      }
     });
   });
+
   lines.push(`  %% ${preset.label}`);
   return lines.join('\n');
 }
