@@ -34,6 +34,15 @@ semi:CancelNGOp a owl:NamedIndividual ;
     rdfs:label "7-取消不良" ;
     semi:operationTypeCode 7 .
 
+semi:CancelOpenLotEventRecord a owl:Class ;
+    rdfs:label "取消开批记录" ;
+    semi:tableFilter "operation_type = 22" ;
+    rdfs:comment "取消开批操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 22。【关联语义】被取消开批的批次由 lot_id/lot_code 确定；仅针对未做任何进站加工（无 CheckInEventRecord）的批次可执行取消操作，取消后批次状态转为结批（status=90/Closed），生产流转终止，撤销本次投料行为。不产出新批次（producesLot 不适用）。【三层快照路径】CancelOpenLotEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot（Wafer粒度，_wafer_detail_log，含 sub_lot_code/carrier_code/slot_no/wafer_type）→(openLotSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(openLotSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）。每片 wafer 写一行快照，无 isSource 侧别区分。与 OpenLotEventRecord（op=19）互为逆操作，共用 openLotSnapshotOfWafer/openLotSnapshotOfSublot 快照路径。" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom semi:CancelOpenLotEvent ;
+            owl:onProperty semi:isInstanceOfEvent ],
+        semi:ProductionEventRecord .
+
 semi:CancelOpenLotOp a owl:NamedIndividual ;
     rdfs:label "22-取消开批" ;
     semi:operationTypeCode 22 .
@@ -121,6 +130,15 @@ semi:NGRecordOp a owl:NamedIndividual ;
 semi:OpenLotOp a owl:NamedIndividual ;
     rdfs:label "19-开批" ;
     semi:operationTypeCode 19 .
+
+semi:OpenLotEventRecord a owl:Class ;
+    rdfs:label "开批记录" ;
+    semi:tableFilter "operation_type = 19" ;
+    rdfs:comment "开批操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 19。【关联语义】开批是将晶棒原料投入生产线的投料操作，生成新的 ProductionLot 及 Sublot，同时为每片晶圆赋予全局唯一不变标识符 wafer_id；执行后批次从待加工状态（status=0）转为可进站加工状态。_detail.extra 无特殊信息，_wafer_detail_log.extra 为空 {}。【三层快照路径】OpenLotEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot（Wafer粒度，_wafer_detail_log，含 sub_lot_code/carrier_code/slot_no/wafer_type）→(openLotProducesWafer)→ Wafer（强调产出语义）；快照层导航也可用 openLotSnapshotOfWafer→Wafer；子批次导航：WaferTransitionSnapshot →(openLotSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）。每片 wafer 写一行快照，无 isSource 侧别区分。取消开批对应 semi:CancelOpenLotEventRecord（op=22），为逆操作。" ;
+    rdfs:subClassOf [ a owl:Restriction ;
+            owl:allValuesFrom semi:OpenLotEvent ;
+            owl:onProperty semi:isInstanceOfEvent ],
+        semi:ProductionEventRecord .
 
 semi:ReleaseOp a owl:NamedIndividual ;
     rdfs:label "5-批次释放" ;
@@ -1203,6 +1221,24 @@ semi:ngSnapshotOfWafer a owl:ObjectProperty ;
     rdfs:domain semi:WaferTransitionSnapshot ;
     rdfs:range semi:Wafer .
 
+semi:openLotProducesWafer a owl:ObjectProperty ;
+    rdfs:label "开批产出晶圆实体" ;
+    rdfs:comment "开批事件的 WaferTransitionSnapshot 快照行所产出的晶圆实体（Wafer）。【开批事件专用，仅 op=19 有效】物理路径：_wafer_detail_log.wafer_id = matrix_routerx_operation_lot_wafer.wafer_id。语义强调：开批为该 wafer 首次赋予全局唯一 wafer_id，此关系表达开批操作\"产出\"晶圆实体这一语义（区别于 openLotSnapshotOfWafer 的快照观测语义）。物理路径与 openLotSnapshotOfWafer 相同。每片 wafer 写一行快照，无 isSource 侧别区分。" ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:range semi:Wafer .
+
+semi:openLotSnapshotOfSublot a owl:ObjectProperty ;
+    rdfs:label "开批/取消开批快照对应子批次实体" ;
+    rdfs:comment "开批/取消开批事件的 WaferTransitionSnapshot 快照行所对应的子批次实体（Sublot）。【开批/取消开批事件专用，仅 op=19/22 有效】物理路径：_wafer_detail_log.sub_lot_code = matrix_routerx_operation_lot.current_lot_code（WHERE parent_id != 0 即子批次）。开批操作为每片 wafer 在新生成的子批次下写一行快照；sub_lot_code 记录开批时刻 wafer 所属子批次编码，通过编码匹配定位子批次实体。每片 wafer 写一行快照，无 isSource 侧别区分。与 holdSnapshotOfSublot/ngSnapshotOfSublot 同构，区别在于适用事件类型为 OpenLotEventRecord/CancelOpenLotEventRecord。" ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:range semi:Sublot .
+
+semi:openLotSnapshotOfWafer a owl:ObjectProperty ;
+    rdfs:label "开批/取消开批快照对应晶圆实体" ;
+    rdfs:comment "开批/取消开批事件的 WaferTransitionSnapshot 快照行所对应的晶圆实体（Wafer）。【开批/取消开批事件专用，仅 op=19/22 有效】物理路径：_wafer_detail_log.wafer_id = matrix_routerx_operation_lot_wafer.wafer_id。wafer_id 是全局唯一不变锚点；开批时首次赋值，此后全生命周期不变。每片 wafer 写一行快照，无 isSource 侧别区分。与 holdSnapshotOfWafer/ngSnapshotOfWafer 同构，区别在于适用事件类型为 OpenLotEventRecord/CancelOpenLotEventRecord。" ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:range semi:Wafer .
+
 semi:hostsRecipe a owl:ObjectProperty ;
     rdfs:label "物理驻留配方" ;
     rdfs:domain semi:Equipment ;
@@ -1603,6 +1639,23 @@ semi:CancelNGEvent a owl:Class ;
     rdfs:comment "定义 Wafer 取消不良（Cancel NG）操作的规则/类型模板。对应 operation_type=7。操作员对批次中已被标记为不良的晶圆执行取消操作，将其 wafer_type 由 reject 恢复为 null/good 类型，同时清除 ng_code/ng_reason 标记。取消不良不改变批次整体 status，仅在 wafer 维度（_wafer_detail_log）写入 wafer_type=null/good 快照行。执行记录见 semi:CancelNGEventRecord。与 NGRecordEvent（op=6）互为逆操作。" ;
     rdfs:subClassOf semi:ProductionEvent .
 
+semi:OpenLotEvent a owl:Class ;
+    rdfs:label "开批事件类型" ;
+    semi:apiBinding "MES_CORE_SERVICE.executeOpenLot" ;
+    semi:inputSchema "{ productId: string, routeId: string, waferList: [{barcode: string}] }" ;
+    semi:postCondition "ProductionLot.status = 50; Wafer(wafer_id) created and assigned to Sublot" ;
+    rdfs:comment "定义将晶棒原料投入生产线的开批（Open Lot）操作规则/类型模板。对应 operation_type=19。开批为本次投料赋予新的 ProductionLot 及 Sublot，同时为每片晶圆生成全局唯一 wafer_id，以便后续工艺生产流转中实现片级别追溯。执行后批次 status 从 0 转为可进站加工状态（status=50）。执行记录见 semi:OpenLotEventRecord。与 CancelOpenLotEvent（op=22）互为逆操作。" ;
+    rdfs:subClassOf semi:ProductionEvent .
+
+semi:CancelOpenLotEvent a owl:Class ;
+    rdfs:label "取消开批事件类型" ;
+    semi:apiBinding "MES_CORE_SERVICE.executeCancelOpenLot" ;
+    semi:inputSchema "{ lotId: string }" ;
+    semi:preCondition "Lot 无任何 CheckInEventRecord（未做任何进站加工）" ;
+    semi:postCondition "ProductionLot.status = 90（结批/Closed）" ;
+    rdfs:comment "定义取消开批（Cancel Open Lot）操作的规则/类型模板。对应 operation_type=22。仅可对未做任何进站加工的批次（无 CheckInEventRecord）执行取消，撤销本次投料行为，取消后批次状态转为结批（status=90/Closed），生产流转终止。执行记录见 semi:CancelOpenLotEventRecord。与 OpenLotEvent（op=19）互为逆操作。" ;
+    rdfs:subClassOf semi:ProductionEvent .
+
 semi:OutboundEvent a owl:Class ;
     rdfs:label "出库事件定义" ;
     semi:apiBinding "WMS_SERVICE.executeOutbound" ;
@@ -1833,7 +1886,7 @@ semi:WarehouseLocation a owl:Class ;
 
 semi:isInstanceOfEvent a owl:ObjectProperty ;
     rdfs:label "事件实例记录" ;
-    rdfs:comment "该执行记录对应的事件类型（ProductionEvent 子类实例），关联 record → event 类型定义。各子类通过 owl:allValuesFrom 约束将 range 精化为对应 XxxEvent 子类：SplitEventRecord→SplitEvent / MergeEventRecord→MergeEvent / AccumulateEventRecord→AccumulateEvent / HoldEventRecord→HoldEvent / ReleaseEventRecord→ReleaseEvent / NGRecordEventRecord→NGRecordEvent / CancelNGEventRecord→CancelNGEvent / CheckInEventRecord→CheckInEvent / CheckOutEventRecord→CheckOutEvent。" ;
+    rdfs:comment "该执行记录对应的事件类型（ProductionEvent 子类实例），关联 record → event 类型定义。各子类通过 owl:allValuesFrom 约束将 range 精化为对应 XxxEvent 子类：SplitEventRecord→SplitEvent / MergeEventRecord→MergeEvent / AccumulateEventRecord→AccumulateEvent / HoldEventRecord→HoldEvent / ReleaseEventRecord→ReleaseEvent / NGRecordEventRecord→NGRecordEvent / CancelNGEventRecord→CancelNGEvent / CheckInEventRecord→CheckInEvent / CheckOutEventRecord→CheckOutEvent / OpenLotEventRecord→OpenLotEvent / CancelOpenLotEventRecord→CancelOpenLotEvent。" ;
     rdfs:domain semi:ProductionEventRecord ;
     rdfs:range semi:ProductionEvent .
 
@@ -1889,7 +1942,7 @@ semi:ProcessStation a owl:Class ;
 semi:ProductionEventRecord a owl:Class ;
     rdfs:label "生产事件记录（抽象父类）" ;
     semi:isAbstract true ;
-    rdfs:comment "【抽象父类，不直接实例化】生产事件执行记录的抽象父类。主映射表：matrix_routerx_operation_lot_batch_resume_log（所有 operation_type 均写入此表）；关联从表：_detail（物理桥接表，isSource=false 过滤后暴露目标侧）和 _wafer_detail_log（Wafer 迁移快照，semi:WaferTransitionSnapshot）。每条记录对应一次具体操作，记录操作人、时间戳、状态变更及输入/输出批次。全量子类：SplitEventRecord（1-拆批）/ HoldEventRecord（4-扣留）/ ReleaseEventRecord（5-释放）/ NGRecordEventRecord（6-不良录入）/ CancelNGEventRecord（7-取消不良）/ CheckInEventRecord（8-进站）/ CheckOutEventRecord（9-出站）。各子类与 ProductionLot/Sublot 的关联语义通过 hasWaferTransitionDetail → WaferTransitionSnapshot 快照层路径表达，详见子类 rdfs:comment。" .
+    rdfs:comment "【抽象父类，不直接实例化】生产事件执行记录的抽象父类。主映射表：matrix_routerx_operation_lot_batch_resume_log（所有 operation_type 均写入此表）；关联从表：_detail（物理桥接表，isSource=false 过滤后暴露目标侧）和 _wafer_detail_log（Wafer 迁移快照，semi:WaferTransitionSnapshot）。每条记录对应一次具体操作，记录操作人、时间戳、状态变更及输入/输出批次。全量子类：SplitEventRecord（1-拆批）/ HoldEventRecord（4-扣留）/ ReleaseEventRecord（5-释放）/ NGRecordEventRecord（6-不良录入）/ CancelNGEventRecord（7-取消不良）/ CheckInEventRecord（8-进站）/ CheckOutEventRecord（9-出站）/ OpenLotEventRecord（19-开批）/ CancelOpenLotEventRecord（22-取消开批）。各子类与 ProductionLot/Sublot 的关联语义通过 hasWaferTransitionDetail → WaferTransitionSnapshot 快照层路径表达，详见子类 rdfs:comment。" .
 
 semi:ProductionLot a owl:Class ;
     rdfs:label "生产批次(Lot)" ;
