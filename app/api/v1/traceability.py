@@ -7,40 +7,63 @@ GET /api/v1/traceability/wafer/{wafer_code} — Wafer 时序追溯（时间轴�
 Demo 模式：lot_code = "DEMO-2026-A01" 或 wafer_code = "DEMO-W012" 返回模拟数据
 """
 
+import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.services.query_executor import QueryExecutor
-from app.services.supabase_client import get_supabase_client
+from app.services.mysql_executor import MySQLExecutor
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/traceability", tags=["Traceability"])
 
-# ── 延迟初始化执行器 ──
-_executor: QueryExecutor | None = None
+# ── 专用线程池（避免阻塞 uvicorn 事件循环）──
+_thread_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="traceability")
+
+# ── 延迟初始化 MySQLExecutor（线程内使用）──
+_mysql: MySQLExecutor | None = None
+_mysql_lock = asyncio.Lock()
 
 
-def _get_executor() -> QueryExecutor:
-    global _executor
-    if _executor is None:
-        _executor = QueryExecutor(supabase_client=get_supabase_client())
-    return _executor
+def _get_mysql() -> MySQLExecutor:
+    """返回已连接的 MySQLExecutor（同步，供线程内调用）。"""
+    global _mysql
+    if _mysql is None or _mysql.conn is None:
+        _mysql = MySQLExecutor()
+        _mysql.connect()
+    return _mysql
 
 
-def _run(sql: str) -> List[Dict[str, Any]]:
+def _run_sync(sql: str) -> List[Dict[str, Any]]:
+    """同步执行 SQL，失败时自动重连一次。供 _run() 在线程池内调用。"""
     try:
-        result = _get_executor().execute_query(sql)
-        if result.get("success"):
-            return result.get("data") or []
-        logger.warning(f"[Traceability] query returned error: {result.get('error')}")
+        ex = _get_mysql()
+        rows = ex.execute_query(sql)
+        if rows is not None:
+            return rows
+        logger.warning(f"[Traceability] query returned None for: {sql[:80]}")
     except Exception as e:
-        logger.warning(f"[Traceability] query exception: {e}")
+        logger.warning(f"[Traceability] query exception ({e}), retrying once…")
+        try:
+            global _mysql
+            _mysql = MySQLExecutor()
+            _mysql.connect()
+            rows = _mysql.execute_query(sql)
+            return rows or []
+        except Exception as e2:
+            logger.error(f"[Traceability] retry also failed: {e2}")
     return []
+
+
+async def _run(sql: str) -> List[Dict[str, Any]]:
+    """异步包装：在线程池内执行同步 SQL，不阻塞事件循环。"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(_thread_pool, _run_sync, sql)
 
 
 # ── Demo 模拟数据 ──────────────────────────────────────────────────
@@ -385,23 +408,37 @@ async def get_lot_traceability(lot_code: str):
     if lot_code.upper().startswith("DEMO"):
         return _mock_lot_response(lot_code)
     try:
-        # ── 批次基本信息 ──
-        lot_info_rows = _run(
-            f"SELECT * FROM matrix_routerx_operation_lot "
-            f"WHERE lot_code = '{lot_code}' LIMIT 1"
+        # ── 批次基本信息（实际列名：current_lot_code） ──
+        lot_info_rows = await _run(
+            f"SELECT id, current_lot_code AS lot_code, parent_lot_code, "
+            f"  product_id, product_code, recipe_id, recipe_code, "
+            f"  process_id, process_status, status, carrier_code, "
+            f"  create_user, gmt_create, update_user, gmt_update "
+            f"FROM matrix_routerx_operation_lot "
+            f"WHERE current_lot_code = '{lot_code}' LIMIT 1"
         )
         lot_info = lot_info_rows[0] if lot_info_rows else {}
+        lot_db_id = lot_info.get("id")  # 用于后续关联查询
 
-        # ── 全部操作履历（主表）按时间排序 ──
-        all_ops = _run(
-            f"SELECT id, lot_id, lot_code, output_lot_id, output_lot_code, "
-            f"  process_id, process_code, process_name, operation_type, "
-            f"  before_state, after_state, create_user_id, create_user, "
-            f"  extra, gmt_create "
+        # ── 全部操作履历（resume_log）按时间排序 ──
+        all_ops = await _run(
+            f"SELECT id, lot_id, lot_code, process_id, process_code, process_name, "
+            f"  operation_type, create_user_id, create_user, gmt_create "
             f"FROM matrix_routerx_operation_lot_batch_resume_log "
             f"WHERE lot_code = '{lot_code}' "
             f"ORDER BY gmt_create"
         )
+
+        # ── 状态变更日志（lot_log）— 每行记录一个 process_status 变更 ──
+        lot_log_rows: list = []
+        if lot_db_id:
+            lot_log_rows = await _run(
+                f"SELECT id, lot_id, process_id, process_code, process_status, "
+                f"  status, create_user, gmt_create "
+                f"FROM matrix_routerx_operation_lot_log "
+                f"WHERE lot_id = {lot_db_id} "
+                f"ORDER BY gmt_create, id"
+            )
 
         # ── 谱系事件：拆批(1)、并批(2)、返工(12)、拆父批(14)、攒批(16) ──
         _GENEALOGY_OPS = {1, 2, 12, 14, 16}
@@ -414,31 +451,57 @@ async def get_lot_traceability(lot_code: str):
             20: "ExperimentSkip", 21: "CancelCreateLocalLot", 22: "CancelOpenLot",
             23: "CompleteLot",
         }
+        _PS_LABEL = {
+            0: "待创建", 50: "待入站", 100: "进站中", 150: "出站中", 200: "已完成",
+        }
         genealogy_events = [
             {**row, "event_type": _OP_TYPE_LABEL.get(row.get("operation_type"), str(row.get("operation_type", "")))}
             for row in all_ops if row.get("operation_type") in _GENEALOGY_OPS
         ]
 
-        # ── 状态机转移（全部操作构成 DAG 边）──
+        # ── 状态机转移：从 lot_log 的连续 process_status 变化构建 DAG 边 ──
         state_transitions = []
-        for idx, op in enumerate(all_ops):
-            op_type = op.get("operation_type")
-            op_label = _OP_TYPE_LABEL.get(op_type, str(op_type))
-            before = op.get("before_state") or op.get("process_status_before") or f"状态{idx}"
-            after = op.get("after_state") or op.get("process_status_after") or f"状态{idx + 1}"
-            state_transitions.append({
-                "id":          str(op.get("id", idx)),
-                "from_node":   f"{lot_code}@{before}",
-                "to_node":     f"{lot_code}@{after}",
-                "event":       op_label,
-                "event_type":  op_label,
-                "lot_code":    lot_code,
-                "operation_type": op_type,
-                "process_code": op.get("process_code", ""),
-                "process_name": op.get("process_name", ""),
-                "operator":    op.get("create_user", ""),
-                "time":        str(op.get("gmt_create", "")),
-            })
+        if lot_log_rows:
+            prev = lot_log_rows[0]
+            for idx, cur in enumerate(lot_log_rows[1:], start=1):
+                from_ps = _PS_LABEL.get(prev.get("process_status"), str(prev.get("process_status")))
+                to_ps   = _PS_LABEL.get(cur.get("process_status"),  str(cur.get("process_status")))
+                from_proc = prev.get("process_code", "")
+                to_proc   = cur.get("process_code", "")
+                state_transitions.append({
+                    "id":          str(cur.get("id", idx)),
+                    "from_node":   f"{from_proc}@{from_ps}" if from_proc else f"{lot_code}@{from_ps}",
+                    "to_node":     f"{to_proc}@{to_ps}" if to_proc else f"{lot_code}@{to_ps}",
+                    "event":       f"{from_proc}→{to_proc}" if from_proc != to_proc else to_proc,
+                    "event_type":  "STATUS_CHANGE",
+                    "lot_code":    lot_code,
+                    "process_code": cur.get("process_code", ""),
+                    "process_status": cur.get("process_status"),
+                    "operator":    cur.get("create_user", ""),
+                    "time":        str(cur.get("gmt_create", "")),
+                })
+                prev = cur
+        else:
+            # lot_log 无数据时退化：以 resume_log 每条记录作一个转移节点
+            prev_node = f"{lot_code}@创建"
+            for idx, op in enumerate(all_ops):
+                op_type  = op.get("operation_type")
+                op_label = _OP_TYPE_LABEL.get(op_type, str(op_type))
+                cur_node = f"{op.get('process_code', '')}@{op_label}"
+                state_transitions.append({
+                    "id":          str(op.get("id", idx)),
+                    "from_node":   prev_node,
+                    "to_node":     cur_node,
+                    "event":       op_label,
+                    "event_type":  op_label,
+                    "lot_code":    lot_code,
+                    "operation_type": op_type,
+                    "process_code": op.get("process_code", ""),
+                    "process_name": op.get("process_name", ""),
+                    "operator":    op.get("create_user", ""),
+                    "time":        str(op.get("gmt_create", "")),
+                })
+                prev_node = cur_node
 
         # ── 过站记录：进站(8) + 出站(9) ──
         pass_records = [r for r in all_ops if r.get("operation_type") in (8, 9)]
@@ -446,7 +509,7 @@ async def get_lot_traceability(lot_code: str):
         # ── 量测记录（尝试查询，失败时置空） ──
         measurement_records: list = []
         try:
-            measurement_records = _run(
+            measurement_records = await _run(
                 f"SELECT * FROM process_measure_data "
                 f"WHERE lot_code = '{lot_code}' "
                 f"ORDER BY gmt_create LIMIT 500"
@@ -455,14 +518,12 @@ async def get_lot_traceability(lot_code: str):
             pass
 
         # ── Wafer ID 列表 ──
-        wafer_ids = sorted(
-            {str(r["wafer_code"]) for r in (lot_info_rows or []) if r.get("wafer_code")}
-        )
-        if not wafer_ids:
-            wafer_rows = _run(
+        wafer_ids: list = []
+        if lot_db_id:
+            wafer_rows = await _run(
                 f"SELECT DISTINCT wafer_code FROM matrix_routerx_operation_lot_wafer "
-                f"WHERE lot_id = '{lot_info.get('id', '')}' LIMIT 200"
-            ) if lot_info.get("id") else []
+                f"WHERE lot_id = {lot_db_id} LIMIT 200"
+            )
             wafer_ids = sorted({str(r["wafer_code"]) for r in wafer_rows if r.get("wafer_code")})
 
         return LotTraceabilityResponse(
@@ -495,7 +556,7 @@ async def get_wafer_traceability(wafer_code: str):
     if wafer_code.upper().startswith("DEMO"):
         return _mock_wafer_response(wafer_code)
     try:
-        timeline = _run(
+        timeline = await _run(
             f"SELECT spr.*, mol.lot_id, mol.wafer_id "
             f"FROM station_process_record spr "
             f"JOIN matrix_routerx_operation_lot mol ON mol.id = spr.sublot_id "
