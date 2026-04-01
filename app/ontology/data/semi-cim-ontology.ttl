@@ -44,7 +44,7 @@ semi:CarrierTransOp a owl:NamedIndividual ;
 semi:CheckInEventRecord a owl:Class ;
     rdfs:label "批次进站记录" ;
     semi:tableFilter "operation_type = 8" ;
-    rdfs:comment "批次进站操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 8。【关联语义】进站批次（操作主体）由 lot_id/lot_code 与快照上下文确定；执行后 Sublot.atStation 指向目标工序站点，process_status 转变为 40（加工中）。不产生新批次（producesLot 不适用）。区别于 CheckOutEventRecord：进站标志着工序处理的开始，出站标志着完成并流转下道。station_id/equipment_id 字段记录进站工序与绑定设备。" ;
+    rdfs:comment "批次进站操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 8。【关联语义】进站批次（操作主体）由 lot_id/lot_code 确定；执行后 Sublot.process_status 转变为 40（加工中），表示批次已进站等待加工指令。⚠ 不产生新批次（producesLot 不适用）。区别于 CheckOutEventRecord：进站标志着工序处理的开始，出站标志着完成并流转下道。【统一快照路径】CheckInEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot（Wafer粒度，_wafer_detail_log，含 sub_lot_code/carrier_code/slot_no/wafer_type/ng_code/ng_reason）→(stationSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(stationSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）；进站设备（专用）：WaferTransitionSnapshot.usedEquipmentCode（join _detail.extra.equipmentCode via batch_resume_detail_log_id）。每片 wafer 写一行快照，无 isSource 侧别区分。" ;
     rdfs:subClassOf [ a owl:Restriction ;
             owl:allValuesFrom semi:CheckInEvent ;
             owl:onProperty semi:isInstanceOfEvent ],
@@ -57,7 +57,7 @@ semi:CheckInOp a owl:NamedIndividual ;
 semi:CheckOutEventRecord a owl:Class ;
     rdfs:label "批次出站记录" ;
     semi:tableFilter "operation_type = 9" ;
-    rdfs:comment "批次出站操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 9。【关联语义】出站批次（操作主体）由 lot_id/lot_code 与快照上下文确定；执行后 Sublot.process_status 转变为 10/20（待进站），批次流转至下道工序。不产生新批次（producesLot 不适用）。与 CheckInEventRecord 成对出现：一次完整的过站周期 = 一条 CheckInEventRecord（op=8）+ 一条 CheckOutEventRecord（op=9）。station_id 字段记录本道出站工序。" ;
+    rdfs:comment "批次出站操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 9。【关联语义】出站批次（操作主体）由 lot_id/lot_code 确定；执行后 Sublot.process_status 转变为 10/20（待进站下道工序），批次流转至下道工序等待调度。⚠ 不产生新批次（producesLot 不适用）。与 CheckInEventRecord 成对出现：一次完整的过站周期 = 一条 CheckInEventRecord（op=8）+ 一条 CheckOutEventRecord（op=9）。【统一快照路径】CheckOutEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot（Wafer粒度，_wafer_detail_log，含 sub_lot_code/carrier_code/slot_no/wafer_type/ng_code/ng_reason）→(stationSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(stationSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）；出站设备与下站信息（专用）：WaferTransitionSnapshot.usedEquipmentCode（equipmentCode）/ WaferTransitionSnapshot.hasNextProcessCode（nextProcessCode），均从 _detail.extra 读取（via batch_resume_detail_log_id）。每片 wafer 写一行快照，无 isSource 侧别区分。" ;
     rdfs:subClassOf [ a owl:Restriction ;
             owl:allValuesFrom semi:CheckOutEvent ;
             owl:onProperty semi:isInstanceOfEvent ],
@@ -698,6 +698,30 @@ semi:hasNGCode a owl:DatatypeProperty ;
     rdfs:domain semi:Wafer ;
     rdfs:range xsd:string .
 
+semi:hasNgCode a owl:DatatypeProperty ;
+    rdfs:label "Wafer快照不良码" ;
+    rdfs:comment "快照层 WaferTransitionSnapshot 记录的 wafer 不良原因码，对应 _wafer_detail_log.ng_code。进站/出站/拆批/攒批等所有事件均可携带；不良录入事件(op=6)专门设置此字段。" ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:range xsd:string .
+
+semi:hasNgReason a owl:DatatypeProperty ;
+    rdfs:label "Wafer快照不良描述" ;
+    rdfs:comment "快照层 WaferTransitionSnapshot 记录的 wafer 不良原因描述，对应 _wafer_detail_log.ng_reason。据不良录入操作写入。" ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:range xsd:string .
+
+semi:hasNextProcessCode a owl:DatatypeProperty ;
+    rdfs:label "下一站点工序代码" ;
+    rdfs:comment "出站快照中记录的下一个加工站点工序代码，从 _detail.extra.nextProcessCode 读取（via batch_resume_detail_log_id → _detail）。仅 CheckOutEventRecord(op=9) 适用。" ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:range xsd:string .
+
+semi:hasWaferType a owl:DatatypeProperty ;
+    rdfs:label "Wafer类型" ;
+    rdfs:comment "快照时刻 Wafer 的类型，对应 _wafer_detail_log.wafer_type。取值：null（等价 good，良品）/ reject（不良）/ loss（报销）。进/出站、拆批、攻批等事件快照均可携带此信息；null 表示良品， SQL 查询时需 COALESCE(wafer_type,'good') 处理。" ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:range xsd:string .
+
 semi:hasOperationType a owl:DatatypeProperty ;
     rdfs:label "操作类型" ;
     rdfs:comment "如进站、出站、拆批、并批、Hold、Release，对应 operation_type。" ;
@@ -1122,6 +1146,12 @@ semi:hasWarehouseName a owl:DatatypeProperty ;
     rdfs:domain semi:WarehouseLocation ;
     rdfs:range xsd:string .
 
+semi:usedEquipmentCode a owl:DatatypeProperty ;
+    rdfs:label "快照使用设备编码" ;
+    rdfs:comment "进/出站快照中记录的执行加工设备编码，从 _detail.extra.equipmentCode 读取（via batch_resume_detail_log_id → _detail）。仅 CheckInEventRecord(op=8) 和 CheckOutEventRecord(op=9) 适用。区别 semi:hasEquipmentCode：后者是设备实体层属性，前者是快照层快照值。" ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:range xsd:string .
+
 semi:holdSnapshotOfSublot a owl:ObjectProperty ;
     rdfs:label "扣留/释放快照对应子批次实体" ;
     rdfs:comment "扣留/释放事件的 WaferTransitionSnapshot 快照行所对应的子批次实体（Sublot）。【扣留/释放事件专用，仅 op=4/5 有效】物理路径：_wafer_detail_log.sub_lot_code = matrix_routerx_operation_lot.current_lot_code（WHERE parent_id != 0 即子批次）。支持从快照层导航到被扣留/释放的子批次实体，访问其当前状态/所处工序等字段。" ;
@@ -1348,6 +1378,18 @@ semi:splitsFromSublot a owl:ObjectProperty ;
     rdfs:comment "Wafer迁移快照层（拆批专属）：WaferTransitionSnapshot(_wafer_detail_log) 行的 extra.sourceSubLotCode 直接记录该 wafer 拆出前所属源子批次编码。物理路径：_wafer_detail_log → JSON_EXTRACT(extra,'$.sourceSubLotCode') = lot.current_lot_code(WHERE parent_id!=0)。与 splitsFromLot 共同构成完整源批次谱系信息。" ;
     rdfs:domain semi:WaferTransitionSnapshot ;
     rdfs:range semi:Sublot .
+
+semi:stationSnapshotOfSublot a owl:ObjectProperty ;
+    rdfs:label "进/出站快照对应子批次实体" ;
+    rdfs:comment "进站/出站事件的 WaferTransitionSnapshot 快照行所对应的子批次实体（Sublot）。【进站/出站事件专用，仅 op=8/9 有效】物理路径：_wafer_detail_log.sub_lot_code = matrix_routerx_operation_lot.current_lot_code（WHERE parent_id != 0 即子批次）。每片 wafer 写一行快照，无 isSource 侧别区分。与 holdSnapshotOfSublot 同构，区别在于适用事件类型为 CheckInEventRecord/CheckOutEventRecord。" ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:range semi:Sublot .
+
+semi:stationSnapshotOfWafer a owl:ObjectProperty ;
+    rdfs:label "进/出站快照对应晶圆实体" ;
+    rdfs:comment "进站/出站事件的 WaferTransitionSnapshot 快照行所对应的晶圆实体（Wafer）。【进站/出站事件专用，仅 op=8/9 有效】物理路径：_wafer_detail_log.wafer_id = matrix_routerx_operation_lot_wafer.wafer_id。wafer_id 是全局唯一不变锚点，连接快照记录与晶圆实体。每片 wafer 写一行快照，无 isSource 侧别区分。与 holdSnapshotOfWafer 同构，区别在于适用事件类型为 CheckInEventRecord/CheckOutEventRecord。" ;
+    rdfs:domain semi:WaferTransitionSnapshot ;
+    rdfs:range semi:Wafer .
 
 semi:stateTransitionFunction a owl:AnnotationProperty ;
     rdfs:label "状态转换函数" ;

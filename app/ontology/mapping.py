@@ -90,6 +90,7 @@ class RecursiveMapping:
 class ValueMapping:
     """语义值 → 物理值条件"""
     semantic_value: str
+    name: str = ""          # 短中文标签，用于 UI 显示，e.g. "批次进站"
     description: str = ""
     physical_values: Optional[List[str]] = None
     physical_condition: Optional[str] = None
@@ -456,6 +457,7 @@ class MappingDictionary:
                     continue  # skip metadata keys like "_comment"
                 vm = ValueMapping(
                     semantic_value=val_key,
+                    name=val_data.get("name", ""),
                     description=val_data.get("description", ""),
                     physical_values=val_data.get("physical_values"),
                     physical_condition=val_data.get("physical_condition"),

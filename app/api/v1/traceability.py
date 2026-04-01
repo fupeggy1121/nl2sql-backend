@@ -388,40 +388,82 @@ async def get_lot_traceability(lot_code: str):
         # ── 批次基本信息 ──
         lot_info_rows = _run(
             f"SELECT * FROM matrix_routerx_operation_lot "
-            f"WHERE lot_id = '{lot_code}' LIMIT 1"
+            f"WHERE lot_code = '{lot_code}' LIMIT 1"
         )
         lot_info = lot_info_rows[0] if lot_info_rows else {}
 
-        # ── 谱系事件 ──
-        genealogy_events = _run(
-            f"SELECT * FROM routerx_lot_log "
-            f"WHERE lot_id = '{lot_code}' "
-            f"AND operation_type IN ('SPLIT','MERGE','REWORK') "
-            f"ORDER BY created_at"
+        # ── 全部操作履历（主表）按时间排序 ──
+        all_ops = _run(
+            f"SELECT id, lot_id, lot_code, output_lot_id, output_lot_code, "
+            f"  process_id, process_code, process_name, operation_type, "
+            f"  before_state, after_state, create_user_id, create_user, "
+            f"  extra, gmt_create "
+            f"FROM matrix_routerx_operation_lot_batch_resume_log "
+            f"WHERE lot_code = '{lot_code}' "
+            f"ORDER BY gmt_create"
         )
 
-        # ── 工序过站记录（含 wafer_id） ──
-        pass_records = _run(
-            f"SELECT spr.*, mol.wafer_id "
-            f"FROM station_process_record spr "
-            f"JOIN matrix_routerx_operation_lot mol ON mol.id = spr.sublot_id "
-            f"WHERE mol.lot_id = '{lot_code}' "
-            f"ORDER BY spr.in_time"
-        )
+        # ── 谱系事件：拆批(1)、并批(2)、返工(12)、拆父批(14)、攒批(16) ──
+        _GENEALOGY_OPS = {1, 2, 12, 14, 16}
+        _OP_TYPE_LABEL = {
+            1: "SPLIT", 2: "MERGE", 3: "CarrierTransfer", 4: "Hold", 5: "Release",
+            6: "NGRecording", 7: "CancelNG", 8: "CheckIn", 9: "CheckOut",
+            10: "Return", 11: "Skip", 12: "Rework", 13: "CancelRework",
+            14: "SplitParent", 15: "SwitchSubRoute", 16: "Accumulate",
+            17: "CarrierChange", 18: "CreateLocalLot", 19: "OpenLot",
+            20: "ExperimentSkip", 21: "CancelCreateLocalLot", 22: "CancelOpenLot",
+            23: "CompleteLot",
+        }
+        genealogy_events = [
+            {**row, "event_type": _OP_TYPE_LABEL.get(row.get("operation_type"), str(row.get("operation_type", "")))}
+            for row in all_ops if row.get("operation_type") in _GENEALOGY_OPS
+        ]
 
-        # ── 量测记录（含 wafer_id） ──
-        measurement_records = _run(
-            f"SELECT smr.*, mol.wafer_id "
-            f"FROM station_measurement_record smr "
-            f"JOIN matrix_routerx_operation_lot mol ON mol.id = smr.sublot_id "
-            f"WHERE mol.lot_id = '{lot_code}' "
-            f"ORDER BY smr.created_at"
-        )
+        # ── 状态机转移（全部操作构成 DAG 边）──
+        state_transitions = []
+        for idx, op in enumerate(all_ops):
+            op_type = op.get("operation_type")
+            op_label = _OP_TYPE_LABEL.get(op_type, str(op_type))
+            before = op.get("before_state") or op.get("process_status_before") or f"状态{idx}"
+            after = op.get("after_state") or op.get("process_status_after") or f"状态{idx + 1}"
+            state_transitions.append({
+                "id":          str(op.get("id", idx)),
+                "from_node":   f"{lot_code}@{before}",
+                "to_node":     f"{lot_code}@{after}",
+                "event":       op_label,
+                "event_type":  op_label,
+                "lot_code":    lot_code,
+                "operation_type": op_type,
+                "process_code": op.get("process_code", ""),
+                "process_name": op.get("process_name", ""),
+                "operator":    op.get("create_user", ""),
+                "time":        str(op.get("gmt_create", "")),
+            })
 
-        # ── 从过站记录提取去重 wafer_id 列表 ──
+        # ── 过站记录：进站(8) + 出站(9) ──
+        pass_records = [r for r in all_ops if r.get("operation_type") in (8, 9)]
+
+        # ── 量测记录（尝试查询，失败时置空） ──
+        measurement_records: list = []
+        try:
+            measurement_records = _run(
+                f"SELECT * FROM process_measure_data "
+                f"WHERE lot_code = '{lot_code}' "
+                f"ORDER BY gmt_create LIMIT 500"
+            )
+        except Exception:
+            pass
+
+        # ── Wafer ID 列表 ──
         wafer_ids = sorted(
-            {str(r["wafer_id"]) for r in pass_records if r.get("wafer_id")}
+            {str(r["wafer_code"]) for r in (lot_info_rows or []) if r.get("wafer_code")}
         )
+        if not wafer_ids:
+            wafer_rows = _run(
+                f"SELECT DISTINCT wafer_code FROM matrix_routerx_operation_lot_wafer "
+                f"WHERE lot_id = '{lot_info.get('id', '')}' LIMIT 200"
+            ) if lot_info.get("id") else []
+            wafer_ids = sorted({str(r["wafer_code"]) for r in wafer_rows if r.get("wafer_code")})
 
         return LotTraceabilityResponse(
             success=True,
@@ -429,6 +471,7 @@ async def get_lot_traceability(lot_code: str):
             lot_info=lot_info,
             wafer_ids=wafer_ids,
             genealogy_events=genealogy_events,
+            state_transitions=state_transitions,
             pass_records=pass_records,
             measurement_records=measurement_records,
         )

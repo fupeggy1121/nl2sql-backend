@@ -5,8 +5,10 @@ response_builder — 响应构建节点
 """
 
 import logging
+import re
 import time
 from datetime import datetime
+from typing import List
 from app.agent.state import AgentState
 from app.agent.trace import trace_step
 
@@ -43,6 +45,8 @@ def response_builder_node(state: AgentState) -> dict:
     elif intent == "query":
         # ── 数据查询响应 ──
         data = query_result.get("data", [])
+        # 为枚举列（operation_type、process_status 等）追加语义标签
+        data = enrich_with_value_labels(data)
         rows_count = query_result.get("rows_count", len(data) if isinstance(data, list) else 0)
         retry_count = state.get("sql_retry_count", 0)
 
@@ -156,3 +160,55 @@ def _generate_summary(user_input: str, data: list, rows_count: int) -> str:
         val = list(data[0].values())[0]
         return f"查询结果: {val}"
     return f"查询返回 {rows_count} 条记录"
+
+
+# ── 值映射索引（column -> {raw_val_str -> label}），懒加载 ──────────────────────
+_value_label_index: dict | None = None
+
+
+def _get_value_label_index() -> dict:
+    """从 value_mappings 构建 {column_name: {str(raw_value): label}} 索引，懒加载。"""
+    global _value_label_index
+    if _value_label_index is not None:
+        return _value_label_index
+    try:
+        from app.ontology.mapping import get_mapping
+        mapping = get_mapping()
+        index: dict = {}
+        for domain in mapping.list_value_domains():
+            for sv, vm in mapping.list_values_in_domain(domain).items():
+                if not vm.applies_to_column or not vm.physical_condition:
+                    continue
+                # 从 "col = N" 中提取数值
+                m = re.search(r'=\s*(\S+)', vm.physical_condition)
+                if not m:
+                    continue
+                raw_val = m.group(1).strip("'\"")
+                label = vm.name or vm.description or sv
+                index.setdefault(vm.applies_to_column, {})[raw_val] = label
+        _value_label_index = index
+    except Exception as e:
+        logger.warning(f"[response_builder] 构建值映射索引失败: {e}")
+        _value_label_index = {}
+    return _value_label_index
+
+
+def enrich_with_value_labels(data: list) -> list:
+    """
+    为查询结果中的枚举字段追加语义标签列。
+    例：operation_type=8  →  追加 operation_type_label="批次进站"
+    原始值保留不变，仅新增 *_label 列。
+    """
+    index = _get_value_label_index()
+    if not index or not data:
+        return data
+    enriched = []
+    for row in data:
+        new_row = dict(row)
+        for col, val_map in index.items():
+            if col in row and row[col] is not None:
+                label = val_map.get(str(row[col]))
+                if label:
+                    new_row[f"{col}_label"] = label
+        enriched.append(new_row)
+    return enriched

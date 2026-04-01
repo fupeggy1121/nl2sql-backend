@@ -442,15 +442,6 @@ RELATION_SYNONYMS: dict = {
         ],
     },
 
-    "semi:locatedInSlot": {
-        "label_cn": "晶圆位于载具槽位",
-        "domain": "semi:Wafer", "range": "semi:Carrier",
-        "synonyms": [
-            "晶圆在哪个载具", "载具里的晶圆", "片篮中的晶片",
-            "载具装载晶圆", "晶圆在哪个片篮",
-        ],
-    },
-
     "semi:atStation": {
         "label_cn": "当前所处工序",
         "domain": "semi:Wafer", "range": "semi:ProcessStation",
@@ -504,28 +495,11 @@ RELATION_SYNONYMS: dict = {
     },
 
     # 2.3 工艺约束注入
-    "semi:usesRoute": {
-        "label_cn": "产品使用工艺路线",
-        "domain": "semi:ProductModel", "range": "semi:Route",
-        "synonyms": [
-            "产品走哪条路线", "型号对应工艺路线",
-            "产品工艺路径", "产品模型工序流程",
-        ],
-    },
-
     "semi:consistsOfStation": {
         "label_cn": "路线包含工序节点",
         "domain": "semi:Route", "range": "semi:ProcessStation",
         "synonyms": [
             "路线包含哪些工序", "工艺路径中的工序", "路线的工序列表",
-        ],
-    },
-
-    "semi:requiresEquipment": {
-        "label_cn": "工序需要设备执行",
-        "domain": "semi:ProcessStation", "range": "semi:Equipment",
-        "synonyms": [
-            "工序需要哪台设备", "工序指定设备", "这个工序用哪个机台",
         ],
     },
 
@@ -570,22 +544,6 @@ RELATION_SYNONYMS: dict = {
         ],
     },
 
-    # 2.5 动作驱动
-    "semi:hasInput": {
-        "label_cn": "动作输入对象",
-        "domain": "semi:Action", "range": "semi:ProductionLot | semi:Wafer",
-        "synonyms": [
-            "动作处理对象", "这次操作对象", "加工的批次或晶圆",
-        ],
-    },
-
-    "semi:hasOutput": {
-        "label_cn": "动作输出结果",
-        "domain": "semi:Action", "range": "semi:ProductionLot | semi:Wafer",
-        "synonyms": [
-            "动作产出", "操作结果", "加工后的批次或晶圆",
-        ],
-    },
 }
 
 
