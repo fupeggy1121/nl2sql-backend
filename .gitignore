@@ -111,3 +111,7 @@ dmypy.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Runtime artifacts
+logs/
+*.pid

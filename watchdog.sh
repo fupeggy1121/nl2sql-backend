@@ -12,6 +12,7 @@ PID_FILE="$LOG_DIR/backend.pid"
 PYTHON="$SCRIPT_DIR/.venv/bin/python"
 START_CMD="$PYTHON run.py"
 RESTART_DELAY=3  # 崩溃后等待 N 秒再重启
+BACKEND_PORT="${PORT:-8000}"  # 与 run.py 保持一致
 
 mkdir -p "$LOG_DIR"
 
@@ -37,7 +38,20 @@ log "Python  : $PYTHON"
 log "LogFile : $LOG_FILE"
 log "========================================"
 
+# 杀掉占用端口的残留进程（防止端口冲突导致无限循环重启）
+kill_port() {
+  local port=$1
+  local pids
+  pids=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
+  if [[ -n "$pids" ]]; then
+    log "端口 $port 被 PID($pids) 占用，强制清理..."
+    echo "$pids" | xargs kill -9 2>/dev/null || true
+    sleep 1
+  fi
+}
+
 while true; do
+  kill_port "$BACKEND_PORT"
   log "启动后端服务..."
   cd "$SCRIPT_DIR"
   $START_CMD >> "$LOG_FILE" 2>&1 &

@@ -11,6 +11,7 @@ LOG_DIR="$SCRIPT_DIR/logs"
 LOG_FILE="$LOG_DIR/frontend.log"
 PID_FILE="$LOG_DIR/frontend.pid"
 RESTART_DELAY=3  # 崩溃后等待 N 秒再重启
+FRONTEND_PORT=5173  # Vite 默认端口
 
 mkdir -p "$LOG_DIR"
 
@@ -39,7 +40,20 @@ log "FrontendDir: $FRONTEND_DIR"
 log "LogFile    : $LOG_FILE"
 log "========================================"
 
+# 杀掉占用端口的残留进程
+kill_port() {
+  local port=$1
+  local pids
+  pids=$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)
+  if [[ -n "$pids" ]]; then
+    log "端口 $port 被 PID($pids) 占用，强制清理..."
+    echo "$pids" | xargs kill -9 2>/dev/null || true
+    sleep 1
+  fi
+}
+
 while true; do
+  kill_port "$FRONTEND_PORT"
   log "启动前端服务 (npm run dev)..."
   cd "$FRONTEND_DIR"
 
