@@ -260,16 +260,33 @@ def _extract_date_range(user_input: str) -> tuple[str, str]:
     if re.search(r"最近一周|过去一周|最近七天|过去七天", user_input, re.IGNORECASE):
         return str(today - timedelta(days=6)), str(today)
 
+    # 「最近一个月」 /「过去一个月」/「最近一月」等文字形式
+    if re.search(r"最近一个月|过去一个月|最近一月|过去一月", user_input, re.IGNORECASE):
+        return str(today - timedelta(days=29)), str(today)
+
+    # 「最近三个月」/「最近半年」/「最近一年」
+    if re.search(r"最近三个月|过去三个月|最近三月", user_input, re.IGNORECASE):
+        return str(today - timedelta(days=89)), str(today)
+    if re.search(r"最近半年|过去半年", user_input, re.IGNORECASE):
+        return str(today - timedelta(days=179)), str(today)
+    if re.search(r"最近一年|过去一年", user_input, re.IGNORECASE):
+        return str(today - timedelta(days=364)), str(today)
+
     n_days_match = re.search(r"最近\s*(\d+)\s*天", user_input)
     if n_days_match:
         n = int(n_days_match.group(1))
         return str(today - timedelta(days=n - 1)), str(today)
 
-    # 「最近N周」
+    # 「最近N周」或「最近N个月」（数字形式）
     n_weeks_match = re.search(r"最近\s*(\d+)\s*周", user_input)
     if n_weeks_match:
         n = int(n_weeks_match.group(1))
         return str(today - timedelta(days=n * 7 - 1)), str(today)
+
+    n_months_match = re.search(r"最近\s*(\d+)\s*个?月", user_input)
+    if n_months_match:
+        n = int(n_months_match.group(1))
+        return str(today - timedelta(days=n * 30 - 1)), str(today)
 
     # 默认最近 7 天
     return str(today - timedelta(days=6)), str(today)

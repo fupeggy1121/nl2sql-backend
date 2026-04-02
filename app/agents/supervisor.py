@@ -59,19 +59,33 @@ _REPORT_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
+# ── 基线设定意图（优先级高于报表，防止包含良率关键词的基线务被路由到 analysis_agent） ──
+_BASELINE_KEYWORDS = re.compile(
+    r"(设定|设置|添加|新增|修改|更新|删除|移除|取消).*(基线|预警|阈値|上限|下限|警戞线|警戞値)"
+    r"|(基线|预警|阈値|上限|下限|警戞线|警戞値).*(设定|设置|添加|新增|修改|更新|删除|移除|取消)"
+    r"|针对.{0,30}(设定|设置|配置|定义|添加|(上|下)限)"
+    r"|良率.*(预警|基线|下限|警戞)"
+    r"|为.*添加基线"
+    r"|为.*设置.*(阈値|上限|下限)",
+    re.IGNORECASE,
+)
+
 
 def classify_agent_intent(user_input: str) -> Literal["query", "analyze", "report"]:
     """
     顶层意图预分类 — 决定路由到哪个子 Agent。
 
     当前策略: 关键词匹配。Phase 3 可升级为 LLM 分类。
-    优先级: report > analyze > query
+    优先级: baseline > report > analyze > query
 
     路由规则:
+    - "query"   → _run_query_agent()                 （普通查询 + 基线管理，baseline_manager 在此管道内）
     - "report"  → _run_analysis_agent()              （良率/OEE 报表，有专属 SQL builder）
     - "analyze" → _run_analysis_with_data_pipeline() （SPC/相关性等，先 query_agent 取数）
-    - "query"   → _run_query_agent()                 （普通查询）
     """
+    # 基线设定优先级最高：防止含「一次良率/FPY」的基线指令被误路由到 analysis_agent
+    if _BASELINE_KEYWORDS.search(user_input):
+        return "query"   # 基线管理在 query_agent 的 baseline_manager 节点
     if _REPORT_KEYWORDS.search(user_input):
         return "report"   # 良率/OEE 报表 → analysis_agent 直接走（method_selector 内有专属 SQL builder）
     if _ANALYSIS_KEYWORDS.search(user_input):
