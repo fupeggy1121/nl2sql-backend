@@ -31,7 +31,7 @@ cleanup() {
   fi
   exit 0
 }
-trap cleanup SIGINT SIGTERM
+trap cleanup SIGINT SIGTERM SIGHUP
 
 log "========================================"
 log "NL2SQL 前端守护进程启动"
