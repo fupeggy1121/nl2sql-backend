@@ -71,8 +71,39 @@ def run_metric_compute(df: pd.DataFrame, params: dict) -> AnalysisResult:
     result = computer.compute(df, group_by=group_by)
 
     # 提取 compute 方法源码（用于 pipeline trace 展示）
+    # 包含：① 模块级 import、② 自动生成头注释、③ compute() 方法完整代码
     try:
-        python_script = inspect.getsource(type(computer).compute)
+        method_src = inspect.getsource(type(computer).compute)
+
+        # 提取该计算器类所在模块的所有 import 语句
+        module = inspect.getmodule(type(computer))
+        import_lines: list = []
+        if module:
+            try:
+                module_src = inspect.getsource(module)
+                import_lines = [
+                    line for line in module_src.splitlines()
+                    if (line.startswith("import ") or line.startswith("from "))
+                    and not line.startswith("from __future__")
+                ]
+            except Exception:
+                pass
+
+        imports_block = "\n".join(import_lines) if import_lines else "# (模块 import 提取失败)"
+
+        header = (
+            f"# =====================================================\n"
+            f"# 指标:     {metric_name}\n"
+            f"# 计算器:   {type(computer).__name__}\n"
+            f"# 分组维度: {group_by or '自动检测(按 process_code / report_date 等)'}\n"
+            f"# =====================================================\n"
+            f"\n"
+            f"# --- 模块依赖 (来自 {type(computer).__module__}) ---\n"
+            f"{imports_block}\n"
+            f"\n"
+            f"# --- 计算逻辑 ({type(computer).__name__}.compute 方法源码) ---\n"
+        )
+        python_script = header + method_src
     except Exception:
         python_script = None
 
