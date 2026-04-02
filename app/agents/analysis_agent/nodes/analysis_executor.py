@@ -25,9 +25,14 @@ def analysis_executor_node(state: AnalysisState) -> dict:
     输入: dataframe_json, suggested_method, method_params
     输出: analysis_success, analysis_summary, analysis_data, analysis_charts, analysis_error
     """
-    df_json = state.get("dataframe_json", "{}")
     method = state.get("suggested_method", "descriptive")
     params = state.get("method_params") or {}
+
+    # metric_compute 需要原始数据（NULL 有业务含义，不能被预处理器 drop 掉）
+    if method == "metric_compute":
+        df_json = state.get("raw_dataframe_json") or state.get("dataframe_json", "{}")
+    else:
+        df_json = state.get("dataframe_json", "{}")
 
     if not df_json or df_json == "{}":
         return {
@@ -39,7 +44,8 @@ def analysis_executor_node(state: AnalysisState) -> dict:
         }
 
     try:
-        df = pd.read_json(io.StringIO(df_json), orient="records")
+        # convert_dates=False 防止数值列（如 process_code=8200）被误判为日期
+        df = pd.read_json(io.StringIO(df_json), orient="records", convert_dates=False)
     except Exception as e:
         return {
             "analysis_success": False,

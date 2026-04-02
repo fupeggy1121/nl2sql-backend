@@ -20,6 +20,7 @@ class AnalysisState(TypedDict, total=False):
     data_source_config: Dict[str, Any]   # DataSourceConfig dict（由 method_selector 或前端提供）
     raw_data: List[Dict[str, Any]]       # 原始行数据
     dataframe_json: str                  # DataFrame 的 JSON 序列化（传递给后续节点）
+    raw_dataframe_json: str              # 预处理前的原始 DataFrame JSON（供 metric_compute 等使用）
     data_load_error: Optional[str]
 
     # ── 预处理 ──

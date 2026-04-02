@@ -34,7 +34,7 @@ def data_loader_node(state: AnalysisState) -> dict:
             }
         df_json = df.to_json(orient="records", force_ascii=False, date_format="iso")
         logger.info(f"[data_loader] loaded {len(df)} rows × {len(df.columns)} cols")
-        return {"dataframe_json": df_json, "data_load_error": None}
+        return {"dataframe_json": df_json, "raw_dataframe_json": df_json, "data_load_error": None}
     except Exception as e:
         logger.error(f"[data_loader] error: {e}")
         return {"dataframe_json": "{}", "data_load_error": str(e)}
