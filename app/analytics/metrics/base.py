@@ -49,35 +49,14 @@ class MetricComputer(ABC):
     子类需实现:
       - metric_name: 指标唯一标识
       - skill_name: 对应 skill 文件名
-      - required_raw_sql(**filters) -> str: 返回明细数据 SQL（不含 GROUP BY 聚合）
       - compute(df, **kwargs) -> MetricResult: 用 pandas 在 Python 侧完成计算
+
+    数据 SQL 由 ontology 层的 MetricDefinition.raw_sql_template 提供（mapping JSON），
+    不再在 Python 类中硬编码。子类无需实现 required_raw_sql()。
     """
 
     metric_name: str = ""
     skill_name: str = ""
-
-    @abstractmethod
-    def required_raw_sql(
-        self,
-        station_filter: str = "",
-        product_filter: str = "",
-        date_filter: str = "",
-        extra_where: str = "",
-        limit: int = 100000,
-    ) -> str:
-        """
-        构建明细数据 SQL。
-
-        SQL 只做 JOIN + WHERE 过滤，不做 GROUP BY 聚合。
-        聚合逻辑由 compute() 在 Python 中完成。
-
-        :param station_filter: 工站过滤条件 (e.g. "log.process_code = 'POL'")
-        :param product_filter: 产品过滤条件
-        :param date_filter: 日期过滤条件
-        :param extra_where: 额外 WHERE 子句
-        :param limit: 最大行数（防止数据量过大）
-        """
-        ...
 
     @abstractmethod
     def compute(
@@ -89,7 +68,7 @@ class MetricComputer(ABC):
         """
         基于明细 DataFrame 计算指标。
 
-        :param df: 从 required_raw_sql() 获取的明细数据
+        :param df: 由 ontology raw_sql_template 查询得到的明细数据 DataFrame
         :param group_by: 分组维度 (e.g. ["process_code", "report_date"])
         :param kwargs: 额外参数
         """

@@ -19,40 +19,11 @@ from app.analytics.registry import register_metric
 
 logger = logging.getLogger(__name__)
 
-_LOG_TABLE = "matrix_routerx_operation_lot_batch_resume_log"
-_DETAIL_TABLE = "matrix_routerx_operation_lot_batch_resume_log_detail"
-_WAFER_TABLE = "matrix_routerx_operation_lot_batch_resume_wafer_detail_log"
-
 
 @register_metric
 class ReworkRateComputer(MetricComputer):
     metric_name = "rework_rate"
     skill_name = "rework_rate"
-
-    def required_raw_sql(
-        self,
-        station_filter: str = "",
-        product_filter: str = "",
-        date_filter: str = "",
-        extra_where: str = "",
-        limit: int = 100000,
-    ) -> str:
-        where_extra = self._build_where_extra(
-            station_filter, product_filter, date_filter, extra_where
-        )
-
-        return f"""\
-SELECT wdl.wafer_id, log.process_code, log.product_code,
-       DATE(log.gmt_create) AS report_date
-FROM {_LOG_TABLE} log
-JOIN {_DETAIL_TABLE} d
-     ON d.batch_resume_log_id = log.id
-JOIN {_WAFER_TABLE} wdl
-     ON wdl.batch_resume_detail_log_id = d.id
-WHERE log.operation_type = 8
-  AND (log.deleted = 0 OR log.deleted IS NULL)
-  {where_extra}
-LIMIT {limit}"""
 
     def compute(
         self,

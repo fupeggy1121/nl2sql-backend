@@ -124,8 +124,12 @@ def method_selector_node(state: AnalysisState) -> dict:
 
     # 3.1 python_compute 路由: 若匹配到的指标有 compute_mode == python_compute，
     #     改走 metric_compute 方法（SQL 只取明细，Python 侧计算）
+    #
+    # SQL 来源优先级（ontology 优先）:
+    #   1. MetricDefinition.raw_sql_template（ontology 层，单一来源）
+    #   2. _computer.required_raw_sql()（Python 类，已废弃，仅作 fallback）
     if method == "yield_report" and not data_source_config:
-        _metric_name, _computer = _detect_python_compute_metric(user_input)
+        _metric_name, _computer, _metric_def = _detect_python_compute_metric(user_input)
         if _metric_name and _computer:
             logger.info(f"[method_selector] python_compute detected: {_metric_name}, routing to metric_compute")
             method = "metric_compute"
@@ -133,10 +137,39 @@ def method_selector_node(state: AnalysisState) -> dict:
             start_date, end_date = _extract_date_range(user_input)
             station_clause = _extract_station_filter(user_input, alias="log")
             date_filter = f"log.gmt_create >= '{start_date} 00:00:00' AND log.gmt_create <= '{end_date} 23:59:59'"
-            raw_sql = _computer.required_raw_sql(
-                station_filter=station_clause.replace("\n  AND ", "").strip() if station_clause else "",
-                date_filter=date_filter,
-            )
+
+            # ── 1. Ontology-driven SQL（从 MetricDefinition.raw_sql_template 读取）──
+            raw_sql_template = _metric_def.raw_sql_template if _metric_def else None
+            if raw_sql_template:
+                # 组装 WHERE_EXTRA 子句（日期 + 站点过滤）
+                where_parts = []
+                if date_filter:
+                    where_parts.append(f"AND {date_filter}")
+                station_filter_clean = (
+                    station_clause.replace("\n  AND ", "").strip() if station_clause else ""
+                )
+                if station_filter_clean:
+                    where_parts.append(f"AND {station_filter_clean}")
+                where_extra = "\n  ".join(where_parts)
+                raw_sql = raw_sql_template.format(
+                    WHERE_EXTRA=where_extra,
+                    LIMIT=100000,
+                )
+                logger.info(f"[method_selector] SQL from ontology raw_sql_template for '{_metric_name}'")
+            else:
+                # ── 2. Fallback: Python 类的 required_raw_sql()（已废弃，仅兼容旧部署）──
+                logger.warning(
+                    f"[method_selector] '{_metric_name}' has no raw_sql_template in ontology; "
+                    f"falling back to MetricComputer.required_raw_sql() — "
+                    f"please add raw_sql_template to MetricDefinition in mapping JSON."
+                )
+                raw_sql = _computer.required_raw_sql(
+                    station_filter=(
+                        station_clause.replace("\n  AND ", "").strip() if station_clause else ""
+                    ),
+                    date_filter=date_filter,
+                )
+
             data_source_config = {"type": "sql", "sql": raw_sql, "limit": 100000}
             params = {**params, "metric_name": _metric_name}
 
@@ -449,21 +482,26 @@ ORDER BY e.lot_code, e.process_code, e.gmt_create"""
 def _detect_python_compute_metric(user_input: str):
     """
     检测用户查询是否匹配 compute_mode=python_compute 的指标。
-    返回 (metric_name, MetricComputer) 或 (None, None)。
+    返回 (metric_name, MetricComputer, MetricDefinition) 或 (None, None, None)。
+
+    MetricDefinition 一起返回，供调用方读取 raw_sql_template（ontology 层 SQL）。
     """
     try:
-        from app.analytics.registry import get_metric, has_metric
-        from app.ontology.mapping import MappingDictionary
+        from app.analytics.registry import get_metric
+        from app.ontology.mapping import get_mapping
 
-        mapping = MappingDictionary()
+        mapping = get_mapping()  # 使用全局单例（而非每次实例化新的 MappingDictionary）
         metric_def = mapping.find_metric_by_name(user_input)
         if metric_def and metric_def.compute_mode == "python_compute":
             computer = get_metric(metric_def.metric_id)
             if computer:
-                return metric_def.metric_id, computer
+                return metric_def.metric_id, computer, metric_def
             else:
-                logger.warning(f"[method_selector] metric '{metric_def.metric_id}' has compute_mode=python_compute but no computer registered")
+                logger.warning(
+                    f"[method_selector] metric '{metric_def.metric_id}' has "
+                    f"compute_mode=python_compute but no computer registered in registry"
+                )
     except Exception as e:
         logger.warning(f"[method_selector] _detect_python_compute_metric error: {e}")
 
-    return None, None
+    return None, None, None

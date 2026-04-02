@@ -131,7 +131,8 @@ class MetricDefinition:
     description: str
     join_path: Optional[str] = None   # JOIN 路径提示（可选）
     auto_filter: Optional[str] = None # 自动注入的 WHERE 条件（可选）
-    sql_template: Optional[str] = None  # 预构建 CTE SQL 模板（复杂指标用，含 {WHERE_EXTRA} 占位符）
+    sql_template: Optional[str] = None  # 聚合结果 SQL（含 {WHERE_EXTRA} 占位符，直接返回指标%值）
+    raw_sql_template: Optional[str] = None  # 明细数据 SQL（同 {WHERE_EXTRA}/{LIMIT} 占位符，供 Python compute 使用）
     compute_mode: str = "sql_aggregate"  # "sql_aggregate" | "python_compute"
 
 
@@ -503,6 +504,7 @@ class MappingDictionary:
                 join_path=md.get("join_path"),
                 auto_filter=md.get("auto_filter"),
                 sql_template=md.get("sql_template"),
+                raw_sql_template=md.get("raw_sql_template"),
                 compute_mode=md.get("compute_mode", "sql_aggregate"),
             )
 
