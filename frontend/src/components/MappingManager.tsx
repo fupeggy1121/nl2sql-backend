@@ -119,7 +119,7 @@ interface Summary {
   metric_definitions: number;
 }
 
-type Tab = 'objects' | 'relations' | 'values' | 'rules' | 'metrics' | 'changelog' | 'baselines';
+type Tab = 'objects' | 'relations' | 'values' | 'rules' | 'metrics' | 'skills' | 'changelog' | 'baselines';
 
 // ══════════════════════════════════════════════════════════════════
 // Helper: Modal
@@ -2690,6 +2690,356 @@ function BaselinesTab() {
 }
 
 // ══════════════════════════════════════════════════════════════════
+// Tab 8: Skill Editor (Markdown 编辑器)
+// ══════════════════════════════════════════════════════════════════
+
+const BASE_URL = (() => {
+  if (typeof window !== 'undefined') {
+    const vite = (import.meta as any)?.env?.VITE_API_BASE_URL;
+    if (vite) return vite.replace(/\/api\/query.*$/, '');
+  }
+  return 'http://localhost:8000';
+})();
+
+interface SkillMeta {
+  skill_name: string;
+  zh_names: string[];
+  compute_mode: string;
+  anchor_table: string;
+  standard_definition: string;
+}
+
+/** 极简 Markdown → HTML 渲染（无依赖，覆盖 frontmatter+body 场景） */
+function renderMarkdown(md: string): string {
+  // 代码块
+  let html = md.replace(/```([\s\S]*?)```/g, (_, c) =>
+    `<pre style="background:#1e1b4b;color:#c4b5fd;padding:12px 14px;border-radius:8px;overflow-x:auto;font-size:12px;line-height:1.6;margin:8px 0">${c.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>`);
+  // 行内代码
+  html = html.replace(/`([^`]+)`/g, '<code style="background:rgba(99,102,241,0.15);color:#a5b4fc;padding:1px 5px;border-radius:4px;font-size:12px">$1</code>');
+  // 标题
+  html = html.replace(/^### (.+)$/gm, '<h3 style="font-size:14px;font-weight:700;color:#e2e8f0;margin:14px 0 6px">$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2 style="font-size:16px;font-weight:700;color:#e2e8f0;margin:16px 0 8px;border-bottom:1px solid #1e1b4b;padding-bottom:4px">$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1 style="font-size:20px;font-weight:700;color:#f1f5f9;margin:16px 0 10px">$1</h1>');
+  // YAML frontmatter 整块高亮
+  html = html.replace(/^---([\s\S]*?)---/m, (_,body)=>
+    `<div style="background:#12142a;border:1px solid #1e1b4b;border-radius:8px;padding:12px 14px;margin-bottom:12px;font-family:monospace;font-size:12px;color:#94a3b8;white-space:pre">${body.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`);
+  // 粗体
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#e2e8f0">$1</strong>');
+  // 无序列表
+  html = html.replace(/^[*-] (.+)$/gm, '<li style="margin:2px 0 2px 16px;color:#cbd5e1">$1</li>');
+  html = html.replace(/(<li.*<\/li>\n?)+/g, m => `<ul style="margin:6px 0">${m}</ul>`);
+  // 段落换行
+  html = html.replace(/\n{2,}/g, '</p><p style="margin:6px 0;color:#cbd5e1;line-height:1.7">');
+  html = `<p style="margin:6px 0;color:#cbd5e1;line-height:1.7">${html}</p>`;
+  return html;
+}
+
+function SkillEditorTab() {
+  const [skills, setSkills] = useState<SkillMeta[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [content, setContent] = useState('');
+  const [savedContent, setSavedContent] = useState('');
+  const [mode, setMode] = useState<'edit' | 'preview' | 'split'>('split');
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [showNew, setShowNew] = useState(false);
+  const [newName, setNewName] = useState('');
+
+  const isDirty = content !== savedContent;
+
+  const loadList = useCallback(async () => {
+    setError('');
+    try {
+      const r = await fetch(`${BASE_URL}/api/skills`);
+      const j = await r.json();
+      const list: SkillMeta[] = j.data || [];
+      setSkills(list);
+      if (list.length > 0 && !selected) {
+        setSelected(list[0].skill_name);
+      }
+    } catch (e: any) {
+      setError('加载 skill 列表失败: ' + e.message);
+    }
+  }, [selected]);
+
+  const loadContent = useCallback(async (name: string) => {
+    if (!name) return;
+    setLoading(true);
+    setError('');
+    try {
+      const r = await fetch(`${BASE_URL}/api/skills/${name}/raw`);
+      const j = await r.json();
+      if (j.success) {
+        setContent(j.content);
+        setSavedContent(j.content);
+      } else {
+        setError(j.error || '加载失败');
+      }
+    } catch (e: any) {
+      setError('读取文件失败: ' + e.message);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadList(); }, []);
+  useEffect(() => { if (selected) loadContent(selected); }, [selected]);
+
+  const handleSave = async () => {
+    if (!selected || !isDirty) return;
+    setSaving(true);
+    setError('');
+    try {
+      const r = await fetch(`${BASE_URL}/api/skills/${selected}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      const j = await r.json();
+      if (j.success) {
+        setSavedContent(content);
+        loadList();
+      } else {
+        setError(j.error || '保存失败');
+      }
+    } catch (e: any) {
+      setError('保存失败: ' + e.message);
+    }
+    setSaving(false);
+  };
+
+  const handleCreate = async () => {
+    const name = newName.trim().replace(/[^a-z0-9_]/gi, '_');
+    if (!name) return;
+    setError('');
+    try {
+      const r = await fetch(`${BASE_URL}/api/skills`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skill_name: name }),
+      });
+      const j = await r.json();
+      if (j.success) {
+        setShowNew(false);
+        setNewName('');
+        await loadList();
+        setSelected(name);
+      } else {
+        setError(j.error || '创建失败');
+      }
+    } catch (e: any) {
+      setError('创建失败: ' + e.message);
+    }
+  };
+
+  const handleDelete = async (name: string) => {
+    if (!confirm(`删除 skill "${name}"？此操作不可恢复。`)) return;
+    try {
+      await fetch(`${BASE_URL}/api/skills/${name}`, { method: 'DELETE' });
+      const next = skills.find(s => s.skill_name !== name);
+      setSelected(next?.skill_name || null);
+      loadList();
+    } catch (e: any) {
+      setError('删除失败: ' + e.message);
+    }
+  };
+
+  const editorStyle: React.CSSProperties = {
+    width: '100%',
+    height: '100%',
+    background: '#0d0e1a',
+    color: '#e2e8f0',
+    fontFamily: '"JetBrains Mono", "Fira Code", Consolas, monospace',
+    fontSize: 13,
+    lineHeight: 1.7,
+    border: 'none',
+    outline: 'none',
+    resize: 'none',
+    padding: '16px',
+    tabSize: 2,
+  };
+
+  const previewStyle: React.CSSProperties = {
+    flex: 1,
+    height: '100%',
+    overflowY: 'auto',
+    background: '#0d0e1a',
+    padding: '16px 20px',
+    color: '#cbd5e1',
+    fontSize: 13,
+    lineHeight: 1.7,
+  };
+
+  return (
+    <div style={{ display: 'flex', height: 'calc(100vh - 220px)', minHeight: 520, gap: 0, background: '#0d0e1a', borderRadius: 12, overflow: 'hidden', border: '1px solid #1e1b4b' }}>
+
+      {/* ── 左侧文件列表 ── */}
+      <div style={{ width: 220, flexShrink: 0, background: '#12142a', borderRight: '1px solid #1e1b4b', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e1b4b' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Skill 文件</span>
+          <button
+            onClick={() => setShowNew(true)}
+            title="新建 skill"
+            style={{ background: 'rgba(99,102,241,0.2)', border: '1px solid #3730a3', borderRadius: 6, cursor: 'pointer', padding: '3px 7px', color: '#a5b4fc', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Plus size={12} /> 新建
+          </button>
+        </div>
+
+        {showNew && (
+          <div style={{ padding: '8px 12px', background: '#1a1b35', borderBottom: '1px solid #1e1b4b', display: 'flex', gap: 6 }}>
+            <input
+              autoFocus
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') { setShowNew(false); setNewName(''); } }}
+              placeholder="skill_name"
+              style={{ flex: 1, background: '#0d0e1a', border: '1px solid #3730a3', borderRadius: 5, color: '#e2e8f0', fontSize: 12, padding: '4px 8px', outline: 'none' }}
+            />
+            <button onClick={handleCreate} style={{ background: '#4f46e5', border: 'none', borderRadius: 5, color: '#fff', fontSize: 12, padding: '4px 8px', cursor: 'pointer' }}>
+              <Check size={12} />
+            </button>
+            <button onClick={() => { setShowNew(false); setNewName(''); }} style={{ background: 'transparent', border: '1px solid #334155', borderRadius: 5, color: '#6b7280', fontSize: 12, padding: '4px 7px', cursor: 'pointer' }}>
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {skills.map(s => (
+            <div
+              key={s.skill_name}
+              style={{ position: 'relative' }}
+              onMouseEnter={e => { const b = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.del-skill'); if (b) b.style.opacity = '1'; }}
+              onMouseLeave={e => { const b = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.del-skill'); if (b) b.style.opacity = '0'; }}
+            >
+              <button
+                onClick={() => {
+                  if (isDirty && selected && !confirm('当前有未保存的修改，确认切换？')) return;
+                  setSelected(s.skill_name);
+                }}
+                style={{
+                  width: '100%', textAlign: 'left', background: selected === s.skill_name ? 'rgba(99,102,241,0.2)' : 'transparent',
+                  border: 'none', borderLeft: selected === s.skill_name ? '2px solid #6366f1' : '2px solid transparent',
+                  padding: '10px 14px 10px 12px', cursor: 'pointer', color: selected === s.skill_name ? '#a5b4fc' : '#94a3b8',
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: selected === s.skill_name ? 600 : 400, fontFamily: 'monospace' }}>{s.skill_name}</div>
+                {s.zh_names.length > 0 && (
+                  <div style={{ fontSize: 11, color: '#4b5563', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {s.zh_names.slice(0, 3).join(' / ')}
+                  </div>
+                )}
+              </button>
+              <button
+                className="del-skill"
+                onClick={e => { e.stopPropagation(); handleDelete(s.skill_name); }}
+                title="删除"
+                style={{ opacity: 0, transition: 'opacity .15s', position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '2px 4px' }}
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+          {skills.length === 0 && !error && (
+            <div style={{ padding: 24, textAlign: 'center', color: '#4b5563', fontSize: 12 }}>暂无 skill 文件</div>
+          )}
+        </div>
+      </div>
+
+      {/* ── 右侧编辑区 ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* 工具栏 */}
+        <div style={{ height: 44, flexShrink: 0, background: '#12142a', borderBottom: '1px solid #1e1b4b', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: 'monospace', fontSize: 13, color: '#a5b4fc' }}>
+              {selected ? `${selected}.md` : '— 未选择 —'}
+            </span>
+            {isDirty && <span style={{ fontSize: 11, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '1px 6px', borderRadius: 10 }}>未保存</span>}
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {/* 视图切换 */}
+            {(['edit', 'split', 'preview'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid', fontSize: 12, cursor: 'pointer',
+                  background: mode === m ? 'rgba(99,102,241,0.25)' : 'transparent',
+                  borderColor: mode === m ? '#6366f1' : '#1e293b',
+                  color: mode === m ? '#a5b4fc' : '#6b7280',
+                }}
+              >
+                {m === 'edit' ? '编辑' : m === 'split' ? '分栏' : '预览'}
+              </button>
+            ))}
+            <div style={{ width: 1, height: 18, background: '#1e293b' }} />
+            <button
+              onClick={handleSave}
+              disabled={!isDirty || saving || !selected}
+              style={{ padding: '5px 14px', borderRadius: 6, fontSize: 12, cursor: isDirty && selected ? 'pointer' : 'not-allowed',
+                background: isDirty && selected ? '#4f46e5' : '#1a1b35',
+                color: isDirty && selected ? '#fff' : '#4b5563',
+                border: 'none', fontWeight: 600, transition: 'background .15s',
+              }}
+            >
+              {saving ? '保存中...' : '保存'}
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div style={{ background: '#2d1212', color: '#fca5a5', fontSize: 12, padding: '8px 14px', borderBottom: '1px solid #3b0f0f' }}>
+            {error}
+          </div>
+        )}
+
+        {/* 编辑器 / 预览区 */}
+        {loading ? (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4b5563', fontSize: 13 }}>加载中...</div>
+        ) : !selected ? (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4b5563', fontSize: 13 }}>← 选择左侧 skill 开始编辑</div>
+        ) : (
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
+            {/* 编辑 pane */}
+            {(mode === 'edit' || mode === 'split') && (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: mode === 'split' ? '1px solid #1e1b4b' : 'none' }}>
+                <textarea
+                  value={content}
+                  onChange={e => setContent(e.target.value)}
+                  style={editorStyle}
+                  spellCheck={false}
+                  onKeyDown={e => {
+                    if (e.key === 'Tab') {
+                      e.preventDefault();
+                      const el = e.currentTarget;
+                      const start = el.selectionStart;
+                      const end = el.selectionEnd;
+                      const newVal = content.substring(0, start) + '  ' + content.substring(end);
+                      setContent(newVal);
+                      requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = start + 2; });
+                    }
+                    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+                      e.preventDefault();
+                      handleSave();
+                    }
+                  }}
+                />
+              </div>
+            )}
+            {/* 预览 pane */}
+            {(mode === 'preview' || mode === 'split') && (
+              <div style={previewStyle}
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
 // Main Component
 // ══════════════════════════════════════════════════════════════════
 
@@ -2708,8 +3058,9 @@ export default function MappingManager() {
     { key: 'relations', label: '关系映射',  icon: <GitBranch size={15} />,   count: summary?.relation_mappings },
     { key: 'values',    label: '状态映射',    icon: <Tag size={15} />,          count: summary?.value_domains },
     { key: 'rules',     label: '业务规则',  icon: <Book size={15} />,         count: summary?.business_rules },
-    { key: 'metrics',   label: '指标定义',  icon: <BarChart2 size={15} />,    count: summary?.metric_definitions },
-    { key: 'changelog', label: '变更记录',  icon: <History size={15} /> },
+    { key: 'metrics',   label: '指标定义 (JSON)',  icon: <BarChart2 size={15} />,    count: summary?.metric_definitions },
+    { key: 'skills',    label: 'Skill 编辑器',     icon: <FileText size={15} /> },
+    { key: 'changelog', label: '变更记录',          icon: <History size={15} /> },
     { key: 'baselines', label: '预警基线',  icon: <AlertCircle size={15} /> },
   ];
 
@@ -2765,6 +3116,7 @@ export default function MappingManager() {
             {tab === 'values'    && <ValueMappingsTab />}
             {tab === 'rules'     && <BusinessRulesTab />}
             {tab === 'metrics'   && <MetricsTab />}
+            {tab === 'skills'    && <SkillEditorTab />}
             {tab === 'changelog' && <ChangelogTab />}
             {tab === 'baselines' && <BaselinesTab />}
           </div>

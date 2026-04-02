@@ -457,6 +457,131 @@ async def compat_audit_log(limit: int = 50):
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 
+# ═══════════════════════════════════════════════════════════════
+#   /api/skills/* — Skill 文件管理（读写 app/skills/metrics/*.md）
+# ═══════════════════════════════════════════════════════════════
+
+_SKILLS_METRICS_DIR = None
+
+def _get_skills_dir():
+    global _SKILLS_METRICS_DIR
+    if _SKILLS_METRICS_DIR is None:
+        from pathlib import Path
+        _SKILLS_METRICS_DIR = Path(__file__).parent.parent / "skills" / "metrics"
+    return _SKILLS_METRICS_DIR
+
+
+@router.get("/api/skills")
+async def list_skills():
+    """列出所有 skill 文件（含解析后的 skill_name / zh_names 摘要）"""
+    try:
+        from app.skills.loader import get_skill_loader
+        loader = get_skill_loader()
+        skills = loader.list_skills()
+        return JSONResponse({
+            "success": True,
+            "data": [
+                {
+                    "skill_name": s.skill_name,
+                    "zh_names": s.zh_names,
+                    "compute_mode": s.compute_mode,
+                    "anchor_table": s.anchor_table,
+                    "standard_definition": s.standard_definition,
+                    "source_file": s.source_file,
+                }
+                for s in skills
+            ],
+        })
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
+@router.get("/api/skills/{skill_name}/raw")
+async def get_skill_raw(skill_name: str):
+    """返回 skill 的原始 Markdown 文本"""
+    try:
+        skills_dir = _get_skills_dir()
+        md_file = skills_dir / f"{skill_name}.md"
+        if not md_file.exists():
+            return JSONResponse({"success": False, "error": "skill 文件不存在"}, status_code=404)
+        content = md_file.read_text(encoding="utf-8")
+        return JSONResponse({"success": True, "skill_name": skill_name, "content": content})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
+@router.put("/api/skills/{skill_name}")
+async def save_skill(skill_name: str, request: Request):
+    """保存（覆写）skill 的 Markdown 文本"""
+    try:
+        body = await request.json()
+        content = body.get("content", "")
+        if not content.strip():
+            return JSONResponse({"success": False, "error": "content 不能为空"}, status_code=400)
+
+        skills_dir = _get_skills_dir()
+        skills_dir.mkdir(parents=True, exist_ok=True)
+
+        # 基础安全检查：skill_name 不允许路径穿越
+        safe_name = skill_name.replace("/", "_").replace("..", "_")
+        md_file = skills_dir / f"{safe_name}.md"
+        md_file.write_text(content, encoding="utf-8")
+
+        # 重置 loader 缓存，使修改立即生效
+        import app.skills.loader as _loader_mod
+        _loader_mod._default_loader = None
+
+        return JSONResponse({"success": True, "skill_name": safe_name})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/api/skills")
+async def create_skill(request: Request):
+    """新建 skill 文件"""
+    try:
+        body = await request.json()
+        skill_name = (body.get("skill_name") or "").strip()
+        content = (body.get("content") or "").strip()
+        if not skill_name:
+            return JSONResponse({"success": False, "error": "skill_name 必填"}, status_code=400)
+
+        safe_name = skill_name.replace("/", "_").replace("..", "_")
+        skills_dir = _get_skills_dir()
+        skills_dir.mkdir(parents=True, exist_ok=True)
+        md_file = skills_dir / f"{safe_name}.md"
+        if md_file.exists():
+            return JSONResponse({"success": False, "error": "skill 已存在，请使用 PUT 更新"}, status_code=409)
+
+        if not content:
+            content = f"---\nskill_name: {safe_name}\nzh_names:\n  - \ncompute_mode: python_compute\nstandard_definition: \"\"\nformula: \"\"\nrequired_tables: []\nanchor_table: \"\"\nauto_filter: \"\"\nraw_sql_template: |\n  -- SQL here\n---\n\n## 指标说明\n\n{safe_name} 指标定义。\n"
+
+        md_file.write_text(content, encoding="utf-8")
+        import app.skills.loader as _loader_mod
+        _loader_mod._default_loader = None
+
+        return JSONResponse({"success": True, "skill_name": safe_name})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
+@router.delete("/api/skills/{skill_name}")
+async def delete_skill(skill_name: str):
+    """删除 skill 文件"""
+    try:
+        skills_dir = _get_skills_dir()
+        safe_name = skill_name.replace("/", "_").replace("..", "_")
+        md_file = skills_dir / f"{safe_name}.md"
+        if not md_file.exists():
+            return JSONResponse({"success": False, "error": "文件不存在"}, status_code=404)
+        md_file.unlink()
+        import app.skills.loader as _loader_mod
+        _loader_mod._default_loader = None
+        return JSONResponse({"success": True})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
 @router.get("/api/query/unified/query-recommendations")
 async def compat_query_recommendations():
     """预设查询建议"""
