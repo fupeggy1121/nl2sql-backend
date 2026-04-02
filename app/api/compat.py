@@ -391,6 +391,72 @@ async def compat_synonym_stats():
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 
+@router.get("/api/synonyms/unmatched")
+async def compat_list_unmatched(
+    status: str = "pending",
+    min_frequency: int = 1,
+    limit: int = 100,
+):
+    """获取未匹配查询词列表"""
+    try:
+        from app.services.synonym_manager import synonym_manager
+        data = synonym_manager.get_unmatched_terms(status, min_frequency, limit)
+        return JSONResponse({"success": True, "data": data, "total": len(data)})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/api/synonyms/unmatched/{term_id}/approve")
+async def compat_approve_unmatched(term_id: int, request: Request):
+    """审批未匹配词 → 自动创建同义词映射"""
+    try:
+        from app.services.synonym_manager import synonym_manager
+        body = await request.json()
+        target_uri = body.get("target_uri") or body.get("table_name")
+        if not target_uri:
+            return JSONResponse({"success": False, "error": "target_uri 必填"}, status_code=400)
+        result = synonym_manager.approve_unmatched_term(
+            term_id, target_uri,
+            reviewed_by=body.get("reviewed_by", "admin"),
+        )
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/api/synonyms/unmatched/{term_id}/reject")
+async def compat_reject_unmatched(term_id: int):
+    """拒绝未匹配词"""
+    try:
+        from app.services.synonym_manager import synonym_manager
+        result = synonym_manager.reject_unmatched_term(term_id, reviewed_by="admin")
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
+@router.post("/api/synonyms/unmatched/{term_id}/ignore")
+async def compat_ignore_unmatched(term_id: int):
+    """忽略未匹配词"""
+    try:
+        from app.services.synonym_manager import synonym_manager
+        result = synonym_manager.ignore_unmatched_term(term_id)
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
+@router.get("/api/synonyms/audit-log")
+async def compat_audit_log(limit: int = 50):
+    """操作审计日志"""
+    try:
+        from app.services.synonym_manager import synonym_manager
+        data = synonym_manager.get_audit_log(limit)
+        return JSONResponse({"success": True, "data": data})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
 @router.get("/api/query/unified/query-recommendations")
 async def compat_query_recommendations():
     """预设查询建议"""

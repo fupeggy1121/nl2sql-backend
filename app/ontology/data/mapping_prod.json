@@ -4448,6 +4448,7 @@
       "description": "当前在制品晶圆数，以Wafer为粒度统计，通过子批次(Sublot)关联工站"
     },
     "first_pass_yield": {
+      "compute_mode": "python_compute",
       "zh_names": [
         "一次良率",
         "首次合格率",
@@ -4471,6 +4472,7 @@
       "description": "一次良率(FPY/直通率)：每片wafer在该站点首次出站(CheckOut,op=9)时wafer_type为good的比例。返工恢复的wafer不计入分子。基于wafer_detail_log过站历史，ROW_NUMBER按gmt_create ASC取首次出站快照。"
     },
     "final_yield": {
+      "compute_mode": "python_compute",
       "zh_names": [
         "综合良率",
         "最终良率",
@@ -4499,6 +4501,7 @@
       "description": "综合良率(Final Yield)：每片wafer在该站点最后一次出站(CheckOut,op=9)时wafer_type为good的比例。返工恢复的wafer计入分子。基于wafer_detail_log过站历史，ROW_NUMBER按gmt_create DESC取末次出站快照。"
     },
     "rework_rate": {
+      "compute_mode": "python_compute",
       "zh_names": [
         "返工率",
         "重工率",

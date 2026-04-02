@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 # 全局注册表: name → {func, label, description, params_schema}
 _REGISTRY: Dict[str, Dict[str, Any]] = {}
 
+# 指标计算器注册表: metric_name → MetricComputer instance
+_METRIC_REGISTRY: Dict[str, Any] = {}
+
 
 def register_method(
     name: str,
@@ -78,3 +81,43 @@ def list_methods() -> List[Dict[str, Any]]:
 
 def has_method(name: str) -> bool:
     return name in _REGISTRY
+
+
+# ── 指标计算器注册 ──
+
+def register_metric(computer_cls: type) -> type:
+    """
+    装饰器 — 注册 MetricComputer 子类到指标注册表。
+
+    Usage:
+        @register_metric
+        class FirstPassYieldComputer(MetricComputer):
+            metric_name = "first_pass_yield"
+            ...
+    """
+    name = getattr(computer_cls, "metric_name", "")
+    if not name:
+        raise ValueError(f"MetricComputer class {computer_cls.__name__} missing metric_name")
+    if name in _METRIC_REGISTRY:
+        logger.warning(f"[registry] metric '{name}' already registered, overwriting")
+    instance = computer_cls()
+    _METRIC_REGISTRY[name] = instance
+    logger.debug(f"[registry] registered metric: {name}")
+    return computer_cls
+
+
+def get_metric(name: str) -> Optional[Any]:
+    """获取已注册的 MetricComputer 实例"""
+    return _METRIC_REGISTRY.get(name)
+
+
+def list_metrics() -> List[Dict[str, str]]:
+    """列出所有已注册的指标计算器"""
+    return [
+        {"metric_name": name, "class": type(inst).__name__}
+        for name, inst in _METRIC_REGISTRY.items()
+    ]
+
+
+def has_metric(name: str) -> bool:
+    return name in _METRIC_REGISTRY

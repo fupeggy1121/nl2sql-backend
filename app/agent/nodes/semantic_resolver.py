@@ -114,7 +114,7 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
 
     # ── B2: 语义缓存查找（追问不使用缓存，避免上下文依赖）──
     # v4: 本体类版本前缀——当规则/模板发生重大变更时更新版本号可立即淘汰旧缓存
-    _SEMANTIC_CACHE_VERSION = "v23"  # v23: 新增 first_pass_yield/final_yield/rework_rate 指标 sql_template，清理良率计算路径
+    _SEMANTIC_CACHE_VERSION = "v24"  # v24: 新增 compute_mode 字段 + python_compute 路由 + skill 文件加载
     _cache_key = f"{_SEMANTIC_CACHE_VERSION}:{effective_input}"
     _cache_hit = False
     if not is_followup:

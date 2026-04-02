@@ -121,6 +121,25 @@ def method_selector_node(state: AnalysisState) -> dict:
 
     # 3. 构造 data_source_config（如果 state 中尚未有）
     data_source_config = state.get("data_source_config")
+
+    # 3.1 python_compute 路由: 若匹配到的指标有 compute_mode == python_compute，
+    #     改走 metric_compute 方法（SQL 只取明细，Python 侧计算）
+    if method == "yield_report" and not data_source_config:
+        _metric_name, _computer = _detect_python_compute_metric(user_input)
+        if _metric_name and _computer:
+            logger.info(f"[method_selector] python_compute detected: {_metric_name}, routing to metric_compute")
+            method = "metric_compute"
+            reason = f"指标 '{_metric_name}' 使用 Python 计算模式"
+            start_date, end_date = _extract_date_range(user_input)
+            station_clause = _extract_station_filter(user_input, alias="log")
+            date_filter = f"log.gmt_create >= '{start_date} 00:00:00' AND log.gmt_create <= '{end_date} 23:59:59'"
+            raw_sql = _computer.required_raw_sql(
+                station_filter=station_clause.replace("\n  AND ", "").strip() if station_clause else "",
+                date_filter=date_filter,
+            )
+            data_source_config = {"type": "sql", "sql": raw_sql, "limit": 100000}
+            params = {**params, "metric_name": _metric_name}
+
     if not data_source_config:
         if method == "yield_report":
             data_source_config = _build_yield_sql(user_input)
@@ -406,3 +425,28 @@ WHERE e.operation_type IN (8, 9)
 ORDER BY e.lot_code, e.process_code, e.gmt_create"""
     logger.info(f"[method_selector] oee_report SQL date range: {start_date} ~ {end_date}")
     return {"type": "sql", "sql": sql, "limit": 20000}
+
+
+# ── python_compute 指标检测 ────────────────────────────────────────────────────
+
+def _detect_python_compute_metric(user_input: str):
+    """
+    检测用户查询是否匹配 compute_mode=python_compute 的指标。
+    返回 (metric_name, MetricComputer) 或 (None, None)。
+    """
+    try:
+        from app.analytics.registry import get_metric, has_metric
+        from app.ontology.mapping import MappingDictionary
+
+        mapping = MappingDictionary()
+        metric_def = mapping.find_metric_by_name(user_input)
+        if metric_def and metric_def.compute_mode == "python_compute":
+            computer = get_metric(metric_def.metric_id)
+            if computer:
+                return metric_def.metric_id, computer
+            else:
+                logger.warning(f"[method_selector] metric '{metric_def.metric_id}' has compute_mode=python_compute but no computer registered")
+    except Exception as e:
+        logger.warning(f"[method_selector] _detect_python_compute_metric error: {e}")
+
+    return None, None

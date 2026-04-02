@@ -301,6 +301,7 @@ class SemanticContext:
                     "join_path": m.join_path,
                     "auto_filter": m.auto_filter,
                     "description": m.description,
+                    "compute_mode": m.compute_mode,
                     **({
                         "sql_template": m.sql_template,
                     } if m.sql_template else {}),

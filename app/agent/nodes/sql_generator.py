@@ -1029,8 +1029,17 @@ def _format_semantic_context(semantic_ctx: dict) -> str:
     if metrics:
         lines.append("【指标定义 — 必须按此公式生成SQL，禁止猜测计算方式】:")
         for m in metrics:
+            compute_mode = m.get("compute_mode", "sql_aggregate")
             lines.append(f"  📊 {m.get('metric_id', '')}: {m.get('description', '')}")
-            if m.get('sql_template'):
+            if compute_mode == "python_compute":
+                # Python 计算模式 — SQL 只需取明细数据
+                lines.append(f"    ℹ️ 【Python计算模式】此指标由Python计算引擎处理，SQL仅需获取明细数据（不需要 GROUP BY 聚合）。")
+                if m.get('sql_template'):
+                    lines.append(f"    参考明细SQL模板（CTE内的SELECT部分为所需明细字段）:")
+                    lines.append(f"    ```sql")
+                    lines.append(f"    {m['sql_template']}")
+                    lines.append(f"    ```")
+            elif m.get('sql_template'):
                 # 有预构建 SQL 模板的复杂指标 — LLM 必须基于模板生成
                 lines.append(f"    ⚠⚠ 【预构建SQL模板 — 必须使用此模板，仅替换 {{WHERE_EXTRA}} 占位符为用户条件】:")
                 lines.append(f"    ```sql")

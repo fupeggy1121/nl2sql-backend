@@ -51,6 +51,9 @@ _ANALYSIS_KEYWORDS = re.compile(
 # ── 报表类意图关键词（良率报表、OEE 日报等须走 analysis_agent） ──
 _REPORT_KEYWORDS = re.compile(
     r"良率报表|良率分析|yield.*report|合格率报表|不良率.*报表|工站良率|站点良率|"
+    r"一次良率|首次合格率|直通率|FPY|first.pass.yield|"
+    r"综合良率|最终良率|累计良率|final.yield|overall.yield|"
+    r"返工率|重工率|rework.rate|"
     r"OEE|oee|综合效率|设备效率|设备综合|可用率.*性能|日报|周报|月报|"
     r"良率.*趋势|趋势.*良率|不良.*分析|NG.*分析|ng.*分析",
     re.IGNORECASE,
