@@ -3058,8 +3058,8 @@ export default function MappingManager() {
     { key: 'relations', label: '关系映射',  icon: <GitBranch size={15} />,   count: summary?.relation_mappings },
     { key: 'values',    label: '状态映射',    icon: <Tag size={15} />,          count: summary?.value_domains },
     { key: 'rules',     label: '业务规则',  icon: <Book size={15} />,         count: summary?.business_rules },
-    { key: 'metrics',   label: '指标定义 (JSON)',  icon: <BarChart2 size={15} />,    count: summary?.metric_definitions },
-    { key: 'skills',    label: 'Skill 编辑器',     icon: <FileText size={15} /> },
+    { key: 'metrics',   label: '指标(JSON旧版)',  icon: <BarChart2 size={15} />,    count: summary?.metric_definitions },
+    { key: 'skills',    label: '指标定义',          icon: <FileText size={15} /> },
     { key: 'changelog', label: '变更记录',          icon: <History size={15} /> },
     { key: 'baselines', label: '预警基线',  icon: <AlertCircle size={15} /> },
   ];
