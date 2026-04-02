@@ -237,10 +237,20 @@ def _extract_date_range(user_input: str) -> tuple[str, str]:
         start = last_of_prev.replace(day=1)
         return str(start), str(last_of_prev)
 
+    # 「最近一周」/「过去一周」等文字形式
+    if re.search(r"最近一周|过去一周|最近七天|过去七天", user_input, re.IGNORECASE):
+        return str(today - timedelta(days=6)), str(today)
+
     n_days_match = re.search(r"最近\s*(\d+)\s*天", user_input)
     if n_days_match:
         n = int(n_days_match.group(1))
         return str(today - timedelta(days=n - 1)), str(today)
+
+    # 「最近N周」
+    n_weeks_match = re.search(r"最近\s*(\d+)\s*周", user_input)
+    if n_weeks_match:
+        n = int(n_weeks_match.group(1))
+        return str(today - timedelta(days=n * 7 - 1)), str(today)
 
     # 默认最近 7 天
     return str(today - timedelta(days=6)), str(today)
@@ -300,20 +310,22 @@ ORDER BY report_date DESC, ci.process_code"""
 def _extract_station_filter(user_input: str, alias: str = "ci") -> str:
     """从用户输入中提取工站/工序过滤条件，返回 AND 子句（含前导换行+空格）。"""
     # 优先匹配：以字母开头的工站代码（如 POL、CMP、CVD 等），可跟可选中文描述
-    # 注意：不包含「站」单字后缀，避免把「工站」中的「工」纳入工站名
+    # 允许前后有中英文引号（如 "POL抛光"工站 或 "CMP"工站）
+    _QUOTE_L = r'[\u201c\u2018"\']'   # 左引号：" ' " '
+    _QUOTE_R = r'[\u201d\u2019"\']*'  # 右引号（可选）
+    _CODE    = r'([A-Za-z][A-Za-z0-9]{0,9}(?:\s*[\u4e00-\u9fa5]{0,6})?)'
     m = re.search(
-        r'([A-Za-z][A-Za-z0-9]{0,9}(?:\s*[\u4e00-\u9fa5]{0,6})?)\s*(?:工站|工序)',
+        _QUOTE_L + r'\s*' + _CODE + r'\s*' + _QUOTE_R + r'\s*(?:工站|工序)'
+        + r'|' + _CODE + r'\s*(?:工站|工序)',
         user_input
     )
-    if not m:
+    if m:
+        name = (m.group(1) or m.group(2) or "").strip()
+    else:
         # 退回：纯中文工站名（排除含时间/代词/通配词的匹配）
-        m2 = re.search(
-            r'([\u4e00-\u9fa5]{2,8})\s*(?:工站|工序)',
-            user_input
-        )
+        m2 = re.search(r'([\u4e00-\u9fa5]{2,8})\s*(?:工站|工序)', user_input)
         if m2:
             cand = m2.group(1)
-            # 排除含时间词/代词/通配词
             _SKIP = ('今天', '昨天', '本周', '上周', '本月', '上月', '最近', '这周', '各', '所有', '全部', '每个', '每', '全',
                      '想看', '查询', '查看', '分析', '统计')
             if any(s in cand for s in _SKIP):
@@ -321,7 +333,6 @@ def _extract_station_filter(user_input: str, alias: str = "ci") -> str:
             safe = cand.replace("'", "''")
             return f"\n  AND ({alias}.process_code = '{safe}' OR {alias}.process_name LIKE '%{safe}%')"
         return ""
-    name = m.group(1).strip()
     if not name:
         return ""
     safe = name.replace("'", "''")

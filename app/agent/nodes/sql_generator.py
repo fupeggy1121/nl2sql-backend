@@ -260,13 +260,17 @@ def _apply_metric_sql_template(
     # 最后从 user_input 正则提取（优先字母开头的工站代码，其次纯中文工站名）
     if not process_code and not process_name:
         # 优先: 字母开头的工站代码（如 POL、CMP），可跟可选中文
-        # 不含「站」单字，避免「工」被纳入名称
+        # 允许前后有中英文引号（如 "POL抛光"工站 或 "CMP"工站）
+        _QL = r'[\u201c\u2018"\']'
+        _QR = r'[\u201d\u2019"\']*'
+        _C  = r'([A-Za-z][A-Za-z0-9]{0,9}(?:\s*[\u4e00-\u9fa5]{0,6})?)'
         station_m = _re.search(
-            r'([A-Za-z][A-Za-z0-9]{0,9}(?:\s*[\u4e00-\u9fa5]{0,6})?)\s*(?:工站|工序)',
+            _QL + r'\s*' + _C + r'\s*' + _QR + r'\s*(?:工站|工序)'
+            + r'|' + _C + r'\s*(?:工站|工序)',
             user_input
         )
         if station_m:
-            process_name = station_m.group(1).strip()
+            process_name = (station_m.group(1) or station_m.group(2) or "").strip()
         else:
             # 退回: 纯中文工站名（排除时间/代词/通配词）
             station_m2 = _re.search(r'([\u4e00-\u9fa5]{2,8})\s*(?:工站|工序)', user_input)
