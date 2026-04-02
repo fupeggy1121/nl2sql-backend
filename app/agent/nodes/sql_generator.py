@@ -61,26 +61,27 @@ def sql_generator_node(state: AgentState) -> dict:
         user_input = resolved_input
 
     # ── 0.5 快速路径: sql_template 模式（预构建模板，完全绕过 LLM）──
-    # 仅在首次生成（非重试因 sql_error）时启用，避免死循环
-    semantic_ctx_early = state.get("semantic_context", {})
-    if not sql_error:
-        _template_sql = _apply_metric_sql_template(
-            semantic_ctx_early,
-            state.get("query_plan", {}),
-            user_input,
-        )
-        if _template_sql:
-            trace = list(state.get("pipeline_trace", []))
-            trace_step(trace, "sql_generator", _t0,
-                       summary="sql_template 快速路径: 跳过 LLM，使用预构建模板",
-                       detail={"sql": _template_sql[:300], "template_mode": True})
-            return {
-                "sql": _template_sql,
-                "sql_confidence": 0.95,
-                "sql_retry_count": 0,
-                "sql_error": "",
-                "pipeline_trace": trace,
-            }
+    # 暂时禁用：让 LLM 正常生成 SQL，sql_template 仅作为 prompt 参考注入。
+    # 如需重新启用，取消下方注释并删除 `if False:` 行。
+    # if not sql_error:
+    #     semantic_ctx_early = state.get("semantic_context", {})
+    #     _template_sql = _apply_metric_sql_template(
+    #         semantic_ctx_early,
+    #         state.get("query_plan", {}),
+    #         user_input,
+    #     )
+    #     if _template_sql:
+    #         trace = list(state.get("pipeline_trace", []))
+    #         trace_step(trace, "sql_generator", _t0,
+    #                    summary="sql_template 快速路径: 跳过 LLM，使用预构建模板",
+    #                    detail={"sql": _template_sql[:300], "template_mode": True})
+    #         return {
+    #             "sql": _template_sql,
+    #             "sql_confidence": 0.95,
+    #             "sql_retry_count": 0,
+    #             "sql_error": "",
+    #             "pipeline_trace": trace,
+    #         }
 
     # ── 1. 获取 Schema 上下文（优先使用语义引擎，降级 RAG → schema_tools）──
     semantic_ctx = state.get("semantic_context", {})
