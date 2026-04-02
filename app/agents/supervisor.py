@@ -40,7 +40,7 @@ def _reformat_for_data_fetch(analysis_input: str) -> str:
 
 logger = logging.getLogger(__name__)
 
-# ── 分析意图关键词 ──
+# ── 分析意图关键词（仅用作 fallback / 快速路径辅助） ──
 _ANALYSIS_KEYWORDS = re.compile(
     r"SPC|控制图|Cpk|Ppk|相关性分析|回归分析|预测模型|异常检测|帕累托|"
     r"良率分析|趋势分析|方差分析|ANOVA|假设检验|t[\-\s]?test|卡方检验|"
@@ -48,7 +48,7 @@ _ANALYSIS_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
-# ── 报表类意图关键词（良率报表、OEE 日报等须走 analysis_agent） ──
+# ── 报表类关键词（仅用作 fallback） ──
 _REPORT_KEYWORDS = re.compile(
     r"良率报表|良率分析|yield.*report|合格率报表|不良率.*报表|工站良率|站点良率|"
     r"一次良率|首次合格率|直通率|FPY|first.pass.yield|"
@@ -59,38 +59,109 @@ _REPORT_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
-# ── 基线设定意图（优先级高于报表，防止包含良率关键词的基线务被路由到 analysis_agent） ──
-_BASELINE_KEYWORDS = re.compile(
-    r"(设定|设置|添加|新增|修改|更新|删除|移除|取消).*(基线|预警|阈値|上限|下限|警戞线|警戞値)"
-    r"|(基线|预警|阈値|上限|下限|警戞线|警戞値).*(设定|设置|添加|新增|修改|更新|删除|移除|取消)"
-    r"|针对.{0,30}(设定|设置|配置|定义|添加|(上|下)限)"
-    r"|良率.*(预警|基线|下限|警戞)"
-    r"|为.*添加基线"
-    r"|为.*设置.*(阈値|上限|下限)",
-    re.IGNORECASE,
-)
+# ── LLM 分类提示词 ──
+_INTENT_CLASSIFY_PROMPT = """\
+你是一个工业 MES 系统的智能路由器，需要将用户输入分类到三种处理管道之一。
+
+## 三种管道定义
+
+**query**（普通查询管道）：
+- 普通数据查询、统计、筛选（NL2SQL）
+- 基线/预警/阈值的设定、修改、删除操作（如"为一次良率添加基线下限85%"、"设置良率预警阈值"）
+- 写操作（进站/出站/拆批等）
+- 问答、解释说明
+
+**report**（分析报表管道）：
+- 计算/展示良率指标：一次良率(FPY)、综合良率、返工率
+- 计算/展示 OEE（综合设备效率）
+- 以上指标的趋势、对比、汇总报表
+
+**analyze**（统计分析管道）：
+- SPC、控制图、Cpk/Ppk 等过程能力分析
+- 相关性分析、回归分析、异常检测、帕累托分析
+- 需要对原始数据做统计建模的场景
+
+## 判断规则
+- 如果句子中**既有良率/OEE关键词，又有 基线/预警/阈值/上限/下限/设定/添加/修改/删除 等操作动词**，归为 **query**（基线设定，不是计算报表）
+- 如果是"统计/计算/显示"某指标的数值，归为 **report** 或 **analyze**（按指标类型判断）
+- 如果是"设置/添加/修改/删除"某配置，归为 **query**
+
+## 用户输入
+"{user_input}"
+
+## 返回格式（JSON，仅返回 JSON，不要其他内容）
+{{
+  "intent": "query" | "report" | "analyze",
+  "confidence": 0.0-1.0,
+  "reason": "一句话说明理由"
+}}"""
 
 
-def classify_agent_intent(user_input: str) -> Literal["query", "analyze", "report"]:
-    """
-    顶层意图预分类 — 决定路由到哪个子 Agent。
-
-    当前策略: 关键词匹配。Phase 3 可升级为 LLM 分类。
-    优先级: baseline > report > analyze > query
-
-    路由规则:
-    - "query"   → _run_query_agent()                 （普通查询 + 基线管理，baseline_manager 在此管道内）
-    - "report"  → _run_analysis_agent()              （良率/OEE 报表，有专属 SQL builder）
-    - "analyze" → _run_analysis_with_data_pipeline() （SPC/相关性等，先 query_agent 取数）
-    """
-    # 基线设定优先级最高：防止含「一次良率/FPY」的基线指令被误路由到 analysis_agent
-    if _BASELINE_KEYWORDS.search(user_input):
-        return "query"   # 基线管理在 query_agent 的 baseline_manager 节点
+def _keyword_fallback(user_input: str) -> Literal["query", "analyze", "report"]:
+    """关键词 fallback：仅在 LLM 不可用时使用。"""
+    # 基线/预警操作词优先
+    baseline_action = re.search(
+        r"(设定|设置|添加|新增|修改|更新|删除|移除|取消).{0,20}(基线|预警|阈值|上限|下限|警戒)"
+        r"|(基线|预警|阈值|上限|下限|警戒).{0,20}(设定|设置|添加|新增|修改|更新|删除|移除|取消)"
+        r"|为.{0,30}(添加|设置).{0,20}(基线|预警|阈值|上限|下限)"
+        r"|为.{0,30}(基线|预警|阈值|上限|下限)",
+        user_input, re.IGNORECASE
+    )
+    if baseline_action:
+        return "query"
     if _REPORT_KEYWORDS.search(user_input):
-        return "report"   # 良率/OEE 报表 → analysis_agent 直接走（method_selector 内有专属 SQL builder）
+        return "report"
     if _ANALYSIS_KEYWORDS.search(user_input):
-        return "analyze"  # SPC/相关性等 → 两阶段管道（先 query_agent 取数，再 analysis_agent 分析）
+        return "analyze"
     return "query"
+
+
+async def classify_agent_intent(user_input: str) -> Literal["query", "analyze", "report"]:
+    """
+    顶层意图分类 — LLM 优先，关键词 fallback。
+
+    策略：
+    1. 尝试调用 LLM，让其在 query/report/analyze 三类中做判断（带 CoT reason）
+    2. LLM 置信度 >= 0.75 时采用 LLM 结果
+    3. LLM 失败或置信度不足时，退化到关键词规则 fallback
+    """
+    # ── LLM 分类 ──
+    try:
+        import json as _json
+        from app.agent.llm import get_llm
+
+        llm = get_llm()
+        prompt = _INTENT_CLASSIFY_PROMPT.format(user_input=user_input)
+        resp = await llm.ainvoke(prompt)
+        content = resp.content if hasattr(resp, "content") else str(resp)
+
+        # 提取 JSON
+        match = re.search(r"\{[^{}]+\}", content, re.DOTALL)
+        if match:
+            data = _json.loads(match.group())
+            intent = data.get("intent", "").lower().strip()
+            confidence = float(data.get("confidence", 0))
+            reason = data.get("reason", "")
+
+            if intent in ("query", "report", "analyze") and confidence >= 0.75:
+                logger.info(
+                    f"[supervisor] LLM classify → {intent} "
+                    f"(conf={confidence:.2f}) reason={reason!r}"
+                )
+                return intent  # type: ignore[return-value]
+            else:
+                logger.info(
+                    f"[supervisor] LLM low-conf ({confidence:.2f}) → fallback. "
+                    f"raw={intent!r} reason={reason!r}"
+                )
+    except Exception as e:
+        logger.warning(f"[supervisor] LLM classify failed: {e}, fallback to keyword rules")
+
+    # ── 关键词 fallback ──
+    result = _keyword_fallback(user_input)
+    logger.info(f"[supervisor] keyword fallback → {result}")
+    return result
+
 
 
 async def route_to_agent(
@@ -110,7 +181,7 @@ async def route_to_agent(
         ...AgentState fields
     }
     """
-    intent = classify_agent_intent(user_input)
+    intent = await classify_agent_intent(user_input)
     logger.info(f"[supervisor] intent={intent}, input={user_input[:60]}...")
 
     if intent == "query":
