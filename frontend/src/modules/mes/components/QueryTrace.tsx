@@ -243,7 +243,10 @@ function Badge({ children, bg, fg, mono }: { children: React.ReactNode; bg: stri
 function PythonDetail({ step }: { step: TraceStep }) {
   const d = step.detail as Record<string, unknown> | undefined;
   const logic = d?.logic as string | undefined;
+  const pythonScript = d?.python_script as string | undefined;
   const error = d?.error as string | undefined;
+  const [scriptExpanded, setScriptExpanded] = React.useState(false);
+
   return (
     <div style={{ padding: '10px 14px 14px', borderTop: '1px solid #1e2047', display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ fontSize: 12, color: step.status === 'error' ? '#f87171' : '#818cf8' }}>{step.summary}</div>
@@ -257,6 +260,37 @@ function PythonDetail({ step }: { step: TraceStep }) {
         }}>
           {logic}
         </pre>
+      )}
+      {pythonScript && (
+        <div>
+          <div
+            onClick={() => setScriptExpanded(v => !v)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              cursor: 'pointer', userSelect: 'none',
+              fontSize: 11, color: '#6b7298', fontWeight: 600,
+              letterSpacing: 0.5, textTransform: 'uppercase',
+              padding: '4px 0',
+            }}
+          >
+            <span>{scriptExpanded ? '▼' : '▶'}</span>
+            <span>Python 计算脚本（点击展开）</span>
+            <span style={{ marginLeft: 4, padding: '1px 7px', borderRadius: 8, background: '#1e1b4b', color: '#a5b4fc', fontSize: 10 }}>
+              {pythonScript.split('\n').length} 行
+            </span>
+          </div>
+          {scriptExpanded && (
+            <pre style={{
+              fontSize: 11.5, background: '#070810', color: '#c4b5fd',
+              padding: '12px 14px', borderRadius: 6, overflowX: 'auto',
+              margin: 0, whiteSpace: 'pre', wordBreak: 'normal',
+              lineHeight: 1.65, fontFamily: '"JetBrains Mono","Fira Code",Menlo,monospace',
+              border: '1px solid #2e1065', maxHeight: 480, overflow: 'auto',
+            }}>
+              {pythonScript}
+            </pre>
+          )}
+        </div>
       )}
       {error && (
         <pre style={{ fontSize: 11, background: '#1c0005', color: '#fca5a5', padding: '8px 12px', borderRadius: 6, margin: 0, whiteSpace: 'pre-wrap', border: '1px solid #7f1d1d' }}>

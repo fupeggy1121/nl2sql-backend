@@ -58,10 +58,16 @@ def analysis_executor_node(state: AnalysisState) -> dict:
     logger.info(f"[analysis_executor] method={method}, shape={df.shape}")
     result = AnalysisEngine.run(method, df, params)
 
+    # 合并 metadata 中的附加字段（如 python_script）进入 analysis_data 顶层
+    data = result.data or {}
+    meta = result.metadata or {}
+    if meta.get("python_script"):
+        data = {**data, "python_script": meta["python_script"]}
+
     return {
         "analysis_success": result.success,
         "analysis_summary": result.summary or "",
-        "analysis_data": result.data or {},
+        "analysis_data": data,
         "analysis_charts": result.charts or [],
         "analysis_error": result.error,
     }

@@ -93,8 +93,10 @@ export interface VisualizationConfig {
 // 分析报表图表规格（后端直接输出 ECharts option）
 export interface PlotlyChartSpec {
   type: string;
+  chart_type?: string;          // 后端 metric_compute 返回的字段
   title?: string;
-  echarts?: Record<string, any>;  // 直接传给 ReactECharts 的 option
+  option?: Record<string, any>; // metric_compute / analysis_agent 返回的 ECharts option
+  echarts?: Record<string, any>; // 兼容旧格式
 }
 
 // 分析报表结果（良率/OEE 等 analysis_agent 返回）

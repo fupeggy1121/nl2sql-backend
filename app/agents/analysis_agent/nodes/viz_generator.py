@@ -69,6 +69,7 @@ def _build_pipeline_trace(state: AnalysisState) -> list:
         })
 
     # Step 4: Python 分析逻辑说明
+    analysis_data = state.get("analysis_data") or {}
     if method:
         method_desc = {
             "yield_report": (
@@ -95,6 +96,12 @@ def _build_pipeline_trace(state: AnalysisState) -> list:
                 "3. Cpk = min((USL-X̄)/3σ, (X̄-LSL)/3σ)"
             ),
         }.get(method, f"使用 {method} 方法对数据进行统计分析（pandas/numpy）")
+
+        # metric_compute 路径：从 analysis_data 取真实 Python 源码
+        python_script = None
+        if method == "metric_compute":
+            python_script = analysis_data.get("python_script")
+
         trace.append({
             "step": "analysis_executor",
             "status": "error" if state.get("analysis_error") else "ok",
@@ -103,6 +110,7 @@ def _build_pipeline_trace(state: AnalysisState) -> list:
             "detail": {
                 "method": method,
                 "logic": method_desc,
+                "python_script": python_script,
                 "error": state.get("analysis_error"),
             },
         })

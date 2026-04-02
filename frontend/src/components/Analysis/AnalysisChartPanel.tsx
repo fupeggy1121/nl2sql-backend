@@ -14,8 +14,10 @@ const AnalysisChartPanel: React.FC<Props> = ({ charts }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 8 }}>
-      {charts.map((chart, idx) =>
-        chart.echarts ? (
+      {charts.map((chart, idx) => {
+        // 兴容两种后端格式：{ option } (metric_compute) 与 { echarts } (旧格式)
+        const echartsOption = chart.option ?? chart.echarts;
+        return echartsOption ? (
           <div
             key={idx}
             style={{
@@ -30,7 +32,7 @@ const AnalysisChartPanel: React.FC<Props> = ({ charts }) => {
                 title: chart.title
                   ? { text: chart.title, left: 'center', textStyle: { fontSize: 13 } }
                   : undefined,
-                ...chart.echarts,
+                ...echartsOption,
               }}
               style={{ height: 260 }}
               notMerge
@@ -41,8 +43,8 @@ const AnalysisChartPanel: React.FC<Props> = ({ charts }) => {
           <div key={idx} style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: 16 }}>
             {chart.title ?? '图表暂无数据'}
           </div>
-        )
-      )}
+        );
+      })}
     </div>
   );
 };
