@@ -116,6 +116,11 @@ async def compat_process_query(request: Request):
             "analysis": response_data.get("analysis"),
             "charts": response_data.get("charts"),
             "answer": response_data.get("answer"),
+            # 基线设定类响应额外字段（baseline_manager 返回）
+            "intent": response_data.get("intent"),
+            "text": response_data.get("text"),
+            "data": response_data.get("data"),
+            "baseline_action": response_data.get("baseline_action"),
         })
 
     except Exception as e:
