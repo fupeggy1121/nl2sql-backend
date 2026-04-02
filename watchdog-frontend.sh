@@ -10,8 +10,11 @@ FRONTEND_DIR="$SCRIPT_DIR/frontend"
 LOG_DIR="$SCRIPT_DIR/logs"
 LOG_FILE="$LOG_DIR/frontend.log"
 PID_FILE="$LOG_DIR/frontend.pid"
-RESTART_DELAY=3  # 崩溃后等待 N 秒再重启
-FRONTEND_PORT=5173  # Vite 默认端口
+RESTART_DELAY=3              # 崩溃后等待 N 秒再重启
+FRONTEND_PORT=5173           # Vite 默认端口
+MAX_FAILS_BEFORE_REINSTALL=3 # 连续失败 N 次后自动执行 npm install
+QUICK_FAIL_THRESHOLD=10      # 进程存活 < N 秒视为快速失败
+fail_count=0
 
 mkdir -p "$LOG_DIR"
 
@@ -57,6 +60,7 @@ while true; do
   log "启动前端服务 (npm run dev)..."
   cd "$FRONTEND_DIR"
 
+  START_TIME=$(date +%s)
   npm run dev >> "$LOG_FILE" 2>&1 &
   FRONTEND_PID=$!
   echo "$FRONTEND_PID" > "$PID_FILE"
@@ -68,8 +72,27 @@ while true; do
     EXIT_CODE=$?
   fi
 
-  log "前端进程退出 (PID=$FRONTEND_PID, ExitCode=$EXIT_CODE)"
+  END_TIME=$(date +%s)
+  UPTIME=$(( END_TIME - START_TIME ))
+  log "前端进程退出 (PID=$FRONTEND_PID, ExitCode=$EXIT_CODE, 运行时长=${UPTIME}s)"
   rm -f "$PID_FILE"
+
+  # 判断是否属于快速失败（依赖损坏等启动期崩溃）
+  if (( UPTIME < QUICK_FAIL_THRESHOLD )); then
+    (( fail_count++ )) || true
+    log "连续快速失败次数: $fail_count / $MAX_FAILS_BEFORE_REINSTALL"
+    if (( fail_count >= MAX_FAILS_BEFORE_REINSTALL )); then
+      log "触发自愈：清理 node_modules 并重新执行 npm install..."
+      rm -rf "$FRONTEND_DIR/node_modules" "$FRONTEND_DIR/package-lock.json"
+      npm install --prefix "$FRONTEND_DIR" >> "$LOG_FILE" 2>&1 \
+        && log "npm install 完成，重置失败计数" \
+        || log "npm install 失败，下次继续重试"
+      fail_count=0
+    fi
+  else
+    # 正常运行超过阈值，重置失败计数
+    fail_count=0
+  fi
 
   log "等待 ${RESTART_DELAY}s 后自动重启..."
   sleep "$RESTART_DELAY"
