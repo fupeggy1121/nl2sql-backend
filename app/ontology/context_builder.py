@@ -765,7 +765,11 @@ class SemanticContextBuilder:
             ]):
                 slot_lower = slot_text.lower()
                 for keyword, logic_class in active_synonyms.items():
-                    if keyword in slot_lower or slot_lower in keyword:
+                    # ⚠ 仅使用 keyword ∈ slot 方向（字典关键词包含在槽值内）。
+                    # 移除 slot ∈ keyword 反向匹配：当槽值是短通用词（如"物料"、"入库"，2~3字符）时，
+                    # 反向匹配会使该词成为所有含此词同义词的超集，导致课无关类大量注入
+                    # （"物料" 匹配 "物料批次"→MaterialBatch、"物料清单"→BOM、"物料入库单"→InboundBill 等）。
+                    if keyword in slot_lower:
                         if logic_class not in seen_classes:
                             pt = self._mapping.get_physical_table(logic_class)
                             if pt:
@@ -778,7 +782,7 @@ class SemanticContextBuilder:
                                 )
                 # 策略S+: 多类命中扩展（同一关键词映射到 2+ 类，如"过站记录"→CheckIn+CheckOut）
                 for keyword, uris in _get_multi_class_synonyms().items():
-                    if keyword in slot_lower or slot_lower in keyword:
+                    if keyword in slot_lower:
                         for logic_class in uris:
                             if logic_class not in seen_classes:
                                 pt = self._mapping.get_physical_table(logic_class)

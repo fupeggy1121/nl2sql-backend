@@ -1777,7 +1777,7 @@
       "note": "入库申请明细表（一单多行，每行=一个物料/批次的申请行项目）。通过input_bill_id外键关联入库申请单主表warehouse_input_bill；input_bill_no为冗余单号字段。"
     },
     {
-      "logic_class": "semi:InboundBill",
+      "logic_class": "semi:InboundBillRecord",
       "physical_table": "warehouse_input_record_bill",
       "primary_key": "id",
       "label_cn": "入库记录单",
@@ -1804,15 +1804,21 @@
       "note": "入库记录单主表（头表），每行代表一次完整的入库操作单据。status为单据审批状态；type为入库类型；record_bill_no为唯一单号（UNI）；gmt_create/user_create为创建时间/人。通过 id → warehouse_input_record_bill_detail.record_bill_id（1:N）关联明细行。"
     },
     {
-      "logic_class": "semi:InboundEventRecord",
+      "logic_class": "semi:MaterialInboundSnapshot",
       "physical_table": "warehouse_input_record_bill_detail",
       "primary_key": "id",
-      "label_cn": "入库记录明细",
+      "label_cn": "入库快照",
       "display_column": "material_model_name",
       "properties": {
         "semi:hasBillNo": "record_bill_no",
         "semi:hasBillQty": "count",
-        "semi:hasBillTime": "gmt_create"
+        "semi:hasBatchNo": "batch_no",
+        "semi:hasBoxNo": "unique_code",
+        "semi:hasSupplier": "supplier",
+        "semi:hasUnit": "unit_name",
+        "semi:hasBillTime": "gmt_create",
+        "semi:hasStatus": "status",
+        "semi:hasOperator": "user_create"
       },
       "key_columns": [
         "id",
@@ -1904,7 +1910,7 @@
       "note": "出库申请明细表（一单多行，每行=一个物料/批次的申请行项目）。通过output_bill_id外键关联出库申请单主表warehouse_output_bill；output_bill_no为冗余单号字段。destination记录申请出库目标；require_count为申领量，output_count为实际申请量。"
     },
     {
-      "logic_class": "semi:OutboundBill",
+      "logic_class": "semi:OutboundBillRecord",
       "physical_table": "warehouse_output_record_bill",
       "primary_key": "id",
       "label_cn": "出库记录单",
@@ -1931,17 +1937,20 @@
       "note": "出库记录单主表（头表），每行代表一次完整的出库操作单据。status为单据审批状态；type为出库类型；destination为出库目标（生产线/部门）；record_bill_no为唯一单号（UNI）；gmt_create/user_create为创建时间/人。通过 id → warehouse_output_record_bill_detail.record_bill_id（1:N）关联明细行。"
     },
     {
-      "logic_class": "semi:OutboundEventRecord",
+      "logic_class": "semi:MaterialOutboundSnapshot",
       "physical_table": "warehouse_output_record_bill_detail",
       "primary_key": "id",
-      "label_cn": "出库记录明细",
+      "label_cn": "出库快照",
       "display_column": "material_model_name",
       "properties": {
         "semi:hasBillNo": "record_bill_no",
         "semi:hasBillQty": "output_count",
         "semi:hasRequireQty": "require_count",
         "semi:hasStockQty": "quantity",
-        "semi:hasStockUnit": "unit_name",
+        "semi:hasUnit": "unit_name",
+        "semi:hasBatchNo": "batch_no",
+        "semi:hasBoxNo": "unique_code",
+        "semi:hasSupplier": "supplier",
         "semi:hasBillTime": "gmt_create",
         "semi:hasStatus": "status",
         "semi:hasOutboundType": "type",
@@ -2184,7 +2193,15 @@
       "virtual": true,
       "virtual_kind": "action_event",
       "label_cn": "库存管理事件记录（抽象父类）",
-      "note": "库存管理操作的执行记录抽象基类，不直接映射物理表。每个实例代表一次完整的库存交易事件单据。⚠ 子类仅限事件单据层（头表）：InboundApprovalRecord（warehouse_approval_record）、InboundRequest（warehouse_input_bill）、InboundBill（warehouse_input_record_bill）、OutboundRequest（warehouse_output_bill）、OutboundBill（warehouse_output_record_bill）。⚠ 明细行项目类不是 WarehouseEventRecord 子类：InboundEventRecord（warehouse_input_record_bill_detail）通过 containsInboundDetail 从属于 InboundBill；OutboundEventRecord（warehouse_output_record_bill_detail）通过 containsOutboundDetail 从属于 OutboundBill；InboundRequestDetail（warehouse_input_bill_detail）通过 containsInboundRequestDetail 从属于 InboundRequest；OutboundRequestDetail（warehouse_output_bill_detail）通过 containsOutboundRequestDetail 从属于 OutboundRequest。"
+      "note": "库存管理操作的执行记录抽象基类，不直接映射物理表。每个实例代表一次完整的库存交易事件单据。⚠ 子类仅限事件单据层（头表）：InboundApprovalRecord（warehouse_approval_record）、InboundRequest（warehouse_input_bill）、InboundBillRecord（warehouse_input_record_bill）、OutboundRequest（warehouse_output_bill）、OutboundBillRecord（warehouse_output_record_bill）。⚠ 明细行项目类不是 WarehouseEventRecord 子类：MaterialInboundSnapshot（warehouse_input_record_bill_detail）通过 containsInboundDetail 从属于 InboundBillRecord；MaterialOutboundSnapshot（warehouse_output_record_bill_detail）通过 containsOutboundDetail 从属于 OutboundBillRecord；InboundRequestDetail（warehouse_input_bill_detail）通过 containsInboundRequestDetail 从属于 InboundRequest；OutboundRequestDetail（warehouse_output_bill_detail）通过 containsOutboundRequestDetail 从属于 OutboundRequest。"
+    },
+    {
+      "logic_class": "semi:MaterialTransitionSnapshot",
+      "physical_table": null,
+      "virtual": true,
+      "virtual_kind": "abstract_detail",
+      "label_cn": "物料转移快照（抽象父类）",
+      "note": "入库/出库快照明细行的抽象父类，不直接映射物理表。具体子类：MaterialInboundSnapshot（warehouse_input_record_bill_detail）和 MaterialOutboundSnapshot（warehouse_output_record_bill_detail）。核心共享属性：refersToMaterial（material_model_id→material.id）、hasBillQty、hasBatchNo、hasBoxNo、hasSupplier、hasUnit、hasBillTime、hasStatus、hasOperator、hasBillNo。"
     },
     {
       "logic_class": "semi:InboundApprovalEvent",
@@ -2379,7 +2396,7 @@
         "target_key": "input_bill_id"
       },
       "domain_class": "semi:InboundRequest",
-      "range_class": "semi:InboundBill"
+      "range_class": "semi:InboundBillRecord"
     },
     {
       "logic_relation": "semi:containsOutboundRequestDetail",
@@ -2405,7 +2422,7 @@
         "target_key": "output_bill_id"
       },
       "domain_class": "semi:OutboundRequest",
-      "range_class": "semi:OutboundBill"
+      "range_class": "semi:OutboundBillRecord"
     },
     {
       "logic_relation": "semi:containsInboundDetail",
@@ -2417,8 +2434,8 @@
         "target_table": "warehouse_input_record_bill_detail",
         "target_key": "record_bill_id"
       },
-      "domain_class": "semi:InboundBill",
-      "range_class": "semi:InboundEventRecord"
+      "domain_class": "semi:InboundBillRecord",
+      "range_class": "semi:MaterialInboundSnapshot"
     },
     {
       "logic_relation": "semi:containsOutboundDetail",
@@ -2430,8 +2447,8 @@
         "target_table": "warehouse_output_record_bill_detail",
         "target_key": "record_bill_id"
       },
-      "domain_class": "semi:OutboundBill",
-      "range_class": "semi:OutboundEventRecord"
+      "domain_class": "semi:OutboundBillRecord",
+      "range_class": "semi:MaterialOutboundSnapshot"
     },
     {
       "logic_relation": "semi:outboundFromLocation",
@@ -2443,7 +2460,7 @@
         "target_table": "warehouse_model",
         "target_key": "id"
       },
-      "domain_class": "semi:OutboundEventRecord",
+      "domain_class": "semi:MaterialOutboundSnapshot",
       "range_class": "semi:WarehouseLocation",
       "note": "warehouse_output_record_bill_detail.warehouse_id → warehouse_model.id。记录本次出库操作从哪个库位（bin/shelf）领出物料，是出库溯源和库位扣减的关键外键。"
     },
@@ -2457,13 +2474,13 @@
         "target_table": "warehouse_model",
         "target_key": "id"
       },
-      "domain_class": "semi:InboundEventRecord",
+      "domain_class": "semi:MaterialInboundSnapshot",
       "range_class": "semi:WarehouseLocation",
       "note": "warehouse_input_record_bill_detail.warehouse_id → warehouse_model.id。记录本次入库操作入库到哪个库位，是入库溯源和库位入库历史查询的关键外键。与出库侧 semi:outboundFromLocation 对称。"
     },
     {
-      "logic_relation": "semi:hasMaterialRef",
-      "description": "入库明细行直接关联的物料主数据（InboundEventRecord→Material，通过 material_model_id FK）",
+      "logic_relation": "semi:refersToMaterial",
+      "description": "入库明细行直接关联的物料主数据（MaterialInboundSnapshot→Material，通过 material_model_id FK）",
       "strategy": "ForeignKey",
       "join_logic": {
         "source_table": "warehouse_input_record_bill_detail",
@@ -2471,13 +2488,13 @@
         "target_table": "material",
         "target_key": "id"
       },
-      "domain_class": "semi:InboundEventRecord",
+      "domain_class": "semi:MaterialInboundSnapshot",
       "range_class": "semi:Material",
       "note": "warehouse_input_record_bill_detail.material_model_id → material.id。这是「按物料统计入库数量」查询的核心直接外键，比绕行 warehouse_inventory（MaterialBatch）路径更精确、性能更好。优先级高于 semi:updatesBatch 路径。"
     },
     {
-      "logic_relation": "semi:hasOutboundMaterialRef",
-      "description": "出库明细行直接关联的物料主数据（OutboundEventRecord→Material，通过 material_model_id FK）",
+      "logic_relation": "semi:refersToMaterial",
+      "description": "出库明细行直接关联的物料主数据（MaterialOutboundSnapshot→Material，通过 material_model_id FK）",
       "strategy": "ForeignKey",
       "join_logic": {
         "source_table": "warehouse_output_record_bill_detail",
@@ -2485,7 +2502,7 @@
         "target_table": "material",
         "target_key": "id"
       },
-      "domain_class": "semi:OutboundEventRecord",
+      "domain_class": "semi:MaterialOutboundSnapshot",
       "range_class": "semi:Material",
       "note": "warehouse_output_record_bill_detail.material_model_id → material.id。与入库侧 semi:hasMaterialRef 对称，支持「按物料统计出库数量」直接关联。"
     },
@@ -2508,7 +2525,7 @@
         ],
         "note": "单件追踪型（unique_code非空）以unique_code+warehouse_id精确定位；批量计数型（unique_code为空）以batch_no+warehouse_id定位。"
       },
-      "domain_class": "semi:OutboundEventRecord",
+      "domain_class": "semi:MaterialOutboundSnapshot",
       "range_class": "semi:MaterialBatch",
       "note": "出库明细中batch_no/unique_code字段软关联到warehouse_inventory中的批次快照行，建立出库操作←→批次实例之间的语义连接，支持批次追溯和出库历史查询。"
     },
@@ -2559,7 +2576,7 @@
         ],
         "note": "入库单审批通过并执行入库后，warehouse_input_record_bill_detail中的每一行对应更新或新增warehouse_inventory中的一条在库快照记录，数量字段从count合并到quantity。"
       },
-      "domain_class": "semi:InboundEventRecord",
+      "domain_class": "semi:MaterialInboundSnapshot",
       "range_class": "semi:MaterialBatch",
       "note": "入库单审批通过并执行入库后，warehouse_input_record_bill_detail 中的每一行对应更新或新增 warehouse_inventory 中的一条在库批次记录。"
     },

@@ -63,7 +63,8 @@ class JoinGraph:
         g = nx.DiGraph()
         edge_count = 0
 
-        for logic_rel, rm in mapping._relation_map.items():
+        for rm in mapping._relation_map_list:
+            logic_rel = rm.logic_relation
             domain = rm.domain_class
             range_raw = rm.range_class
 

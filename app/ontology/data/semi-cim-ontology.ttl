@@ -308,8 +308,8 @@ semi:containsEquipment a owl:ObjectProperty ;
 semi:containsInboundDetail a owl:ObjectProperty ;
     rdfs:label "包含入库明细" ;
     rdfs:comment "入库记录单与入库明细行之间的包含关系（1:N）。物理映射：warehouse_input_record_bill.id → warehouse_input_record_bill_detail.record_bill_id（FK）。一张入库记录单包含一行或多行入库明细，每行对应一个物料/批次的入库行项目。" ;
-    rdfs:domain semi:InboundBill ;
-    rdfs:range semi:InboundEventRecord .
+    rdfs:domain semi:InboundBillRecord ;
+    rdfs:range semi:MaterialInboundSnapshot .
 
 semi:containsInboundRequestDetail a owl:ObjectProperty ;
     rdfs:label "包含入库申请明细" ;
@@ -326,8 +326,8 @@ semi:containsMeasurementParam a owl:ObjectProperty ;
 semi:containsOutboundDetail a owl:ObjectProperty ;
     rdfs:label "包含出库明细" ;
     rdfs:comment "出库记录单与出库明细行之间的包含关系（1:N）。物理映射：warehouse_output_record_bill.id → warehouse_output_record_bill_detail.record_bill_id（FK）。一张出库记录单包含一行或多行出库明细，每行对应一个物料/批次的出库行项目。" ;
-    rdfs:domain semi:OutboundBill ;
-    rdfs:range semi:OutboundEventRecord .
+    rdfs:domain semi:OutboundBillRecord ;
+    rdfs:range semi:MaterialOutboundSnapshot .
 
 semi:containsOutboundRequestDetail a owl:ObjectProperty ;
     rdfs:label "包含出库申请明细" ;
@@ -371,13 +371,13 @@ semi:generatesInboundBill a owl:ObjectProperty ;
     rdfs:label "审批通过生成入库记录单" ;
     rdfs:comment "入库申请单审批通过后生成的入库记录单，建立'申请→记录'的因果链。物理映射：warehouse_input_bill.id → warehouse_input_record_bill.input_bill_id（FK）。" ;
     rdfs:domain semi:InboundRequest ;
-    rdfs:range semi:InboundBill .
+    rdfs:range semi:InboundBillRecord .
 
 semi:generatesOutboundBill a owl:ObjectProperty ;
     rdfs:label "审批通过生成出库记录单" ;
     rdfs:comment "出库申请单审批通过后生成的出库记录单，建立'申请→记录'的因果链。物理映射：warehouse_output_bill.id → warehouse_output_record_bill.output_bill_id（FK）。" ;
     rdfs:domain semi:OutboundRequest ;
-    rdfs:range semi:OutboundBill .
+    rdfs:range semi:OutboundBillRecord .
 
 semi:hasActualValue a owl:DatatypeProperty ;
     rdfs:label "实测值" ;
@@ -426,8 +426,8 @@ semi:hasBatchMgmt a owl:DatatypeProperty ;
 
 semi:hasBatchNo a owl:DatatypeProperty ;
     rdfs:label "批次号" ;
-    rdfs:comment "物料批次的业务标识号。产成品：值等于源 ProductionLot 的批次编号（结批时由系统继承填入）；辅料/备件/原料：值为供应商批次号（进货时录入）。所有 MaterialBatch 实例必填。" ;
-    rdfs:domain semi:MaterialBatch ;
+    rdfs:comment "物料批次的业务标识号。产成品：值等于源 ProductionLot 的批次编号（结批时由系统继承填入）；辅料/备件/原料：值为供应商批次号（进货时录入）。所有 MaterialBatch 实例必填。明细行（MaterialTransitionSnapshot 子类）中的 batch_no 字段亦映射此属性。" ;
+    rdfs:domain [ owl:unionOf ( semi:MaterialBatch semi:MaterialTransitionSnapshot ) ] ;
     rdfs:range xsd:string .
 
 semi:hasBeforeState a owl:DatatypeProperty ;
@@ -439,25 +439,25 @@ semi:hasBeforeState a owl:DatatypeProperty ;
 semi:hasBillNo a owl:DatatypeProperty ;
     rdfs:label "单据编号" ;
     rdfs:comment "入库/出库各层单据的唯一单据号，覆盖申请单、记录单及明细三层。" ;
-    rdfs:domain [ owl:unionOf ( semi:InboundRequest semi:InboundRequestDetail semi:InboundBill semi:InboundEventRecord semi:OutboundRequest semi:OutboundRequestDetail semi:OutboundBill semi:OutboundEventRecord ) ] ;
+    rdfs:domain [ owl:unionOf ( semi:InboundRequest semi:InboundRequestDetail semi:InboundBillRecord semi:MaterialTransitionSnapshot semi:OutboundRequest semi:OutboundRequestDetail semi:OutboundBillRecord ) ] ;
     rdfs:range xsd:string .
 
 semi:hasBillQty a owl:DatatypeProperty ;
     rdfs:label "单据数量" ;
-    rdfs:comment "入库或出库申请/实际执行的数量。" ;
-    rdfs:domain [ owl:unionOf ( semi:InboundRequest semi:InboundRequestDetail semi:InboundBill semi:InboundEventRecord semi:OutboundRequest semi:OutboundRequestDetail semi:OutboundBill semi:OutboundEventRecord ) ] ;
+    rdfs:comment "入库或出库申请/实际执行的数量。入库明细对应 count 字段，出库明细对应 output_count 字段。" ;
+    rdfs:domain [ owl:unionOf ( semi:InboundRequest semi:InboundRequestDetail semi:InboundBillRecord semi:MaterialTransitionSnapshot semi:OutboundRequest semi:OutboundRequestDetail semi:OutboundBillRecord ) ] ;
     rdfs:range xsd:decimal .
 
 semi:hasBillTime a owl:DatatypeProperty ;
     rdfs:label "单据时间" ;
-    rdfs:comment "入库或出库申请/操作的时间戳，对应 create_time 字段。" ;
-    rdfs:domain [ owl:unionOf ( semi:InboundRequest semi:InboundBill semi:InboundEventRecord semi:OutboundRequest semi:OutboundBill semi:OutboundEventRecord ) ] ;
+    rdfs:comment "入库或出库申请/操作的时间戳，对应 gmt_create 字段。" ;
+    rdfs:domain [ owl:unionOf ( semi:InboundRequest semi:InboundBillRecord semi:MaterialTransitionSnapshot semi:OutboundRequest semi:OutboundBillRecord ) ] ;
     rdfs:range xsd:dateTime .
 
 semi:hasBoxNo a owl:DatatypeProperty ;
     rdfs:label "唯一码" ;
-    rdfs:comment "物料实例的物理唯一标识码，对应 warehouse_inventory.unique_code 及 bill_detail.unique_code。适用于物料模型开启了逐件唯一码管理（semi:hasUniqueCodeMgmt=true）的物料批次：产成品对应包装盒号（每箱唯一），备件对应设备序列号，等。物料模型未开启唯一码管理（如辅料/原料）时此属性为空。" ;
-    rdfs:domain semi:MaterialBatch ;
+    rdfs:comment "物料实例的物理唯一标识码，对应 warehouse_inventory.unique_code 及 bill_detail.unique_code。适用于物料模型开启了逐件唯一码管理（semi:hasUniqueCodeMgmt=true）的物料批次：产成品对应包装盒号（每箱唯一），备件对应设备序列号，等。物料模型未开启唯一码管理（如辅料/原料）时此属性为空。入库/出库快照明细行同名字段亦映射此属性。" ;
+    rdfs:domain [ owl:unionOf ( semi:MaterialBatch semi:MaterialTransitionSnapshot ) ] ;
     rdfs:range xsd:string .
 
 semi:hasCapacity a owl:DatatypeProperty ;
@@ -518,6 +518,12 @@ semi:hasConstraint a owl:ObjectProperty ;
     rdfs:label "注入工艺约束" ;
     rdfs:domain semi:ProductModel ;
     rdfs:range semi:ProcessConstraint .
+
+semi:hasDestination a owl:DatatypeProperty ;
+    rdfs:label "出库目标" ;
+    rdfs:comment "出库操作的目标部门或生产线，对应 warehouse_output_record_bill_detail.destination 及 warehouse_output_record_bill.destination、warehouse_output_bill.destination 字段。" ;
+    rdfs:domain [ owl:unionOf ( semi:OutboundRequest semi:OutboundBillRecord semi:MaterialOutboundSnapshot ) ] ;
+    rdfs:range xsd:string .
 
 semi:hasDetentionCode a owl:DatatypeProperty ;
     rdfs:label "扣留代码" ;
@@ -773,6 +779,12 @@ semi:hasOperationType a owl:DatatypeProperty ;
     rdfs:domain semi:Action ;
     rdfs:range xsd:string .
 
+semi:hasOperator a owl:DatatypeProperty ;
+    rdfs:label "操作人" ;
+    rdfs:comment "创建/执行该单据或明细行的操作人账号，对应各仓库表的 user_create 字段。" ;
+    rdfs:domain [ owl:unionOf ( semi:InboundRequest semi:InboundBillRecord semi:OutboundRequest semi:OutboundBillRecord semi:MaterialTransitionSnapshot ) ] ;
+    rdfs:range xsd:string .
+
 semi:hasOperatorId a owl:DatatypeProperty ;
     rdfs:label "操作人ID" ;
     rdfs:comment "执行该生产事件的操作人标识，对应 matrix_routerx_operation_lot_batch_resume_log.operator_id。" ;
@@ -783,6 +795,12 @@ semi:hasOrderNo a owl:DatatypeProperty ;
     rdfs:label "工单编号" ;
     rdfs:comment "对应 production_scheduling.schedule_no。" ;
     rdfs:domain semi:ProductionOrder ;
+    rdfs:range xsd:string .
+
+semi:hasOutboundType a owl:DatatypeProperty ;
+    rdfs:label "出库类型" ;
+    rdfs:comment "出库操作的业务类型分类（领料/调拨/报废等），对应 warehouse_output_record_bill_detail.type 及 warehouse_output_record_bill.type、warehouse_output_bill.type 字段。" ;
+    rdfs:domain [ owl:unionOf ( semi:OutboundRequest semi:OutboundBillRecord semi:MaterialOutboundSnapshot ) ] ;
     rdfs:range xsd:string .
 
 semi:hasParamCat a owl:DatatypeProperty ;
@@ -948,6 +966,12 @@ semi:hasRatedLifetime a owl:DatatypeProperty ;
     rdfs:domain semi:CarrierModel ;
     rdfs:range xsd:integer .
 
+semi:hasRequireQty a owl:DatatypeProperty ;
+    rdfs:label "申请数量" ;
+    rdfs:comment "出库操作中本行物料的申请（需求）数量，对应 warehouse_output_record_bill_detail.require_count 字段。与 hasBillQty（实际出库量 output_count）对比可分析复核差异。" ;
+    rdfs:domain semi:MaterialOutboundSnapshot ;
+    rdfs:range xsd:decimal .
+
 semi:hasRecipeCode a owl:DatatypeProperty ;
     rdfs:label "配方编码" ;
     rdfs:comment "对应 recipe_manage.code 或批次的反规范化字段 recipe_code。" ;
@@ -1087,6 +1111,12 @@ semi:hasState a owl:DatatypeProperty ;
     rdfs:domain [ owl:unionOf ( semi:Wafer semi:ProductionLot semi:Sublot semi:Equipment semi:ProductModel semi:ProductionOrder semi:BOM semi:Recipe semi:Material semi:RawMaterial semi:Auxiliary semi:SparePart semi:Product ) ] ;
     rdfs:range xsd:integer .
 
+semi:hasStatus a owl:DatatypeProperty ;
+    rdfs:label "单据状态" ;
+    rdfs:comment "入/出库单据及明细行的审批状态字段（字符串枚举），对应各仓库表的 status 字段。与生产域的 hasState（整数枚举）区分。" ;
+    rdfs:domain [ owl:unionOf ( semi:InboundRequest semi:InboundBillRecord semi:OutboundRequest semi:OutboundBillRecord semi:MaterialTransitionSnapshot ) ] ;
+    rdfs:range xsd:string .
+
 semi:hasStationCode a owl:DatatypeProperty ;
     rdfs:label "工序编码" ;
     rdfs:domain semi:ProcessStation ;
@@ -1104,15 +1134,15 @@ semi:hasStationType a owl:DatatypeProperty ;
     rdfs:range xsd:integer .
 
 semi:hasStockQty a owl:DatatypeProperty ;
-    rdfs:label "当前在库数量" ;
-    rdfs:comment "该物料批次库位的当前在库数量，对应 warehouse_inventory.quantity 字段（随入/出库动态更新）。" ;
-    rdfs:domain semi:MaterialBatch ;
+    rdfs:label "在库数量" ;
+    rdfs:comment "物料批次的在库数量快照。MaterialBatch 对应 warehouse_inventory.quantity（实时）；MaterialOutboundSnapshot 对应 warehouse_output_record_bill_detail.quantity（出库操作执行前在库量快照）。" ;
+    rdfs:domain [ owl:unionOf ( semi:MaterialBatch semi:MaterialTransitionSnapshot ) ] ;
     rdfs:range xsd:decimal .
 
 semi:hasStockUnit a owl:DatatypeProperty ;
     rdfs:label "库存单位" ;
-    rdfs:comment "在库数量的计量单位，对应 warehouse_inventory.unit_name 字段。" ;
-    rdfs:domain semi:MaterialBatch ;
+    rdfs:comment "数量计量单位，对应 warehouse_inventory.unit_name 及出库明细 unit_name 字段。" ;
+    rdfs:domain [ owl:unionOf ( semi:MaterialBatch semi:MaterialTransitionSnapshot ) ] ;
     rdfs:range xsd:string .
 
 semi:hasStorageType a owl:DatatypeProperty ;
@@ -1135,8 +1165,8 @@ semi:hasSublotCodeSnapshot a owl:DatatypeProperty ;
 
 semi:hasSupplier a owl:DatatypeProperty ;
     rdfs:label "供应商" ;
-    rdfs:comment "载具型号的供应商名称或编码。" ;
-    rdfs:domain semi:CarrierModel ;
+    rdfs:comment "载具型号的供应商名称或编码（CarrierModel）；入库/出库快照明细行的供应商冗余字段（MaterialTransitionSnapshot.supplier）。" ;
+    rdfs:domain [ owl:unionOf ( semi:CarrierModel semi:MaterialTransitionSnapshot ) ] ;
     rdfs:range xsd:string .
 
 semi:hasTargetValue a owl:DatatypeProperty ;
@@ -1164,7 +1194,8 @@ semi:hasUniqueCodeMgmt a owl:DatatypeProperty ;
 
 semi:hasUnit a owl:DatatypeProperty ;
     rdfs:label "物料单位" ;
-    rdfs:domain semi:Material ;
+    rdfs:comment "物料的计量单位（Material.unit）；入库快照明细行的 unit_name 字段亦映射此属性。" ;
+    rdfs:domain [ owl:unionOf ( semi:Material semi:MaterialTransitionSnapshot ) ] ;
     rdfs:range xsd:string .
 
 semi:hasUpperLimit a owl:DatatypeProperty ;
@@ -1270,20 +1301,14 @@ semi:hostsRecipe a owl:ObjectProperty ;
 
 semi:inboundToLocation a owl:ObjectProperty ;
     rdfs:label "入库目标库位" ;
-    rdfs:comment "本次入库操作的目标存储库位。" ;
-    rdfs:domain semi:InboundEventRecord ;
+    rdfs:comment "本次入库操作的目标存储库位。物理：warehouse_input_record_bill_detail.warehouse_id → warehouse_model.id。" ;
+    rdfs:domain semi:MaterialInboundSnapshot ;
     rdfs:range semi:WarehouseLocation .
 
-semi:hasMaterialRef a owl:ObjectProperty ;
-    rdfs:label "入库明细关联物料" ;
-    rdfs:comment "入库明细行通过 material_model_id 直接关联的物料主数据。是「按物料统计入库数量」查询的核心外键路径（比绕行 MaterialBatch 的路径更短、更直接）。" ;
-    rdfs:domain semi:InboundEventRecord ;
-    rdfs:range semi:Material .
-
-semi:hasOutboundMaterialRef a owl:ObjectProperty ;
-    rdfs:label "出库明细关联物料" ;
-    rdfs:comment "出库明细行通过 material_model_id 直接关联的物料主数据。与 semi:hasMaterialRef 对称，支持「按物料统计出库数量」直接关联。" ;
-    rdfs:domain semi:OutboundEventRecord ;
+semi:refersToMaterial a owl:ObjectProperty ;
+    rdfs:label "物料转移快照关联物料" ;
+    rdfs:comment "入库/出库快照明细行通过 material_model_id 直接关联的物料主数据，是『按物料分类统计入出库数量』查询的核心外键路径。domain 为具体明细子类（MaterialInboundSnapshot / MaterialOutboundSnapshot），物理列均为 material_model_id → material.id。" ;
+    rdfs:domain [ owl:unionOf ( semi:MaterialInboundSnapshot semi:MaterialOutboundSnapshot ) ] ;
     rdfs:range semi:Material .
 
 semi:inputSchema a owl:AnnotationProperty ;
@@ -1365,8 +1390,8 @@ semi:operationTypeCode a owl:DatatypeProperty ;
 
 semi:outboundFromLocation a owl:ObjectProperty ;
     rdfs:label "出库源库位" ;
-    rdfs:comment "本次出库操作的源存储库位。" ;
-    rdfs:domain semi:OutboundEventRecord ;
+    rdfs:comment "本次出库操作的源存储库位。物理：warehouse_output_record_bill_detail.warehouse_id → warehouse_model.id。" ;
+    rdfs:domain semi:MaterialOutboundSnapshot ;
     rdfs:range semi:WarehouseLocation .
 
 semi:postCondition a owl:AnnotationProperty ;
@@ -1403,8 +1428,8 @@ semi:recordedAtStation a owl:ObjectProperty ;
 
 semi:recordsBatch a owl:ObjectProperty ;
     rdfs:label "出库明细关联物料批次" ;
-    rdfs:comment "出库明细行通过 batch_no/unique_code+warehouse_id 软关联到 warehouse_inventory 批次快照行（semi:MaterialBatch）。支持出库操作←→批次实例之间的语义连接，支持批次追溯和出库历史查询。" ;
-    rdfs:domain semi:OutboundEventRecord ;
+    rdfs:comment "出库明细行通过 batch_no/unique_code+warehouse_id 软关联到 warehouse_inventory 批次快照行（semi:MaterialBatch）。用于批次出库历史追溯。注意：warehouse_inventory 是实时库存表，历史统计应优先使用 refersToMaterial（direct FK）而非此路径。" ;
+    rdfs:domain semi:MaterialOutboundSnapshot ;
     rdfs:range semi:MaterialBatch .
 
 semi:requiresSparePart a owl:ObjectProperty ;
@@ -1522,14 +1547,14 @@ semi:transformationLogic a owl:AnnotationProperty ;
 
 semi:triggersInbound a owl:ObjectProperty ;
     rdfs:label "审批通过触发入库" ;
-    rdfs:comment "审批通过(hasApprovalStatus=1)后关联触发的入库执行记录，建立'审批→入库'的操作因果链（对应 warehouse_approval_record → warehouse_input_record_bill_detail 的关联）。" ;
+    rdfs:comment "审批通过(hasApprovalStatus=1)后关联触发的入库执行快照明细，建立'审批→入库'的操作因果链（对应 warehouse_approval_record → warehouse_input_record_bill_detail 的关联）。" ;
     rdfs:domain semi:InboundApprovalRecord ;
-    rdfs:range semi:InboundEventRecord .
+    rdfs:range semi:MaterialInboundSnapshot .
 
 semi:updatesBatch a owl:ObjectProperty ;
     rdfs:label "入库明细更新物料批次库存" ;
-    rdfs:comment "入库记录明细生成后同步更新 warehouse_inventory 中对应物料批次行的 quantity 字段。物理映射：warehouse_input_record_bill_detail 通过 batch_no/unique_code+warehouse_id 定位 warehouse_inventory 行。" ;
-    rdfs:domain semi:InboundEventRecord ;
+    rdfs:comment "入库快照明细生成后同步更新 warehouse_inventory 中对应物料批次行的 quantity 字段。物理映射：warehouse_input_record_bill_detail 通过 batch_no/unique_code+warehouse_id 定位 warehouse_inventory 行。注意：warehouse_inventory 是实时库存表，随出库操作动态变化；历史入库数量统计应使用 refersToMaterial（material_model_id 直接 FK）。" ;
+    rdfs:domain semi:MaterialInboundSnapshot ;
     rdfs:range semi:MaterialBatch .
 
 semi:usesEquipmentGroup a owl:ObjectProperty ;
@@ -1636,7 +1661,7 @@ semi:InboundEvent a owl:Class ;
     semi:postCondition "MaterialBatch(id=?materialBatchId).hasStockQty > 0" ;
     semi:preCondition "WarehouseLocation.hasLocationStatus == 1 && MaterialBatch.batchOfMaterial != null" ;
     semi:transformationLogic "UPDATE semi:MaterialBatch SET hasStockQty += ?billQty, locatedAt=?locationId WHERE id=?materialBatchId" ;
-    rdfs:comment "定义线边仓入库操作的规则/类型模板。将物料批次（MaterialBatch）移入指定库位，执行后更新批次在库量（MaterialBatch.hasStockQty += billQty）。产成品入库通常需先完成 InboundApprovalEvent；其他物料可直接入库。执行记录层见 semi:InboundEventRecord。" ;
+    rdfs:comment "定义线边仓入库操作的规则/类型模板。将物料批次（MaterialBatch）移入指定库位，执行后更新批次在库量（MaterialBatch.hasStockQty += billQty）。产成品入库通常需先完成 InboundApprovalEvent；其他物料可直接入库。执行记录层见 semi:MaterialInboundSnapshot。" ;
     rdfs:subClassOf semi:WarehouseEvent .
 
 semi:InboundRequestEvent a owl:Class ;
@@ -1716,7 +1741,7 @@ semi:OutboundEvent a owl:Class ;
     semi:postCondition "MaterialBatch(id=?materialBatchId).hasStockQty >= 0" ;
     semi:preCondition "MaterialBatch(id=?materialBatchId).hasStockQty >= ?billQty" ;
     semi:transformationLogic "UPDATE semi:MaterialBatch SET hasStockQty -= ?billQty WHERE id=?materialBatchId AND locatedAt=?locationId" ;
-    rdfs:comment "定义线边仓出库操作的规则/类型模板。将物料批次从指定库位移出（用于生产线领料或调拨），执行后减少批次在库量（MaterialBatch.hasStockQty -= billQty）。执行记录层见 semi:OutboundEventRecord。" ;
+    rdfs:comment "定义线边仓出库操作的规则/类型模板。将物料批次从指定库位移出（用于生产线领料或调拨），执行后减少批次在库量（MaterialBatch.hasStockQty -= billQty）。执行记录层见 semi:MaterialOutboundSnapshot。" ;
     rdfs:subClassOf semi:WarehouseEvent .
 
 semi:OutboundRequestEvent a owl:Class ;
@@ -1785,10 +1810,10 @@ semi:EquipmentGroup a owl:Class ;
     rdfs:label "设备组" ;
     rdfs:comment "功能相同的设备的逻辑分组（能力池），被工艺站点直接引用作为派工可行域。工序不硬编码到具体机台，而是指向设备组，支持组内动态派工。" .
 
-semi:InboundBill a owl:Class ;
+semi:InboundBillRecord a owl:Class ;
     rdfs:label "入库记录单" ;
     semi:isAbstract false ;
-    rdfs:comment "入库操作的单据头部记录（主表）。物理映射：warehouse_input_record_bill 表（每行代表一次完整的入库单据，1:N 对应 semi:InboundEventRecord 明细行）。核心字段：record_bill_no（唯一单号/UNI）、status（单据审批状态）、type（入库类型）、gmt_create/user_create（创建时间/人）、reject_reason（拒绝原因）。通过 id → warehouse_input_record_bill_detail.record_bill_id 关联入库明细。" ;
+    rdfs:comment "入库操作的单据头部记录（主表）。物理映射：warehouse_input_record_bill 表（每行代表一次完整的入库单据，1:N 对应 semi:MaterialInboundSnapshot 明细行）。核心字段：record_bill_no（唯一单号/UNI）、status（单据审批状态）、type（入库类型）、gmt_create/user_create（创建时间/人）、reject_reason（拒绝原因）。通过 id → warehouse_input_record_bill_detail.record_bill_id 关联入库明细。" ;
     rdfs:subClassOf [ a owl:Restriction ;
             owl:allValuesFrom semi:InboundEvent ;
             owl:onProperty semi:isInstanceOfWarehouseEvent ],
@@ -1797,7 +1822,7 @@ semi:InboundBill a owl:Class ;
 semi:InboundRequest a owl:Class ;
     rdfs:label "入库申请单" ;
     semi:isAbstract false ;
-    rdfs:comment "入库操作的申请单据（申请层）。物理映射：warehouse_input_bill 表（每行代表一次入库申请，审批通过后生成 semi:InboundBill 入库记录单）。核心字段：bill_no（唯一申请单号/UNI）、status（审批状态）、type（入库类型）、reject_reason/reject_reason_remark（拒绝原因）。通过 id → warehouse_input_record_bill.input_bill_id（FK）关联已生成的入库记录单。业务流程：入库申请 → 审批 → 生成 InboundBill → 执行InboundEventRecord。" ;
+    rdfs:comment "入库操作的申请单据（申请层）。物理映射：warehouse_input_bill 表（每行代表一次入库申请，审批通过后生成 semi:InboundBillRecord 入库记录单）。核心字段：bill_no（唯一申请单号/UNI）、status（审批状态）、type（入库类型）、reject_reason/reject_reason_remark（拒绝原因）。通过 id → warehouse_input_record_bill.input_bill_id（FK）关联已生成的入库记录单。业务流程：入库申请 → 审批 → 生成 InboundBillRecord → 执行 MaterialInboundSnapshot。" ;
     rdfs:subClassOf [ a owl:Restriction ;
             owl:allValuesFrom semi:InboundRequestEvent ;
             owl:onProperty semi:isInstanceOfWarehouseEvent ],
@@ -1810,10 +1835,10 @@ semi:MeasurementPassRecord a owl:Class ;
             owl:allValuesFrom semi:MeasurementEvent ;
             owl:onProperty semi:isInstanceOfEvent ] .
 
-semi:OutboundBill a owl:Class ;
+semi:OutboundBillRecord a owl:Class ;
     rdfs:label "出库记录单" ;
     semi:isAbstract false ;
-    rdfs:comment "出库操作的单据头部记录（主表）。物理映射：warehouse_output_record_bill 表（每行代表一次完整的出库单据，1:N 对应 semi:OutboundEventRecord 明细行）。核心字段：record_bill_no（唯一单号/UNI）、status（单据审批状态）、type（出库类型）、destination（出库目标/生产线/部门）、gmt_create/user_create（创建时间/人）、scan_code（扫码字段）。通过 id → warehouse_output_record_bill_detail.record_bill_id 关联出库明细。" ;
+    rdfs:comment "出库操作的单据头部记录（主表）。物理映射：warehouse_output_record_bill 表（每行代表一次完整的出库单据，1:N 对应 semi:MaterialOutboundSnapshot 明细行）。核心字段：record_bill_no（唯一单号/UNI）、status（单据审批状态）、type（出库类型）、destination（出库目标/生产线/部门）、gmt_create/user_create（创建时间/人）、scan_code（扫码字段）。通过 id → warehouse_output_record_bill_detail.record_bill_id 关联出库明细。" ;
     rdfs:subClassOf [ a owl:Restriction ;
             owl:allValuesFrom semi:OutboundEvent ;
             owl:onProperty semi:isInstanceOfWarehouseEvent ],
@@ -1822,7 +1847,7 @@ semi:OutboundBill a owl:Class ;
 semi:OutboundRequest a owl:Class ;
     rdfs:label "出库申请单" ;
     semi:isAbstract false ;
-    rdfs:comment "出库操作的申请单据（申请层）。物理映射：warehouse_output_bill 表（每行代表一次出库申请，审批通过后生成 semi:OutboundBill 出库记录单）。核心字段：bill_no（唯一申请单号/UNI）、status（审批状态）、type（出库类型）、destination（出库目标/生产线/部门）、output_dept（申请部门）、scan_code（扫码字段）。通过 id → warehouse_output_record_bill.output_bill_id（FK）关联已生成的出库记录单。业务流程：出库申请 → 审批 → 生成 OutboundBill → 执行 OutboundEventRecord。" ;
+    rdfs:comment "出库操作的申请单据（申请层）。物理映射：warehouse_output_bill 表（每行代表一次出库申请，审批通过后生成 semi:OutboundBillRecord 出库记录单）。核心字段：bill_no（唯一申请单号/UNI）、status（审批状态）、type（出库类型）、destination（出库目标/生产线/部门）、output_dept（申请部门）、scan_code（扫码字段）。通过 id → warehouse_output_record_bill.output_bill_id（FK）关联已生成的出库记录单。业务流程：出库申请 → 审批 → 生成 OutboundBillRecord → 执行 MaterialOutboundSnapshot。" ;
     rdfs:subClassOf [ a owl:Restriction ;
             owl:allValuesFrom semi:OutboundRequestEvent ;
             owl:onProperty semi:isInstanceOfWarehouseEvent ],
@@ -1830,7 +1855,7 @@ semi:OutboundRequest a owl:Class ;
 
 semi:isInstanceOfWarehouseEvent a owl:ObjectProperty ;
     rdfs:label "库存管理事件执行记录" ;
-    rdfs:comment "该库存管理执行记录（WarehouseEventRecord 子类实例）对应的事件类型定义（WarehouseEvent 子类），关联记录到事件规约。与 semi:isInstanceOfEvent（ProductionEventRecord→ProductionEvent）平行。各子类通过 owl:allValuesFrom 约束精化 range：InboundApprovalRecord→InboundApprovalEvent / InboundRequest→InboundRequestEvent / InboundBill→InboundEvent / OutboundRequest→OutboundRequestEvent / OutboundBill→OutboundEvent。" ;
+    rdfs:comment "该库存管理执行记录（WarehouseEventRecord 子类实例）对应的事件类型定义（WarehouseEvent 子类），关联记录到事件规约。与 semi:isInstanceOfEvent（ProductionEventRecord→ProductionEvent）平行。各子类通过 owl:allValuesFrom 约束精化 range：InboundApprovalRecord→InboundApprovalEvent / InboundRequest→InboundRequestEvent / InboundBillRecord→InboundEvent / OutboundRequest→OutboundRequestEvent / OutboundBillRecord→OutboundEvent。" ;
     rdfs:domain semi:WarehouseEventRecord ;
     rdfs:range semi:WarehouseEvent .
 
@@ -1855,9 +1880,11 @@ semi:MeasurementParamGroup a owl:Class ;
     rdfs:label "量测参数组" ;
     rdfs:comment "量测参数采集分组，聚合量测过站时需要采集的产品阶段性质量参数（如膜厚、线宽、TTV），用于产品合格判定和工艺分析。物理表：param_group WHERE param_group_cat='measure'。由 semi:usesMeasurementParamGroup 从工序站点引用（通用量测采集可行域），由 semi:selectedMeasurementParamGroup 从 ProcessConstraint 引用（产品专属量测配置，1:1选定）。通过 semi:containsMeasurementParam 聚合多个 semi:MeasurementParam 实例。" .
 
-semi:OutboundEventRecord a owl:Class ;
-    rdfs:label "出库记录明细" ;
-    rdfs:comment "出库操作的具体执行明细记录（行项目）。物理映射：warehouse_output_record_bill_detail 表（每行对应一个物料/批次的出库行项目，通过 record_bill_id 外键关联出库单主表 warehouse_output_record_bill）。【非 WarehouseEventRecord 子类】：本类是 OutboundBill 的组成行，通过对象属性 semi:containsOutboundDetail（OutboundBill→OutboundEventRecord）建立从属关系。核心关联：(1) recordsBatch → semi:MaterialBatch（batch_no/unique_code）；(2) outboundFromLocation → semi:WarehouseLocation（warehouse_id）；(3) hasBillQty（output_count）、hasRequireQty（require_count）、hasStockQty（quantity）、hasBillTime（gmt_create）；destination 记录出库目标（生产线/部门）。" .
+semi:MaterialOutboundSnapshot a owl:Class ;
+    rdfs:label "出库快照" ;
+    rdfs:subClassOf semi:MaterialTransitionSnapshot ;
+    semi:isAbstract false ;
+    rdfs:comment "出库操作的快照明细记录（行项目）。物理映射：warehouse_output_record_bill_detail 表（每行对应一个物料/批次的出库行项目，通过 record_bill_id 外键关联出库单主表 warehouse_output_record_bill）。【非 WarehouseEventRecord 子类】：本类是 OutboundBillRecord 的组成行，通过对象属性 semi:containsOutboundDetail（OutboundBillRecord→MaterialOutboundSnapshot）建立从属关系。核心关联：⑴ refersToMaterial → semi:Material（material_model_id，直接 FK）；⑵ outboundFromLocation → semi:WarehouseLocation（warehouse_id）；⑶ recordsBatch → semi:MaterialBatch（batch_no/unique_code+warehouse_id）。数据属性：hasBillQty（output_count，本次实际出库数量）、hasRequireQty（require_count，申请数量）、hasStockQty（quantity，执行前在库量快照）、hasBatchNo（batch_no，批次号）、hasBoxNo（unique_code，逐件唯一码，未开启时为空）、hasSupplier（supplier，供应商冗余字段）、hasUnit（unit_name，计量单位）、hasBillTime（gmt_create，操作时间）、hasStatus（status，单据状态）、hasOutboundType（type，出库类型）、hasDestination（destination，出库目标部门/生产线）、hasOperator（user_create，操作人）、hasBillNo（record_bill_no，冗余单号）。" .
 
 semi:ProcessParam a owl:Class ;
     rdfs:label "制程参数定义" ;
@@ -1886,7 +1913,7 @@ semi:WarehouseEvent a owl:Class ;
 semi:WarehouseEventRecord a owl:Class ;
     rdfs:label "库存管理事件记录（抽象父类）" ;
     semi:isAbstract true ;
-    rdfs:comment "库存管理操作的执行记录抽象基类，与 semi:ProductionEventRecord 平行，专用于仓库管理域。每个实例代表一次完整的库存交易事件单据（如一次入库、一次出库、一次申请）。具体子类（事件单据层）：semi:InboundApprovalRecord（入库审批记录）、semi:InboundRequest（入库申请单）、semi:InboundBill（入库记录单）、semi:OutboundRequest（出库申请单）、semi:OutboundBill（出库记录单）。⚠ 明细行项目（semi:InboundEventRecord、semi:OutboundEventRecord、semi:InboundRequestDetail、semi:OutboundRequestDetail）不是独立的 WarehouseEventRecord，而是通过包含关系（containsInboundDetail / containsOutboundDetail / containsInboundRequestDetail / containsOutboundRequestDetail）挂载在对应单据下，代表单据中每个物料批次的行条目。" .
+    rdfs:comment "库存管理操作的执行记录抽象基类，与 semi:ProductionEventRecord 平行，专用于仓库管理域。每个实例代表一次完整的库存交易事件单据头部记录。具体子类（事件展局单据层）：semi:InboundApprovalRecord（入库审批记录）、semi:InboundRequest（入库申请单）、semi:InboundBillRecord（入库记录单）、semi:OutboundRequest（出库申请单）、semi:OutboundBillRecord（出库记录单）。⚠ 明细行项目（semi:MaterialInboundSnapshot、semi:MaterialOutboundSnapshot 等 MaterialTransitionSnapshot 子类）不是独立的 WarehouseEventRecord，而是通过包含关系（containsInboundDetail / containsOutboundDetail）挂载在对应单据下，代表单据中每个物料批次的行条目。" .
 
 semi:Auxiliary a owl:Class ;
     rdfs:label "辅料" ;
@@ -1895,9 +1922,16 @@ semi:Auxiliary a owl:Class ;
 
 
 
-semi:InboundEventRecord a owl:Class ;
-    rdfs:label "入库记录明细" ;
-    rdfs:comment "入库操作的快照明细记录（行项目）。物理映射：warehouse_input_record_bill_detail 表（每行对应一个物料/批次的入库行项目，通过 record_bill_id 外键关联入库单头表 warehouse_input_record_bill）。【非 WarehouseEventRecord 子类】：本类是 InboundBill 的组成行，通过对象属性 semi:containsInboundDetail（InboundBill→InboundEventRecord）建立从属关系。核心关联：(1) inboundToLocation → semi:WarehouseLocation（warehouse_id，本次入库的目标库位）；(2) updatesBatch → semi:MaterialBatch（batch_no/unique_code+warehouse_id，更新对应批次的 hasStockQty）；数据属性：hasBillQty（count）、hasBillTime（gmt_create）。" .
+semi:MaterialTransitionSnapshot a owl:Class ;
+    rdfs:label "物料转移快照" ;
+    semi:isAbstract true ;
+    rdfs:comment "物料批次在某库位发生一次数量变动的快照明细抽象父类。是仓库管理域中追踪物料流转历史的基本行项目单元，与 WarehouseEventRecord（单据头部）区分。具体子类：⑴ semi:MaterialInboundSnapshot（对应 warehouse_input_record_bill_detail，入库操作明细行）；⑵ semi:MaterialOutboundSnapshot（对应 warehouse_output_record_bill_detail，出库操作明细行）。两类字段结构高度对称，方向（入/出）由所属单据类型决定。共享数据属性：hasBillQty（数量）、hasBatchNo（batch_no，批次号）、hasBoxNo（unique_code，逐件唯一码）、hasSupplier（supplier）、hasUnit（unit_name）、hasBillTime（操作时间）、hasStatus（状态）、hasOperator（user_create，操作人）、hasBillNo（record_bill_no，冗余单号）。核心对象属性：refersToMaterial（material_model_id → Material，历史统计首选 FK 路径）。" .
+
+semi:MaterialInboundSnapshot a owl:Class ;
+    rdfs:label "入库快照" ;
+    rdfs:subClassOf semi:MaterialTransitionSnapshot ;
+    semi:isAbstract false ;
+    rdfs:comment "入库操作的快照明细记录（行项目）。物理映射：warehouse_input_record_bill_detail 表（每行对应一个物料/批次的入库行项目，通过 record_bill_id 外键关联入库单头表 warehouse_input_record_bill）。【非 WarehouseEventRecord 子类】：本类是 InboundBillRecord 的组成行，通过对象属性 semi:containsInboundDetail（InboundBillRecord→MaterialInboundSnapshot）建立从属关系。核心关联：⑴ refersToMaterial → semi:Material（material_model_id，直接 FK，历史入库统计必经路径）；⑵ inboundToLocation → semi:WarehouseLocation（warehouse_id，本次入库的目标库位）；⑶ updatesBatch → semi:MaterialBatch（batch_no/unique_code+warehouse_id，⚠实时库存快照表，历史统计应优先选 refersToMaterial 路径）。数据属性：hasBillQty（count，本次入库数量）、hasBatchNo（batch_no，批次号）、hasBoxNo（unique_code，逐件唯一码，未开启时为空）、hasSupplier（supplier，供应商冗余字段）、hasUnit（unit_name，计量单位）、hasBillTime（gmt_create，操作时间）、hasStatus（status，单据状态）、hasOperator（user_create，操作人）、hasBillNo（record_bill_no，冗余单号）。" .
 
 semi:Product a owl:Class ;
     rdfs:label "产品" ;

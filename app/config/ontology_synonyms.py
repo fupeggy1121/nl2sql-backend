@@ -317,42 +317,44 @@ CLASS_SYNONYMS: dict = {
         ],
     },
 
-    "semi:InboundBill": {
+    "semi:InboundBillRecord": {
         "label_cn": "入库记录单",
         "synonyms": [
             "入库单", "入库记录单", "入库实绩单", "入库凭证",
             "仓库入库单", "物料入库单", "入库单据", "入库记录票",
-            "inboundbill", "inbound_bill", "warehouse_input_record_bill",
+            "inboundbillrecord", "inbound_bill_record", "warehouse_input_record_bill",
         ],
     },
 
-    "semi:InboundEventRecord": {
-        "label_cn": "入库记录明细",
+    "semi:MaterialInboundSnapshot": {
+        "label_cn": "入库快照",
         "synonyms": [
             "入库", "入库记录", "入库明细", "入库记录明细", "入库操作记录",
+            "入库快照", "入库快照明细",
             "入库日志", "入库历史", "物料入库记录", "入库行项",
             "入库数量", "入库统计", "入库汇总", "入库总量", "入库排名",
-            "inboundeventrecord", "inbound_record",
+            "materialinbounddetail", "inbound_detail", "warehouse_input_record_bill_detail",
         ],
     },
 
-    "semi:OutboundBill": {
+    "semi:OutboundBillRecord": {
         "label_cn": "出库记录单",
         "synonyms": [
             "出库单", "出库记录单", "出库凭证", "出库单据",
             "仓库出库单", "物料出库单", "出库实绩单", "出库记录票",
-            "outboundbill", "outbound_bill", "warehouse_output_record_bill",
+            "outboundbillrecord", "outbound_bill_record", "warehouse_output_record_bill",
         ],
     },
 
-    "semi:OutboundEventRecord": {
-        "label_cn": "出库记录明细",
+    "semi:MaterialOutboundSnapshot": {
+        "label_cn": "出库快照",
         "synonyms": [
             "出库", "出库记录", "出库明细", "出库记录明细", "出库操作记录",
+            "出库快照", "出库快照明细",
             "出库日志", "出库历史", "物料出库记录",
             "领料记录", "出库单明细", "出库行项",
             "出库数量", "出库统计", "出库汇总", "出库总量", "出库排名",
-            "outboundeventrecord", "outbound_record",
+            "materialoutbounddetail", "outbound_detail", "warehouse_output_record_bill_detail",
         ],
     },
 
