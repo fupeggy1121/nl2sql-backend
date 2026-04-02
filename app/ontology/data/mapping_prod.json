@@ -4406,6 +4406,21 @@
         "semi:Carrier",
         "semi:ProductionLot"
       ]
+    },
+    {
+      "rule_id": "BR-005",
+      "name": "工段/全流程良率等于各站点良率乘积",
+      "description": "当查询某工段或整个制造流程的良率时，结果等于该范围内所有工艺站点良率的累乘（连乘积）。SQL可用 EXP(SUM(LN(station_yield))) 计算连乘积，或由Python分析层完成。一次良率和综合良率均适用此规则。单站点查询时直接返回该站点良率，无需乘积。",
+      "involved_tables": [
+        "matrix_routerx_operation_lot_batch_resume_log",
+        "matrix_routerx_operation_lot_batch_resume_log_detail",
+        "matrix_routerx_operation_lot_batch_resume_wafer_detail_log"
+      ],
+      "applies_to_classes": [
+        "semi:ProcessStation",
+        "semi:Wafer"
+      ],
+      "trigger_keywords": ["工段良率", "全流程良率", "整体良率", "产线良率", "线体良率", "累积良率"]
     }
   ],
   "metric_definitions": {
@@ -4432,25 +4447,75 @@
       ],
       "description": "当前在制品晶圆数，以Wafer为粒度统计，通过子批次(Sublot)关联工站"
     },
-    "lot_yield": {
+    "first_pass_yield": {
       "zh_names": [
-        "批次良率",
-        "良率",
-        "Yield",
-        "出站良率",
-        "工序良率"
+        "一次良率",
+        "首次合格率",
+        "直通率",
+        "FPY",
+        "first pass yield",
+        "首次良率",
+        "一次通过率"
       ],
-      "anchor_table": "matrix_routerx_operation_lot",
-      "formula": "SUM(qualified_qty) / NULLIF(SUM(total_qty), 0)",
-      "join_path": null,
-      "auto_filter": null,
+      "anchor_table": "matrix_routerx_operation_lot_batch_resume_log",
+      "formula": "COUNT(DISTINCT CASE WHEN rn=1 AND COALESCE(wafer_type,'good')='good' AND (ng_code IS NULL OR ng_code='') THEN wafer_id END) / NULLIF(COUNT(DISTINCT CASE WHEN rn=1 THEN wafer_id END), 0)",
+      "join_path": "matrix_routerx_operation_lot_batch_resume_log → _log_detail(batch_resume_log_id) → _wafer_detail_log(batch_resume_detail_log_id)",
+      "auto_filter": "operation_type = 9 AND (deleted = 0 OR deleted IS NULL)",
+      "sql_template": "WITH first_checkout AS (\n  SELECT wdl.wafer_id, log.process_code, log.product_code,\n         DATE(log.gmt_create) AS report_date,\n         wdl.wafer_type, wdl.ng_code,\n         ROW_NUMBER() OVER (\n           PARTITION BY wdl.wafer_id, log.process_code\n           ORDER BY log.gmt_create ASC\n         ) AS rn\n  FROM matrix_routerx_operation_lot_batch_resume_log log\n  JOIN matrix_routerx_operation_lot_batch_resume_log_detail d\n       ON d.batch_resume_log_id = log.id\n  JOIN matrix_routerx_operation_lot_batch_resume_wafer_detail_log wdl\n       ON wdl.batch_resume_detail_log_id = d.id\n  WHERE log.operation_type = 9\n    AND (log.deleted = 0 OR log.deleted IS NULL)\n    {WHERE_EXTRA}\n)\nSELECT process_code, product_code, report_date,\n  COUNT(DISTINCT wafer_id) AS total_wafers,\n  COUNT(DISTINCT CASE\n    WHEN COALESCE(wafer_type,'good')='good' AND (ng_code IS NULL OR ng_code='')\n    THEN wafer_id END) AS first_pass_good,\n  ROUND(\n    COUNT(DISTINCT CASE\n      WHEN COALESCE(wafer_type,'good')='good' AND (ng_code IS NULL OR ng_code='')\n      THEN wafer_id END)\n    / NULLIF(COUNT(DISTINCT wafer_id), 0) * 100, 2\n  ) AS first_pass_yield\nFROM first_checkout\nWHERE rn = 1\nGROUP BY process_code, product_code, report_date\nORDER BY report_date DESC, process_code",
       "granularity": [
         "产品",
         "工站",
         "日期",
-        "班次"
+        "批次"
       ],
-      "description": "出站良率，基于报工记录的合格数/总数，qualified_qty和total_qty来自报工表"
+      "description": "一次良率(FPY/直通率)：每片wafer在该站点首次出站(CheckOut,op=9)时wafer_type为good的比例。返工恢复的wafer不计入分子。基于wafer_detail_log过站历史，ROW_NUMBER按gmt_create ASC取首次出站快照。"
+    },
+    "final_yield": {
+      "zh_names": [
+        "综合良率",
+        "最终良率",
+        "累计良率",
+        "overall yield",
+        "final yield",
+        "成品良率",
+        "出货良率",
+        "Yield",
+        "良率",
+        "出站良率",
+        "工序良率",
+        "批次良率"
+      ],
+      "anchor_table": "matrix_routerx_operation_lot_batch_resume_log",
+      "formula": "COUNT(DISTINCT CASE WHEN rn=1 AND COALESCE(wafer_type,'good')='good' AND (ng_code IS NULL OR ng_code='') THEN wafer_id END) / NULLIF(COUNT(DISTINCT CASE WHEN rn=1 THEN wafer_id END), 0)",
+      "join_path": "matrix_routerx_operation_lot_batch_resume_log → _log_detail(batch_resume_log_id) → _wafer_detail_log(batch_resume_detail_log_id)",
+      "auto_filter": "operation_type = 9 AND (deleted = 0 OR deleted IS NULL)",
+      "sql_template": "WITH last_checkout AS (\n  SELECT wdl.wafer_id, log.process_code, log.product_code,\n         DATE(log.gmt_create) AS report_date,\n         wdl.wafer_type, wdl.ng_code,\n         ROW_NUMBER() OVER (\n           PARTITION BY wdl.wafer_id, log.process_code\n           ORDER BY log.gmt_create DESC\n         ) AS rn\n  FROM matrix_routerx_operation_lot_batch_resume_log log\n  JOIN matrix_routerx_operation_lot_batch_resume_log_detail d\n       ON d.batch_resume_log_id = log.id\n  JOIN matrix_routerx_operation_lot_batch_resume_wafer_detail_log wdl\n       ON wdl.batch_resume_detail_log_id = d.id\n  WHERE log.operation_type = 9\n    AND (log.deleted = 0 OR log.deleted IS NULL)\n    {WHERE_EXTRA}\n)\nSELECT process_code, product_code, report_date,\n  COUNT(DISTINCT wafer_id) AS total_wafers,\n  COUNT(DISTINCT CASE\n    WHEN COALESCE(wafer_type,'good')='good' AND (ng_code IS NULL OR ng_code='')\n    THEN wafer_id END) AS final_good,\n  ROUND(\n    COUNT(DISTINCT CASE\n      WHEN COALESCE(wafer_type,'good')='good' AND (ng_code IS NULL OR ng_code='')\n      THEN wafer_id END)\n    / NULLIF(COUNT(DISTINCT wafer_id), 0) * 100, 2\n  ) AS final_yield\nFROM last_checkout\nWHERE rn = 1\nGROUP BY process_code, product_code, report_date\nORDER BY report_date DESC, process_code",
+      "granularity": [
+        "产品",
+        "工站",
+        "日期",
+        "批次"
+      ],
+      "description": "综合良率(Final Yield)：每片wafer在该站点最后一次出站(CheckOut,op=9)时wafer_type为good的比例。返工恢复的wafer计入分子。基于wafer_detail_log过站历史，ROW_NUMBER按gmt_create DESC取末次出站快照。"
+    },
+    "rework_rate": {
+      "zh_names": [
+        "返工率",
+        "重工率",
+        "rework rate",
+        "返工比例"
+      ],
+      "anchor_table": "matrix_routerx_operation_lot_batch_resume_log",
+      "formula": "COUNT(DISTINCT CASE WHEN visit_count > 1 THEN wafer_id END) / NULLIF(COUNT(DISTINCT wafer_id), 0)",
+      "join_path": "matrix_routerx_operation_lot_batch_resume_log → _log_detail(batch_resume_log_id) → _wafer_detail_log(batch_resume_detail_log_id)",
+      "auto_filter": "operation_type = 8 AND (deleted = 0 OR deleted IS NULL)",
+      "sql_template": "WITH wafer_station_visits AS (\n  SELECT wdl.wafer_id, log.process_code, log.product_code,\n         DATE(log.gmt_create) AS report_date,\n         COUNT(*) AS visit_count\n  FROM matrix_routerx_operation_lot_batch_resume_log log\n  JOIN matrix_routerx_operation_lot_batch_resume_log_detail d\n       ON d.batch_resume_log_id = log.id\n  JOIN matrix_routerx_operation_lot_batch_resume_wafer_detail_log wdl\n       ON wdl.batch_resume_detail_log_id = d.id\n  WHERE log.operation_type = 8\n    AND (log.deleted = 0 OR log.deleted IS NULL)\n    {WHERE_EXTRA}\n  GROUP BY wdl.wafer_id, log.process_code, log.product_code, DATE(log.gmt_create)\n)\nSELECT process_code, product_code, report_date,\n  COUNT(DISTINCT wafer_id) AS total_wafers,\n  COUNT(DISTINCT CASE WHEN visit_count > 1 THEN wafer_id END) AS rework_wafers,\n  ROUND(\n    COUNT(DISTINCT CASE WHEN visit_count > 1 THEN wafer_id END)\n    / NULLIF(COUNT(DISTINCT wafer_id), 0) * 100, 2\n  ) AS rework_rate\nFROM wafer_station_visits\nGROUP BY process_code, product_code, report_date\nORDER BY report_date DESC, process_code",
+      "granularity": [
+        "产品",
+        "工站",
+        "日期"
+      ],
+      "description": "返工率：同一wafer在同一站点出现超过1次CheckIn(op=8)记录的比例，反映工艺稳定性"
     },
     "cycle_time": {
       "zh_names": [

@@ -60,6 +60,28 @@ def sql_generator_node(state: AgentState) -> dict:
     if is_followup:
         user_input = resolved_input
 
+    # ── 0.5 快速路径: sql_template 模式（预构建模板，完全绕过 LLM）──
+    # 仅在首次生成（非重试因 sql_error）时启用，避免死循环
+    semantic_ctx_early = state.get("semantic_context", {})
+    if not sql_error:
+        _template_sql = _apply_metric_sql_template(
+            semantic_ctx_early,
+            state.get("query_plan", {}),
+            user_input,
+        )
+        if _template_sql:
+            trace = list(state.get("pipeline_trace", []))
+            trace_step(trace, "sql_generator", _t0,
+                       summary="sql_template 快速路径: 跳过 LLM，使用预构建模板",
+                       detail={"sql": _template_sql[:300], "template_mode": True})
+            return {
+                "sql": _template_sql,
+                "sql_confidence": 0.95,
+                "sql_retry_count": 0,
+                "sql_error": "",
+                "pipeline_trace": trace,
+            }
+
     # ── 1. 获取 Schema 上下文（优先使用语义引擎，降级 RAG → schema_tools）──
     semantic_ctx = state.get("semantic_context", {})
     schema_ctx = state.get("rag_context", "")
@@ -169,6 +191,109 @@ def sql_generator_node(state: AgentState) -> dict:
             "rag_context": schema_ctx,
             "pipeline_trace": trace,
         }
+
+
+def _apply_metric_sql_template(
+    semantic_ctx: dict, query_plan: dict, user_input: str
+) -> str:
+    """
+    当语义上下文中存在带 sql_template 的指标时，直接展开模板返回 SQL。
+    用 query_plan 和用户输入推断 {WHERE_EXTRA} 条件，完全绕过 LLM。
+    返回空字符串表示没有适用模板。
+    """
+    if not semantic_ctx:
+        return ""
+    metrics = semantic_ctx.get("metrics", [])
+    template_metric = None
+    for m in (metrics or []):
+        if m.get("sql_template"):
+            template_metric = m
+            break
+    if not template_metric:
+        return ""
+
+    template = template_metric["sql_template"]
+
+    # ── 构建 WHERE_EXTRA 条件列表 ──
+    conditions: list[str] = []
+
+    # 1. 时间范围
+    time_range = query_plan.get("time_range") or ""
+    _time_map = {
+        "today":        "AND DATE(log.gmt_create) = CURDATE()",
+        "yesterday":    "AND DATE(log.gmt_create) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)",
+        "last_week":    "AND log.gmt_create >= DATE_SUB(NOW(), INTERVAL 7 DAY)",
+        "last_month":   "AND log.gmt_create >= DATE_SUB(NOW(), INTERVAL 30 DAY)",
+        "last_30_days": "AND log.gmt_create >= DATE_SUB(NOW(), INTERVAL 30 DAY)",
+        "last_7_days":  "AND log.gmt_create >= DATE_SUB(NOW(), INTERVAL 7 DAY)",
+        "this_week":    "AND YEARWEEK(log.gmt_create, 1) = YEARWEEK(CURDATE(), 1)",
+        "this_month":   "AND DATE_FORMAT(log.gmt_create, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m')",
+    }
+    if time_range and time_range in _time_map:
+        conditions.append(_time_map[time_range])
+    elif time_range and time_range not in ("all", ""):
+        # 尝试解析 "YYYY-MM-DD ~ YYYY-MM-DD" 格式
+        import re as _re
+        _range_m = _re.search(r'(\d{4}-\d{2}-\d{2})\s*[~～\-]+\s*(\d{4}-\d{2}-\d{2})', time_range)
+        if _range_m:
+            conditions.append(
+                f"AND log.gmt_create BETWEEN '{_range_m.group(1)}' AND '{_range_m.group(2)} 23:59:59'"
+            )
+
+    # 2. 工站/工序过滤（process_code / process_name / station）
+    import re as _re
+    filters = query_plan.get("filters", {}) or {}
+    if isinstance(filters, dict):
+        process_code = filters.get("process_code") or filters.get("station")
+        process_name = filters.get("process_name") or filters.get("station_name")
+        product_code = filters.get("product_code")
+        lot_code = filters.get("lot_code")
+    else:
+        process_code = process_name = product_code = lot_code = None
+
+    # 也尝试从 query_plan 顶层提取
+    if not process_code:
+        process_code = query_plan.get("process_code") or query_plan.get("station")
+    if not product_code:
+        product_code = query_plan.get("product_code")
+
+    # 最后从 user_input 正则提取（优先字母开头的工站代码，其次纯中文工站名）
+    if not process_code and not process_name:
+        # 优先: 字母开头的工站代码（如 POL、CMP），可跟可选中文
+        # 不含「站」单字，避免「工」被纳入名称
+        station_m = _re.search(
+            r'([A-Za-z][A-Za-z0-9]{0,9}(?:\s*[\u4e00-\u9fa5]{0,6})?)\s*(?:工站|工序)',
+            user_input
+        )
+        if station_m:
+            process_name = station_m.group(1).strip()
+        else:
+            # 退回: 纯中文工站名（排除时间/代词/通配词）
+            station_m2 = _re.search(r'([\u4e00-\u9fa5]{2,8})\s*(?:工站|工序)', user_input)
+            if station_m2:
+                cand = station_m2.group(1)
+                _SKIP = ('今天', '昨天', '本周', '上周', '本月', '上月', '最近', '这周',
+                         '各', '所有', '全部', '每个', '每', '想看', '查询', '查看', '分析', '统计')
+                if not any(s in cand for s in _SKIP):
+                    process_name = cand
+
+    if process_code:
+        # 精确匹配
+        safe = process_code.replace("'", "''")
+        conditions.append(f"AND log.process_code = '{safe}'")
+    elif process_name:
+        safe = process_name.replace("'", "''")
+        conditions.append(f"AND log.process_name LIKE '%{safe}%'")
+
+    if product_code:
+        safe = str(product_code).replace("'", "''")
+        conditions.append(f"AND log.product_code = '{safe}'")
+
+    where_extra = "\n    ".join(conditions)
+    sql = template.replace("{WHERE_EXTRA}", where_extra)
+    sql = sql.strip().rstrip(";").strip()
+    logger.info(f"[sql_generator] sql_template 快速路径: metric={template_metric.get('metric_id')}, conditions={conditions}")
+    return sql
 
 
 def _extract_mandatory_table_constraint(semantic_ctx: dict) -> str:
@@ -900,12 +1025,20 @@ def _format_semantic_context(semantic_ctx: dict) -> str:
         lines.append("【指标定义 — 必须按此公式生成SQL，禁止猜测计算方式】:")
         for m in metrics:
             lines.append(f"  📊 {m.get('metric_id', '')}: {m.get('description', '')}")
-            lines.append(f"    公式: {m.get('formula', '')}")
-            lines.append(f"    锚点表: {m.get('anchor_table', '')}")
-            if m.get('join_path'):
-                lines.append(f"    JOIN路径: {m.get('join_path', '')}")
-            if m.get('auto_filter'):
-                lines.append(f"    ⚠ 必含WHERE/AND条件: {m.get('auto_filter', '')}")
+            if m.get('sql_template'):
+                # 有预构建 SQL 模板的复杂指标 — LLM 必须基于模板生成
+                lines.append(f"    ⚠⚠ 【预构建SQL模板 — 必须使用此模板，仅替换 {{WHERE_EXTRA}} 占位符为用户条件】:")
+                lines.append(f"    ```sql")
+                lines.append(f"    {m['sql_template']}")
+                lines.append(f"    ```")
+                lines.append(f"    {{WHERE_EXTRA}} 占位符说明: 用户指定的过滤条件(如产品/时间/工站)以 AND ... 格式追加，无额外条件时替换为空字符串")
+            else:
+                lines.append(f"    公式: {m.get('formula', '')}")
+                lines.append(f"    锚点表: {m.get('anchor_table', '')}")
+                if m.get('join_path'):
+                    lines.append(f"    JOIN路径: {m.get('join_path', '')}")
+                if m.get('auto_filter'):
+                    lines.append(f"    ⚠ 必含WHERE/AND条件: {m.get('auto_filter', '')}")
             if m.get('granularity'):
                 gran = m['granularity']
                 if isinstance(gran, list):

@@ -247,8 +247,30 @@ def _extract_date_range(user_input: str) -> tuple[str, str]:
 
 
 def _build_yield_sql(user_input: str) -> Dict[str, Any]:
-    """构建良率报表数据查询 SQL。"""
+    """
+    构建良率报表数据查询 SQL。
+    当用户询问「一次良率/FPY」或「综合良率/最终良率」时，
+    优先使用 mapping_prod.json 中预构建的 CTE 模板，获得更准确的良率数据。
+    否则退回旧的 CheckIn 聚合 SQL（input_wafers/ng_wafers 格式）。
+    """
     start_date, end_date = _extract_date_range(user_input)
+
+    # ── 判断是否需要使用新 CTE 模板 ──
+    wants_fpy = bool(re.search(r"一次良率|首次合格率|直通率|FPY|first.pass", user_input, re.IGNORECASE))
+    wants_final = bool(re.search(r"综合良率|最终良率|累计良率", user_input, re.IGNORECASE))
+    use_dual_template = wants_fpy or wants_final or re.search(r"良率趋势|yield.*trend|trend.*yield", user_input, re.IGNORECASE)
+
+    if use_dual_template:
+        try:
+            _sql = _build_dual_yield_cte_sql(user_input, start_date, end_date, wants_fpy, wants_final)
+            logger.info(f"[method_selector] yield_report 使用 CTE 模板: fpy={wants_fpy}, final={wants_final}")
+            return {"type": "sql", "sql": _sql, "limit": 10000}
+        except Exception as e:
+            logger.warning(f"[method_selector] CTE 模板构建失败，退回旧 SQL: {e}")
+
+    # ── 旧格式：CheckIn 聚合（input_wafers/ng_wafers）──
+    # 提取工站过滤
+    station_clause = _extract_station_filter(user_input)
     sql = f"""SELECT
     DATE(ci.gmt_create)                                                   AS report_date,
     ci.process_code,
@@ -267,12 +289,87 @@ LEFT JOIN matrix_routerx_operation_lot_batch_resume_wafer_detail_log wdl
 WHERE ci.operation_type = 8
   AND (ci.deleted = 0 OR ci.deleted IS NULL)
   AND ci.gmt_create >= '{start_date} 00:00:00'
-  AND ci.gmt_create <= '{end_date} 23:59:59'
+  AND ci.gmt_create <= '{end_date} 23:59:59'{station_clause}
 GROUP BY DATE(ci.gmt_create), ci.process_code, ci.process_name,
          ci.product_code, ci.lot_code
 ORDER BY report_date DESC, ci.process_code"""
     logger.info(f"[method_selector] yield_report SQL date range: {start_date} ~ {end_date}")
     return {"type": "sql", "sql": sql, "limit": 10000}
+
+
+def _extract_station_filter(user_input: str, alias: str = "ci") -> str:
+    """从用户输入中提取工站/工序过滤条件，返回 AND 子句（含前导换行+空格）。"""
+    # 优先匹配：以字母开头的工站代码（如 POL、CMP、CVD 等），可跟可选中文描述
+    # 注意：不包含「站」单字后缀，避免把「工站」中的「工」纳入工站名
+    m = re.search(
+        r'([A-Za-z][A-Za-z0-9]{0,9}(?:\s*[\u4e00-\u9fa5]{0,6})?)\s*(?:工站|工序)',
+        user_input
+    )
+    if not m:
+        # 退回：纯中文工站名（排除含时间/代词/通配词的匹配）
+        m2 = re.search(
+            r'([\u4e00-\u9fa5]{2,8})\s*(?:工站|工序)',
+            user_input
+        )
+        if m2:
+            cand = m2.group(1)
+            # 排除含时间词/代词/通配词
+            _SKIP = ('今天', '昨天', '本周', '上周', '本月', '上月', '最近', '这周', '各', '所有', '全部', '每个', '每', '全',
+                     '想看', '查询', '查看', '分析', '统计')
+            if any(s in cand for s in _SKIP):
+                return ""
+            safe = cand.replace("'", "''")
+            return f"\n  AND ({alias}.process_code = '{safe}' OR {alias}.process_name LIKE '%{safe}%')"
+        return ""
+    name = m.group(1).strip()
+    if not name:
+        return ""
+    safe = name.replace("'", "''")
+    return f"\n  AND ({alias}.process_code = '{safe}' OR {alias}.process_name LIKE '%{safe}%')"
+
+
+def _build_dual_yield_cte_sql(
+    user_input: str, start_date: str, end_date: str,
+    wants_fpy: bool, wants_final: bool,
+) -> str:
+    """
+    使用 mapping_prod.json 中的 sql_template 构建双良率 CTE SQL，
+    替换 {WHERE_EXTRA} 为真实日期+工站过滤条件。
+    """
+    import json as _json
+    import os as _os
+    _mapping_path = _os.path.join(
+        _os.path.dirname(__file__), '..', '..', '..', 'ontology', 'data', 'mapping_prod.json'
+    )
+    with open(_os.path.normpath(_mapping_path)) as f:
+        _map = _json.load(f)
+    metrics = _map.get("metric_definitions", {})
+
+    # 选择模板：如果明确要 FPY 用 first_pass_yield，否则用 final_yield（含综合良率）
+    if wants_fpy and not wants_final:
+        tmpl_key = "first_pass_yield"
+    else:
+        tmpl_key = "final_yield"
+
+    tmpl = metrics.get(tmpl_key, {}).get("sql_template", "")
+    if not tmpl:
+        raise ValueError(f"sql_template not found for metric '{tmpl_key}'")
+
+    # 构建 WHERE_EXTRA 条件
+    conditions = [
+        f"AND log.gmt_create >= '{start_date} 00:00:00'",
+        f"AND log.gmt_create <= '{end_date} 23:59:59'",
+    ]
+    # 工站过滤
+    station_cond = _extract_station_filter(user_input, alias="log")
+    if station_cond:
+        # strip leading whitespace/newline from _extract_station_filter output
+        conditions.append(station_cond.strip())
+
+    where_extra = "\n    ".join(conditions)
+    sql = tmpl.replace("{WHERE_EXTRA}", where_extra)
+    return sql.strip().rstrip(";")
+
 
 
 def _build_oee_sql(user_input: str) -> Dict[str, Any]:

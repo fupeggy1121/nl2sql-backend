@@ -301,6 +301,9 @@ class SemanticContext:
                     "join_path": m.join_path,
                     "auto_filter": m.auto_filter,
                     "description": m.description,
+                    **({
+                        "sql_template": m.sql_template,
+                    } if m.sql_template else {}),
                 }
                 for m in self.metrics
             ],

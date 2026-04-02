@@ -114,7 +114,7 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
 
     # ── B2: 语义缓存查找（追问不使用缓存，避免上下文依赖）──
     # v4: 本体类版本前缀——当规则/模板发生重大变更时更新版本号可立即淘汰旧缓存
-    _SEMANTIC_CACHE_VERSION = "v22"  # v22: _RECORD_CLASSES 增加 WaferMeasurementSnapshot/MeasurementPassRecord，修复 ProcessStation→Equipment 误选量测路径导致错误 JOIN 问题
+    _SEMANTIC_CACHE_VERSION = "v23"  # v23: 新增 first_pass_yield/final_yield/rework_rate 指标 sql_template，清理良率计算路径
     _cache_key = f"{_SEMANTIC_CACHE_VERSION}:{effective_input}"
     _cache_hit = False
     if not is_followup:

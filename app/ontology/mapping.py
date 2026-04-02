@@ -131,6 +131,7 @@ class MetricDefinition:
     description: str
     join_path: Optional[str] = None   # JOIN 路径提示（可选）
     auto_filter: Optional[str] = None # 自动注入的 WHERE 条件（可选）
+    sql_template: Optional[str] = None  # 预构建 CTE SQL 模板（复杂指标用，含 {WHERE_EXTRA} 占位符）
 
 
 # --------------------------------------------------------------------- #
@@ -500,6 +501,7 @@ class MappingDictionary:
                 description=md.get("description", ""),
                 join_path=md.get("join_path"),
                 auto_filter=md.get("auto_filter"),
+                sql_template=md.get("sql_template"),
             )
 
     # ----------------------------------------------------------------- #
@@ -679,13 +681,21 @@ class MappingDictionary:
         return f"{col_ref} NOT IN ({', '.join(nums)})"
 
     def find_metric_by_name(self, query: str) -> Optional["MetricDefinition"]:
-        """Phase 2: 在所有指标 zh_names 中做子串匹配，返回第一个命中的 MetricDefinition"""
+        """Phase 2: 在所有指标 zh_names 中做子串匹配，返回最长匹配的 MetricDefinition。
+
+        优先选择名称更长（更具体）的匹配，避免 '良率' 模糊命中多个指标。
+        """
         q = query.lower()
+        best: Optional["MetricDefinition"] = None
+        best_len = 0
         for metric in self._metrics.values():
             for name in metric.zh_names:
-                if name.lower() in q or name in query:
-                    return metric
-        return None
+                nl = name.lower()
+                if nl in q or name in query:
+                    if len(name) > best_len:
+                        best = metric
+                        best_len = len(name)
+        return best
 
     def list_all_metrics(self) -> List["MetricDefinition"]:
         """Phase 2: 返回所有指标定义"""

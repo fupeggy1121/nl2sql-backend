@@ -129,13 +129,19 @@ def run_yield_report(df: pd.DataFrame, params: Dict[str, Any]) -> AnalysisResult
     target_yield = float(params.get("target_yield", 95.0))
     top_n = int(params.get("top_n_stations", 15))
 
-    # ── 检测数据模式：方案 A (pre-aggregated) 还是方案 B (wafer 明细) ──
+    # ── 检测数据模式 ──
+    # 方案 C: 双良率 CTE 输出 (first_pass_yield / final_yield 列)
+    has_fpy_col = "first_pass_yield" in df.columns or "first_pass_good" in df.columns
+    has_final_col = "final_yield" in df.columns or "final_good" in df.columns
     has_input_col = input_col in df.columns
     has_ng_col = ng_col in df.columns
     has_ng_code_col = ng_code_col in df.columns
     has_wafer_id_col = wafer_id_col in df.columns
 
-    if has_input_col and has_ng_col:
+    if has_fpy_col or has_final_col:
+        # 方案 C：双良率 CTE 预聚合数据
+        return _run_dual_yield_report(df, date_col, proc_col, proc_name_col, target_yield, top_n)
+    elif has_input_col and has_ng_col:
         # 方案 A：直接使用聚合后的列
         agg = _agg_from_precomputed(df, date_col, proc_col, proc_name_col, prod_col, input_col, ng_col)
     elif has_wafer_id_col and has_ng_code_col:
@@ -145,7 +151,7 @@ def run_yield_report(df: pd.DataFrame, params: Dict[str, Any]) -> AnalysisResult
         return AnalysisResult(
             success=False,
             method="yield_report",
-            summary="缺少必要列：需要 (input_wafers + ng_wafers) 或 (wafer_id + ng_code)",
+            summary="缺少必要列：需要 (first_pass_yield/final_yield) 或 (input_wafers + ng_wafers) 或 (wafer_id + ng_code)",
             error=f"可用列: {list(df.columns)}",
         )
 
@@ -424,3 +430,279 @@ def _agg_from_detail(
         .rename(columns={"_date": date_col})
     )
     return agg
+
+
+# ── 方案 C: 双良率分析（一次良率 + 综合良率）──────────────────────────────────
+
+def _run_dual_yield_report(
+    df: pd.DataFrame,
+    date_col: str,
+    proc_col: str,
+    proc_name_col: str,
+    target_yield: float,
+    top_n: int,
+) -> AnalysisResult:
+    """处理 CTE 模板输出的双良率数据。
+
+    期望列: process_code, product_code, report_date, total_wafers,
+            first_pass_good/first_pass_yield 或 final_good/final_yield
+    """
+    # 标准化列名
+    has_fpy = "first_pass_yield" in df.columns
+    has_final = "final_yield" in df.columns
+
+    # 确保 total_wafers 列
+    tw_col = "total_wafers"
+    if tw_col not in df.columns:
+        tw_col = next((c for c in df.columns if "total" in c.lower()), None)
+        if tw_col:
+            df = df.rename(columns={tw_col: "total_wafers"})
+        else:
+            df["total_wafers"] = 0
+
+    # 计算缺失的良率列
+    if "first_pass_yield" not in df.columns and "first_pass_good" in df.columns:
+        df["first_pass_yield"] = np.where(
+            df["total_wafers"] > 0,
+            (df["first_pass_good"] / df["total_wafers"] * 100).round(2),
+            np.nan,
+        )
+        has_fpy = True
+    if "final_yield" not in df.columns and "final_good" in df.columns:
+        df["final_yield"] = np.where(
+            df["total_wafers"] > 0,
+            (df["final_good"] / df["total_wafers"] * 100).round(2),
+            np.nan,
+        )
+        has_final = True
+
+    if df.empty:
+        return AnalysisResult(
+            success=False, method="yield_report",
+            summary="双良率分析数据为空", error="无有效数据",
+        )
+
+    # ── 汇总统计 ──
+    total_wafers = int(df["total_wafers"].sum())
+    summary_parts = [f"良率报表：共 {total_wafers} 片晶圆"]
+
+    fpy_overall = None
+    final_overall = None
+    if has_fpy and "first_pass_good" in df.columns:
+        fpy_good = int(df["first_pass_good"].sum())
+        fpy_overall = round(fpy_good / total_wafers * 100, 2) if total_wafers > 0 else 0.0
+        summary_parts.append(f"一次良率 {fpy_overall:.2f}%")
+    if has_final and "final_good" in df.columns:
+        final_good = int(df["final_good"].sum())
+        final_overall = round(final_good / total_wafers * 100, 2) if total_wafers > 0 else 0.0
+        summary_parts.append(f"综合良率 {final_overall:.2f}%")
+
+    summary_parts.append(f"（目标 {target_yield}%）")
+    summary = "，".join(summary_parts)
+
+    # ── 图表 ──
+    charts = []
+
+    # 图表1: 双良率趋势（按日期）
+    if date_col in df.columns and not df[date_col].isna().all():
+        trend = df.groupby(date_col, dropna=True).agg(
+            total_wafers=("total_wafers", "sum"),
+            **({
+                "first_pass_good": ("first_pass_good", "sum"),
+            } if "first_pass_good" in df.columns else {}),
+            **({
+                "final_good": ("final_good", "sum"),
+            } if "final_good" in df.columns else {}),
+        ).reset_index().sort_values(date_col)
+
+        dates = trend[date_col].astype(str).tolist()
+        series = []
+
+        if "first_pass_good" in trend.columns:
+            fpy_vals = np.where(
+                trend["total_wafers"] > 0,
+                (trend["first_pass_good"] / trend["total_wafers"] * 100).round(2),
+                np.nan,
+            ).tolist()
+            series.append({
+                "type": "line", "name": "一次良率(FPY)",
+                "data": fpy_vals, "symbol": "circle", "symbolSize": 5,
+                "lineStyle": {"color": "#2196F3"}, "itemStyle": {"color": "#2196F3"},
+            })
+
+        if "final_good" in trend.columns:
+            final_vals = np.where(
+                trend["total_wafers"] > 0,
+                (trend["final_good"] / trend["total_wafers"] * 100).round(2),
+                np.nan,
+            ).tolist()
+            series.append({
+                "type": "line", "name": "综合良率",
+                "data": final_vals, "symbol": "diamond", "symbolSize": 5,
+                "lineStyle": {"color": "#4CAF50"}, "itemStyle": {"color": "#4CAF50"},
+            })
+
+        series.append({
+            "type": "line", "name": f"目标 {target_yield}%",
+            "data": [target_yield] * len(dates), "symbol": "none",
+            "lineStyle": {"color": "#F44336", "type": "dashed"},
+            "itemStyle": {"color": "#F44336"},
+        })
+
+        charts.append({
+            "type": "line", "title": "良率趋势（一次良率 vs 综合良率）",
+            "echarts": {
+                "tooltip": {"trigger": "axis"},
+                "legend": {"bottom": 0},
+                "grid": {"left": 50, "right": 20, "top": 40, "bottom": 50},
+                "xAxis": {"type": "category", "data": dates, "name": "日期"},
+                "yAxis": {"type": "value", "name": "良率 (%)", "min": 0, "max": 105},
+                "series": series,
+            },
+        })
+
+    # 图表2: 各工站 FPY vs 综合良率 对比柱状图
+    if proc_col in df.columns:
+        yield_col = "first_pass_yield" if has_fpy else "final_yield"
+        sta = df.groupby(proc_col, dropna=True).agg(
+            total_wafers=("total_wafers", "sum"),
+            **({
+                "first_pass_good": ("first_pass_good", "sum"),
+            } if "first_pass_good" in df.columns else {}),
+            **({
+                "final_good": ("final_good", "sum"),
+            } if "final_good" in df.columns else {}),
+        ).reset_index()
+
+        bar_series = []
+        if "first_pass_good" in sta.columns:
+            sta["fpy"] = np.where(
+                sta["total_wafers"] > 0,
+                (sta["first_pass_good"] / sta["total_wafers"] * 100).round(2), np.nan,
+            )
+            sta = sta.sort_values("fpy")
+            bar_series.append({
+                "type": "bar", "name": "一次良率",
+                "data": sta["fpy"].head(top_n).tolist(),
+                "itemStyle": {"color": "#2196F3"},
+            })
+        if "final_good" in sta.columns:
+            sta["fy"] = np.where(
+                sta["total_wafers"] > 0,
+                (sta["final_good"] / sta["total_wafers"] * 100).round(2), np.nan,
+            )
+            if "fpy" not in sta.columns:
+                sta = sta.sort_values("fy")
+            bar_series.append({
+                "type": "bar", "name": "综合良率",
+                "data": sta["fy"].head(top_n).tolist(),
+                "itemStyle": {"color": "#4CAF50"},
+            })
+
+        stations = sta[proc_col].head(top_n).tolist()
+        if proc_name_col and proc_name_col in df.columns:
+            name_map = df[[proc_col, proc_name_col]].drop_duplicates().set_index(proc_col)[proc_name_col]
+            stations = [name_map.get(s, s) for s in stations]
+
+        bar_series.append({
+            "type": "line", "name": f"目标 {target_yield}%",
+            "data": [None] * len(stations), "symbol": "none",
+            "lineStyle": {"opacity": 0},
+            "markLine": {
+                "silent": True,
+                "data": [{"xAxis": target_yield}],
+                "lineStyle": {"color": "#F44336", "type": "dashed"},
+                "label": {"formatter": f"目标 {target_yield}%"},
+            },
+        })
+
+        charts.append({
+            "type": "bar", "title": f"各工站良率对比（最低 {top_n} 站）",
+            "echarts": {
+                "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+                "legend": {"bottom": 0},
+                "grid": {"left": 150, "right": 30, "top": 40, "bottom": 50},
+                "xAxis": {"type": "value", "name": "良率 (%)"},
+                "yAxis": {"type": "category", "data": stations, "name": "工站"},
+                "series": bar_series,
+            },
+        })
+
+    # 图表3: 返工挽回差值（综合良率 - 一次良率）
+    if has_fpy and has_final and proc_col in df.columns:
+        gap = df.groupby(proc_col, dropna=True).agg(
+            total_wafers=("total_wafers", "sum"),
+            first_pass_good=("first_pass_good", "sum"),
+            final_good=("final_good", "sum"),
+        ).reset_index()
+        gap["rework_saved"] = np.where(
+            gap["total_wafers"] > 0,
+            ((gap["final_good"] - gap["first_pass_good"]) / gap["total_wafers"] * 100).round(2),
+            0,
+        )
+        gap = gap.sort_values("rework_saved", ascending=False).head(top_n)
+        gap_stations = gap[proc_col].tolist()
+        gap_vals = gap["rework_saved"].tolist()
+
+        charts.append({
+            "type": "bar", "title": "返工挽回率（综合良率 − 一次良率）",
+            "echarts": {
+                "tooltip": {"trigger": "axis"},
+                "grid": {"left": 150, "right": 30, "top": 40, "bottom": 30},
+                "xAxis": {"type": "value", "name": "挽回百分点 (%)"},
+                "yAxis": {"type": "category", "data": gap_stations},
+                "series": [{
+                    "type": "bar", "name": "返工挽回",
+                    "data": gap_vals,
+                    "itemStyle": {"color": "#FF9800"},
+                }],
+            },
+        })
+
+    # ── 工段良率乘积 ──
+    segment_yield = None
+    if proc_col in df.columns:
+        sta_final = df.groupby(proc_col, dropna=True).agg(
+            total_wafers=("total_wafers", "sum"),
+            **({
+                "first_pass_good": ("first_pass_good", "sum"),
+            } if "first_pass_good" in df.columns else {}),
+            **({
+                "final_good": ("final_good", "sum"),
+            } if "final_good" in df.columns else {}),
+        ).reset_index()
+
+        # 用综合良率做工段乘积，回退到一次良率
+        good_col = "final_good" if "final_good" in sta_final.columns else "first_pass_good"
+        if good_col in sta_final.columns:
+            sta_final["station_yield"] = np.where(
+                sta_final["total_wafers"] > 0,
+                sta_final[good_col] / sta_final["total_wafers"],
+                1.0,
+            )
+            segment_yield = round(float(sta_final["station_yield"].prod()) * 100, 2)
+            summary += f"  工段累积良率（乘积）: {segment_yield:.2f}%"
+
+    # ── 站点汇总表 ──
+    station_summary = df.head(500).to_dict(orient="records")
+
+    return AnalysisResult(
+        success=True,
+        method="yield_report",
+        summary=summary,
+        data={
+            "fpy_overall": fpy_overall,
+            "final_yield_overall": final_overall,
+            "segment_yield": segment_yield,
+            "total_wafers": total_wafers,
+            "target_yield": target_yield,
+            "station_summary": station_summary,
+            "detail_records": df.head(500).to_dict(orient="records"),
+        },
+        charts=charts,
+        metadata={
+            "rows_analyzed": len(df),
+            "method": "yield_report",
+            "mode": "dual_yield",
+        },
+    )
