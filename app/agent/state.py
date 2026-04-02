@@ -54,6 +54,9 @@ class AgentState(TypedDict, total=False):
     action_result: Dict[str, Any]                # 执行结果 {success, newLotId, affectedWafers, record_id, ...}
     action_error: str                            # 写操作错误（preCondition 失败 / API 回调失败 / 写入失败）
 
+    # ── 基线设定 (Baseline Manager) ──
+    baseline_action: Dict[str, Any]              # 基线操作结果 {op, baseline_id, label, thresholds, ...}
+
     # ── 澄清确认 (Clarification) ──
     clarification_question: str                  # 向用户提的反问（意图模糊时填充）
     awaiting_clarification: bool                 # 是否正在等待用户澄清

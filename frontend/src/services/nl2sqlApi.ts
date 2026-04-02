@@ -119,6 +119,11 @@ export interface UnifiedQueryResponse {
   answer?: string;
   analysis?: AnalysisResultPayload;
   charts?: PlotlyChartSpec[];
+  // 基线设定类字段（baseline_manager 返回）
+  intent?: string;
+  text?: string;
+  data?: any;
+  baseline_action?: any;
 }
 
 /**

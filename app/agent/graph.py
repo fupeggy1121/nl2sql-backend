@@ -34,6 +34,7 @@ from app.agent.nodes import (
     rag_chat_node,            # Phase D 新增
     action_executor_node,     # Phase E 新增
     clarification_node,       # Clarification 新增
+    baseline_manager_node,    # 预警基线管理
 )
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,8 @@ def _route_by_intent(state: AgentState) -> str:
         return "rag_chat"               # Phase D: 路由到 RAG 问答节点
     elif intent == "action":
         return "action_executor"        # Phase E: 写操作执行节点
+    elif intent == "set_baseline":
+        return "baseline_manager"       # 预警基线管理节点
     elif intent == "clarification":
         return "clarification_node"     # Clarification: 意图模糊，反问用户
     elif intent == "alert":
@@ -166,6 +169,7 @@ def build_agent_graph() -> StateGraph:
     graph.add_node("rag_chat", rag_chat_node)                   # Phase D 新增
     graph.add_node("action_executor", action_executor_node)     # Phase E 新增
     graph.add_node("clarification_node", clarification_node)    # Clarification 新增
+    graph.add_node("baseline_manager", baseline_manager_node)   # 预警基线管理
 
     # ── 入口: memory_loader ──
     graph.set_entry_point("memory_loader")
@@ -182,6 +186,7 @@ def build_agent_graph() -> StateGraph:
             "rag_chat": "rag_chat",                       # Phase D: chat → rag_chat
             "action_executor": "action_executor",         # Phase E: write → action_executor
             "clarification_node": "clarification_node",  # Clarification: 反问用户
+            "baseline_manager": "baseline_manager",      # 基线设定
             "response_builder": "response_builder",
         },
     )
@@ -227,6 +232,9 @@ def build_agent_graph() -> StateGraph:
 
     # ── Phase E: action_executor → response_builder → memory_saver ──
     graph.add_edge("action_executor", "response_builder")
+
+    # ── 预警基线: baseline_manager → memory_saver ──
+    graph.add_edge("baseline_manager", "memory_saver")
 
     # ── 终止 ──
     graph.add_edge("memory_saver", END)

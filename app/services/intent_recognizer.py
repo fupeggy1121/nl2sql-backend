@@ -75,8 +75,25 @@ class IntentRecognizer:
                 'keywords': ['拆批', '拆出', '进站', '出站', '合批', '攒批', '返工', '执行', '操作'],
                 'entities': ['eventType', 'lotId', 'waferList'],
                 'description': 'Write/mutation operation: split lot, merge lot, rework, checkin, checkout'
+            },
+            'set_baseline': {
+                'keywords': ['基线', '预警', '阈值', '上限', '下限', '警戒线', '警戒值', '目标值',
+                             '设定基线', '设置基线', '添加基线', '库存预警', '产量预警', '良率预警'],
+                'entities': ['field', 'thresholds', 'label', 'keywords'],
+                'description': 'Set / update / delete a business alert baseline'
             }
         }
+
+        # 基线设定意图：优先级高于写操作（明确的基线/预警/阈值操作词）
+        self._baseline_patterns = re.compile(
+            r'(设定|设置|添加|新增|修改|更新|删除|移除|取消)(.*)(基线|预警|阈值|上限|下限|警戒线|警戒值)'
+            r'|(基线|预警|阈值|上限|下限|警戒线|警戒值).*(设定|设置|添加|新增|修改|更新|删除|移除|取消)'
+            r'|针对.{0,30}(设定|设置|配置|定义|添加|添一个|(上|下)限)'
+            r'|库存.*(上限|下限|预警|警戒)'
+            r'|良率.*(预警|基线|下限|警戒)'
+            r'|产量.*(预警|基线|上限|下限)',
+            re.IGNORECASE
+        )
 
         # 写操作意图：最高优先级检测（变更/执行类操作，走 action_executor 分支）
         # 注意：若上下文含"查询/历史/记录/统计"等读取信号，"进站/出站"应视为查询对象而非操作动词
@@ -139,8 +156,8 @@ class IntentRecognizer:
             # Step 2: Return if rule confidence is high
             # Note: even for high-confidence rule matches, query_type defaults to LIST;
             # for COUNT/AGGREGATE/TREND we still need LLM judgment.
-            if rule_result['confidence'] > 0.8 and rule_result.get('intent') in ('chat', 'write_action'):
-                # chat / write_action 意图：规则已足够，不需要 LLM 判断 query_type
+            if rule_result['confidence'] > 0.8 and rule_result.get('intent') in ('chat', 'write_action', 'set_baseline'):
+                # chat / write_action / set_baseline 意图：规则已足够，不需要 LLM 判断 query_type
                 return {
                     'success': True,
                     'intent': rule_result['intent'],
@@ -228,7 +245,15 @@ class IntentRecognizer:
         normalized_input = text.lower()
         scores = {}
 
-        # ── 优先级 0：写操作意图（变更类，走 action_executor 分支）──
+        # ── 优先级 0：基线设定意图（明确的基线/预警/阈值操作）──
+        if self._baseline_patterns.search(text):
+            return {
+                'intent': 'set_baseline',
+                'confidence': 0.92,
+                'entities': {},
+            }
+
+        # ── 优先级 1：写操作意图（变更类，走 action_executor 分支）──
         # 如果语句同时含"进/出站"和查询语境词（查询/历史/记录/统计等），视为历史查询，不走 action
         if self._write_action_patterns.search(text):
             has_query_context = self._query_context_patterns.search(text)

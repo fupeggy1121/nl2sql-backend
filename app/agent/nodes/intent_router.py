@@ -27,6 +27,7 @@ INTENT_ROUTE_MAP = {
     "knowledge_qa": "chat",                 # Phase D: 知识问答
     "explain": "chat",                      # Phase D: 解释说明类
     "write_action": "action",               # Phase E: 写操作 → action_executor
+    "set_baseline": "set_baseline",         # 基线设定 → baseline_manager
     "need_clarification": "clarification",  # Clarification: 意图模糊，需反问
 }
 

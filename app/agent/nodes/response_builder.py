@@ -93,7 +93,7 @@ def response_builder_node(state: AgentState) -> dict:
                 "query_time_ms": round(elapsed_ms, 1),
                 "generated_at": datetime.now().isoformat(),
             },
-            "visualization": visualization,
+            "visualization": _inject_baselines(visualization, user_input),
         }
     elif intent == "action":
         # ── 写操作执行响应 (Phase E) ──
@@ -149,6 +149,40 @@ def response_builder_node(state: AgentState) -> dict:
     response["pipeline_trace"] = trace
 
     return {"response": response}
+
+
+def _inject_baselines(visualization: dict, user_input: str) -> dict:
+    """
+    将 enabled baselines 注入到 visualization dict 中。
+    前端 EChartsVisualization 会读取 thresholds / thresholdDirection 字段渲染 markLine。
+    """
+    if not visualization:
+        return visualization
+    try:
+        from app.services.baseline_service import baseline_service
+        y_field = visualization.get("yAxisField", "")
+        matched = baseline_service.match_baselines(
+            y_axis_field=y_field,
+            query_text=user_input,
+        )
+        if matched:
+            # 取第一条命中的基线（多条时合并阈值）
+            all_thresholds = []
+            direction = "below"
+            for bl in matched:
+                all_thresholds.extend(bl.get("thresholds") or [])
+                direction = bl.get("direction", "below")
+            viz = dict(visualization)
+            viz["thresholds"] = all_thresholds
+            viz["thresholdDirection"] = direction
+            logger.info(
+                f"[response_builder] Injected {len(all_thresholds)} thresholds "
+                f"from {len(matched)} baselines for field={y_field!r}"
+            )
+            return viz
+    except Exception as e:
+        logger.warning(f"[response_builder] baseline injection error: {e}")
+    return visualization
 
 
 def _generate_summary(user_input: str, data: list, rows_count: int) -> str:

@@ -156,13 +156,14 @@ function computeDAGLayout(
 function buildNodeTooltip(id: string, incomingTrans: StateTransition[]): string {
   const atIdx     = id.indexOf('@');
   const stateLabel = atIdx >= 0 ? id.substring(atIdx + 1) : id;
-  const lotCode   = atIdx >= 0 ? id.substring(0, atIdx) : id;
-  const lotShort  = lotCode.split('-').slice(-2).join('-');
   const dashIdx   = stateLabel.lastIndexOf('-');
   const eventKind = dashIdx >= 0 ? stateLabel.substring(dashIdx + 1) : stateLabel;
   const stationStr = dashIdx >= 0 ? stateLabel.substring(0, dashIdx) : '';
 
   const t = incomingTrans[0];
+  // 优先使用 transition 中的真实 lot_code，节点 ID 前缀可能是 proc_code#op_id
+  const lotCode  = t?.lot_code || (atIdx >= 0 ? id.substring(0, atIdx) : id);
+  const lotShort = lotCode.split('-').slice(-2).join('-');
   const row = (label: string, val: string | number | undefined, icon = '') =>
     val != null && val !== '' && val !== 0
       ? `<tr><td style="color:#9ca3af;padding:2px 10px 2px 0;white-space:nowrap">${icon}${label}</td><td style="color:#1f2937">${val}</td></tr>`
@@ -244,19 +245,17 @@ function buildGenealogyOption(
     const s = nodeStyle(id, rootLot);
     const atIdx     = id.indexOf('@');
     const stateLabel = atIdx >= 0 ? id.substring(atIdx + 1) : id;
-    const lotCode   = atIdx >= 0 ? id.substring(0, atIdx) : '';
-    const lotShort  = lotCode.split('-').pop() ?? lotCode;
     const dashIdx   = stateLabel.lastIndexOf('-');
     const eventKind = dashIdx >= 0 ? stateLabel.substring(dashIdx + 1) : stateLabel;
     const stationStr = dashIdx >= 0 ? stateLabel.substring(0, dashIdx) : '';
     const isStartEnd = stateLabel === '投料' || stateLabel === '创建' || stateLabel === '完成' || stateLabel === '完成批次';
-    const pos = positions.get(id) ?? { x: 0, y: 0 };
     const incoming = nodeToIncoming.get(id) ?? [];
+    // 优先从 transition 中获取真实批次号
+    const realLot   = incoming[0]?.lot_code || rootLot;
+    const lotShort  = realLot.split('-').pop() ?? realLot;
 
     return {
       id, name: id,
-      x: pos.x + OX,
-      y: pos.y + OY,
       symbolSize: s.size,
       symbol: s.symbol,
       itemStyle: { color: s.color },
@@ -306,7 +305,13 @@ function buildGenealogyOption(
     },
     series: [{
       type: 'graph',
-      layout: 'none',          // 使用固定坐标，消除 force 随机重叠
+      layout: 'force',
+      force: {
+        repulsion: 400,
+        edgeLength: 150,
+        gravity: 0.05,
+        layoutAnimation: true,
+      },
       data: nodes,
       links,
       roam: true,

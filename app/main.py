@@ -120,6 +120,10 @@ def _register_routes(app: FastAPI):
     from app.api.v1.analytics import router as analytics_router
     app.include_router(analytics_router)
 
+    # 预警基线管理 API
+    from app.api.v1.baselines import router as baselines_router
+    app.include_router(baselines_router)
+
     # 旧 API 兼容层
     from app.api.compat import router as compat_router
     app.include_router(compat_router)

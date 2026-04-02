@@ -18,6 +18,7 @@ from app.agent.nodes.rag_chat import rag_chat_node     # Phase D 新增
 from app.agent.nodes.semantic_resolver import semantic_resolver_node  # Phase 3: 本体引擎
 from app.agent.nodes.action_executor import action_executor_node  # Phase E: 写操作执行
 from app.agent.nodes.clarification_node import clarification_node  # Clarification: 澄清确认
+from app.agent.nodes.baseline_manager import baseline_manager_node  # 预警基线管理
 
 __all__ = [
     "memory_loader_node",
@@ -35,4 +36,5 @@ __all__ = [
     "rag_chat_node",
     "action_executor_node",
     "clarification_node",
+    "baseline_manager_node",
 ]

@@ -131,19 +131,17 @@ function buildGenealogyOption(transitions: StateTransition[], rootLot: string) {
     const s = nodeStyle(id, rootLot);
     const atIdx     = id.indexOf('@');
     const stateLabel = atIdx >= 0 ? id.substring(atIdx + 1) : id;
-    const lotCode   = atIdx >= 0 ? id.substring(0, atIdx) : '';
-    const lotShort  = lotCode.split('-').pop() ?? lotCode;
     const dashIdx   = stateLabel.lastIndexOf('-');
     const eventKind  = dashIdx >= 0 ? stateLabel.substring(dashIdx + 1) : stateLabel;
     const stationStr = dashIdx >= 0 ? stateLabel.substring(0, dashIdx) : '';
     const isStartEnd = stateLabel === '投料' || stateLabel === '创建' || stateLabel === '完成' || stateLabel === '完成批次';
-    const pos = positions.get(id) ?? { x: 0, y: 0 };
     const incoming = nodeToIncoming.get(id) ?? [];
+    // 优先从 transition 中获取真实批次号
+    const realLot   = incoming[0]?.lot_code || rootLot;
+    const lotShort  = realLot.split('-').pop() ?? realLot;
 
     return {
       id, name: id,
-      x: pos.x + OX,
-      y: pos.y + OY,
       symbolSize: s.size,
       symbol: s.symbol,
       itemStyle: { color: s.color },
@@ -189,7 +187,9 @@ function buildGenealogyOption(transitions: StateTransition[], rootLot: string) {
         const incoming = (p.data._incoming ?? []) as StateTransition[];
         const atIdx     = id.indexOf('@');
         const stateLabel = atIdx >= 0 ? id.substring(atIdx + 1) : id;
-        const lotCode   = atIdx >= 0 ? id.substring(0, atIdx) : id;
+        const t0 = incoming[0];
+        // 优先使用 transition 中的真实 lot_code，节点 ID 前缀可能是 proc_code#op_id
+        const lotCode   = t0?.lot_code || (atIdx >= 0 ? id.substring(0, atIdx) : id);
         const lotShort  = lotCode.split('-').slice(-2).join('-');
         const dashIdx   = stateLabel.lastIndexOf('-');
         const eventKind  = dashIdx >= 0 ? stateLabel.substring(dashIdx + 1) : stateLabel;
@@ -237,7 +237,13 @@ function buildGenealogyOption(transitions: StateTransition[], rootLot: string) {
     },
     series: [{
       type: 'graph',
-      layout: 'none',
+      layout: 'force',
+      force: {
+        repulsion: 350,
+        edgeLength: 130,
+        gravity: 0.05,
+        layoutAnimation: true,
+      },
       data: nodes,
       links,
       roam: true,

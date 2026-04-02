@@ -53,6 +53,8 @@ export interface Message {
     gaugeMin?: number;
     gaugeMax?: number;
     gaugeThresholds?: number[];
+    thresholds?: Array<{ value: number; level: string; label: string; color?: string }>;
+    thresholdDirection?: 'above' | 'below';
   };
   actions?: string[];
   intent?: any;
@@ -440,12 +442,30 @@ if (response.query_result?.success && Array.isArray(response.query_result.data))
       xAxisField: response.visualization?.xAxisField,
       yAxisField: response.visualization?.yAxisField,
       colorField: response.visualization?.colorField,
+      thresholds: response.visualization?.thresholds,
+      thresholdDirection: response.visualization?.thresholdDirection,
     },
     intent: response.query_plan?.query_intent,
     pipeline_trace: response.pipeline_trace,
   };
   setMessages((prev) => [...prev, resultMsg]);
   await addChatMessage(sessionId, resultMsg);
+  setIsProcessing(false);
+  setStep('input');
+  return;
+}
+
+// ── 基线设定分支：baseline_manager 返回 intent=set_baseline ──
+if (response.intent === 'set_baseline') {
+  const baselineMsg: Message = {
+    id: (Date.now() + 1).toString(),
+    type: 'assistant',
+    content: response.text || '✅ 基线已设定',
+    timestamp: new Date(),
+    pipeline_trace: response.pipeline_trace,
+  };
+  setMessages((prev) => [...prev, baselineMsg]);
+  await addChatMessage(sessionId, baselineMsg);
   setIsProcessing(false);
   setStep('input');
   return;
@@ -573,6 +593,8 @@ setCurrentIntent(queryPlan.query_intent || null);
             xAxisField: response.visualization?.xAxisField,
             yAxisField: response.visualization?.yAxisField,
             colorField: response.visualization?.colorField,
+            thresholds: response.visualization?.thresholds,
+            thresholdDirection: response.visualization?.thresholdDirection,
           },
           intent: currentIntent,
           pipeline_trace: response.pipeline_trace,
@@ -985,6 +1007,8 @@ setCurrentIntent(queryPlan.query_intent || null);
                               gaugeMin={message.chartConfig?.gaugeMin}
                               gaugeMax={message.chartConfig?.gaugeMax}
                               gaugeThresholds={message.chartConfig?.gaugeThresholds}
+                              thresholds={message.chartConfig?.thresholds}
+                              thresholdDirection={message.chartConfig?.thresholdDirection}
                             />
                             <p className="result-meta">
                               共 {message.queryResult.rowCount || visualizationData.length} 条数据
@@ -1014,6 +1038,8 @@ setCurrentIntent(queryPlan.query_intent || null);
                           gaugeMin={message.chartConfig?.gaugeMin}
                           gaugeMax={message.chartConfig?.gaugeMax}
                           gaugeThresholds={message.chartConfig?.gaugeThresholds}
+                          thresholds={message.chartConfig?.thresholds}
+                          thresholdDirection={message.chartConfig?.thresholdDirection}
                         />
                         <p className="result-meta">
                           共 {visualizationData.length} 条数据

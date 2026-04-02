@@ -24,6 +24,10 @@ interface EChartsVisualizationProps {
   // Heatmap specific
   valueField?: string;
 
+  // Alert baselines — injected by response_builder
+  thresholds?: Array<{ value: number; level: string; label: string; color?: string }>;
+  thresholdDirection?: 'above' | 'below';
+
   // General
   height?: number | string;
 }
@@ -43,6 +47,8 @@ export const EChartsVisualization = React.memo(
     gaugeMax = 100,
     gaugeThresholds = [70, 85, 95],
     valueField,
+    thresholds,
+    thresholdDirection = 'below',
     height
   }: EChartsVisualizationProps) => {
     // --- 所有 Hooks 必须在组件函数的最顶层无条件调用 ---
@@ -83,9 +89,9 @@ export const EChartsVisualization = React.memo(
 
       switch (type) {
         case 'bar':
-          return generateBarChartOptions(data, title, xAxisField, yAxisField, colors);
+          return generateBarChartOptions(data, title, xAxisField, yAxisField, colors, thresholds);
         case 'line':
-          return generateLineChartOptions(data, title, xAxisField, yAxisField, colors);
+          return generateLineChartOptions(data, title, xAxisField, yAxisField, colors, thresholds);
         case 'pie':
           return generatePieChartOptions(data, title, yAxisField, colors);
         case 'scatter':
@@ -105,9 +111,9 @@ export const EChartsVisualization = React.memo(
         case 'bar-line-combo': // 新增柱状折线组合图
           return generateBarLineComboChartOptions(data, title, xAxisField, yAxisField, colors);
         default:
-          return generateBarChartOptions(data, title, xAxisField, yAxisField, colors);
+          return generateBarChartOptions(data, title, xAxisField, yAxisField, colors, thresholds);
       }
-    }, [data, type, title, xAxisField, yAxisField, colorField, valueField, gaugeMin, gaugeMax, gaugeThresholds]);
+    }, [data, type, title, xAxisField, yAxisField, colorField, valueField, gaugeMin, gaugeMax, gaugeThresholds, thresholds, thresholdDirection]);
 
     // --- 条件渲染在所有 Hooks 调用之后 ---
 
@@ -150,7 +156,8 @@ function generateBarChartOptions(
   title: string | undefined,
   xAxisField: string | undefined,
   yAxisField: string | undefined,
-  colors: string[]
+  colors: string[],
+  thresholds?: Array<{ value: number; level: string; label: string; color?: string }>
 ) {
   const displayData = data.slice(0, 20);
   const xField = xAxisField || detectField(data, ['name', 'equipment_id', 'shift', 'product_id']);
@@ -159,13 +166,20 @@ function generateBarChartOptions(
   const xAxisData = displayData.map((item) => item[xField] || 'N/A');
   const yAxisData = displayData.map((item) => parseFloat(item[yField]) || 0);
 
-  const maxValue = Math.max(...yAxisData);
   const seriesData = yAxisData.map((value) => ({
     value,
     itemStyle: {
       color:
         value >= 85 ? colors[0] : value >= 70 ? colors[1] : colors[2]
     }
+  }));
+
+  // markLine from baselines
+  const markLineData = (thresholds || []).map((t) => ({
+    yAxis: t.value,
+    name: t.label,
+    label: { formatter: `${t.label}: {c}`, color: t.color || '#6b7280' },
+    lineStyle: { color: t.color || '#6b7280', type: t.level === 'critical' ? 'solid' : 'dashed', width: 2 },
   }));
 
   return {
@@ -208,7 +222,8 @@ function generateBarChartOptions(
         type: 'bar',
         data: seriesData,
         itemStyle: { borderRadius: [4, 4, 0, 0] },
-        label: { show: true, position: 'top', formatter: '{c}' }
+        label: { show: true, position: 'top', formatter: '{c}' },
+        markLine: markLineData.length > 0 ? { silent: false, data: markLineData } : undefined,
       }
     ]
   };
@@ -219,7 +234,8 @@ function generateLineChartOptions(
   title: string | undefined,
   xAxisField: string | undefined,
   yAxisField: string | undefined,
-  colors: string[]
+  colors: string[],
+  thresholds?: Array<{ value: number; level: string; label: string; color?: string }>
 ) {
   const displayData = data.slice(0, 30);
   const xField = xAxisField || detectField(data, ['timestamp', 'date', 'name', 'equipment_id']);
@@ -234,6 +250,14 @@ function generateLineChartOptions(
   });
 
   const yAxisData = displayData.map((item) => parseFloat(item[yField]) || 0);
+
+  // markLine from baselines
+  const markLineData = (thresholds || []).map((t) => ({
+    yAxis: t.value,
+    name: t.label,
+    label: { formatter: `${t.label}: {c}`, color: t.color || '#6b7280' },
+    lineStyle: { color: t.color || '#6b7280', type: t.level === 'critical' ? 'solid' : 'dashed', width: 2 },
+  }));
 
   return {
     title: {
@@ -278,7 +302,8 @@ function generateLineChartOptions(
         itemStyle: { color: colors[3] },
         lineStyle: { color: colors[3], width: 2 },
         areaStyle: { color: { type: 'linear', colorStops: [{ offset: 0, color: `${colors[3]}40` }, { offset: 1, color: `${colors[3]}10` }] } },
-        emphasis: { focus: 'series' }
+        emphasis: { focus: 'series' },
+        markLine: markLineData.length > 0 ? { silent: false, data: markLineData } : undefined,
       }
     ]
   };
