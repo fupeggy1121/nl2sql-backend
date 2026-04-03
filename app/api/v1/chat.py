@@ -78,6 +78,10 @@ async def chat(req: ChatRequest):
 
         # 提取最终响应
         response_data = result.get("response", {})
+        # pipeline_trace is popped from response by supervisor and lives at result level
+        pipeline_trace = result.get("pipeline_trace") or []
+        if pipeline_trace:
+            response_data["pipeline_trace"] = pipeline_trace
 
         # Phase C: 返回对话上下文信息
         conversation_info = {
