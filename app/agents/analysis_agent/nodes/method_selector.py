@@ -1015,8 +1015,8 @@ def _extract_date_range(user_input: str) -> tuple[str, str]:
         start = last_of_prev.replace(day=1)
         return str(start), str(last_of_prev)
 
-    # 「最近一周」/「过去一周」等文字形式
-    if re.search(r"最近一周|过去一周|最近七天|过去七天", user_input, re.IGNORECASE):
+    # 「最近一周」/「过去一周」/「最近一个星期」/「过去一个星期」等文字形式
+    if re.search(r"最近一周|过去一周|最近七天|过去七天|最近一个星期|过去一个星期", user_input, re.IGNORECASE):
         return str(today - timedelta(days=6)), str(today)
 
     # 「最近一个月」 /「过去一个月」/「最近一月」等文字形式
@@ -1036,8 +1036,8 @@ def _extract_date_range(user_input: str) -> tuple[str, str]:
         n = int(n_days_match.group(1))
         return str(today - timedelta(days=n - 1)), str(today)
 
-    # 「最近N周」或「最近N个月」（数字形式）
-    n_weeks_match = re.search(r"最近\s*(\d+)\s*周", user_input)
+    # 「最近N周」/「最近N个星期」或「最近N个月」（数字形式）
+    n_weeks_match = re.search(r"最近\s*(\d+)\s*(?:周|个星期)", user_input)
     if n_weeks_match:
         n = int(n_weeks_match.group(1))
         return str(today - timedelta(days=n * 7 - 1)), str(today)
