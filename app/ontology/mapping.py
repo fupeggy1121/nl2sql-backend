@@ -793,28 +793,72 @@ class MappingDictionary:
         为 LLM 构建物理表目录字符串（即席路径 context 构建）。
 
         格式:
-          - <table_name>: <label_cn>  # <note 摘要>
-            关键列: col1, col2, ...
+          ### table_name（label_cn）
+          说明: <full note>
+          关键列: col1, col2, ...（全量）
+          强制过滤（必须加入 WHERE）: filter_condition  ← 仅当存在时
+
+        最后附两个附加节：
+          ## 表间 JOIN 关系  —— catalog 内 ForeignKey 条目
+          ## 业务规则        —— 涉及 catalog 内表的 BusinessRule
 
         按表名字母序返回，跳过虚拟表，最多 max_tables 条。
         """
-        lines = []
         tables = sorted(
-            [t for t in self.list_physical_tables()],
+            [t for t in self.list_physical_tables() if t.table_name and not t.virtual],
             key=lambda t: t.table_name or ""
         )[:max_tables]
+
+        table_lines: List[str] = []
+        table_names: set = set()
         for t in tables:
-            if not t.table_name:
+            table_names.add(t.table_name)
+            block = [f"### {t.table_name}（{t.label_cn}）"]
+            note = (t.note or "").replace("\n", " ").strip()
+            if note:
+                block.append(f"说明: {note}")
+            if t.key_columns:
+                block.append(f"关键列: {', '.join(t.key_columns)}")
+            if t.filter_condition:
+                block.append(f"强制过滤（必须加入 WHERE）: {t.filter_condition}")
+            table_lines.append("\n".join(block))
+
+        # ── 表间 JOIN 关系（仅 ForeignKey，两端均在 catalog 内，去重） ─────────
+        join_lines: List[str] = []
+        seen_fk: set = set()
+        for rm in self._relation_map_list:
+            if rm.strategy != "ForeignKey" or not rm.join_conditions:
                 continue
-            note_snippet = (t.note or "")[:80].replace("\n", " ")
-            key_cols = ", ".join(t.key_columns[:8]) if t.key_columns else ""
-            line = f"- {t.table_name}: {t.label_cn}"
-            if note_snippet:
-                line += f"  # {note_snippet}"
-            if key_cols:
-                line += f"\n  关键列: {key_cols}"
-            lines.append(line)
-        return "\n".join(lines)
+            jc = rm.join_conditions[0]
+            if jc.from_table not in table_names or jc.to_table not in table_names:
+                continue
+            fk_key = (jc.from_table, jc.from_key, jc.to_table, jc.to_key)
+            if fk_key in seen_fk:
+                continue
+            seen_fk.add(fk_key)
+            entry = f"- {jc.from_table}.{jc.from_key} = {jc.to_table}.{jc.to_key}"
+            if rm.description:
+                entry += f"  # {rm.description[:80]}"
+            if jc.filter_condition:
+                entry += f"  （附加条件: {jc.filter_condition}）"
+            join_lines.append(entry)
+
+        # ── 业务规则（仅筛选涉及 catalog 内表的规则） ────────────────────────
+        rule_lines: List[str] = []
+        for br in self.get_business_rules(list(table_names)):
+            rule_lines.append(f"- [{br.id}] {br.name}: {br.description}")
+
+        # ── 拼装 ──────────────────────────────────────────────────────────────
+        sections: List[str] = ["## 物理表目录"]
+        sections.extend(table_lines)
+        if join_lines:
+            sections.append("\n## 表间 JOIN 关系")
+            sections.extend(join_lines)
+        if rule_lines:
+            sections.append("\n## 业务规则查询注意事项")
+            sections.extend(rule_lines)
+
+        return "\n\n".join(sections)
 
     def build_value_summary(self, max_domains: int = 10) -> str:
         """
