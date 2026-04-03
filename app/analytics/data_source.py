@@ -125,7 +125,12 @@ def _load_from_nlquery(nl_text: str, limit: Optional[int] = None) -> pd.DataFram
         from app.services.nl2sql_enhanced import get_enhanced_nl2sql_converter
         converter = get_enhanced_nl2sql_converter()
         result = converter.convert(nl_text)
-        sql = result.get("sql") if isinstance(result, dict) else getattr(result, "sql", None)
+        if isinstance(result, str):
+            sql = result.strip() or None
+        elif isinstance(result, dict):
+            sql = result.get("sql")
+        else:
+            sql = getattr(result, "sql", None)
         if not sql:
             raise ValueError(f"NL→SQL 转换失败，未生成 SQL：{result}")
         logger.info(f"[data_source] nlquery → SQL: {sql[:120]}")

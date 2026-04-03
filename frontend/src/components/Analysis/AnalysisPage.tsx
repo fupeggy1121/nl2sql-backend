@@ -21,8 +21,8 @@ interface Scenario {
   icon: string
   label: string
   description: string
-  /** 推荐数据集（nlquery 描述） */
-  presets: { label: string; nlquery: string }[]
+  /** 推荐数据集（nlquery 描述 或 sql 直接查询） */
+  presets: { label: string; nlquery?: string; sql?: string }[]
   /** 针对该场景的参数自动填充提示 */
   autoParams?: Record<string, unknown>
 }
@@ -36,7 +36,7 @@ const SCENARIOS: Scenario[] = [
     description: '了解某批数据的集中趋势、分散程度、分布形态，判断是否正常',
     presets: [
       { label: '来料检验参数（近30天）', nlquery: '查询近30天所有物料来料检验的参数实测记录，包含参数名称、实测值' },
-      { label: '过站量测数据', nlquery: '查询近30天过站量测参数数据，包含工站、参数名、测量值' },
+      { label: '过站量测数据', sql: 'SELECT proc.name AS 工站, pm.param_name AS 参数名, pmd.value AS 测量值, pmd.gmt_create AS 录入时间 FROM process_measure_data pmd LEFT JOIN matrix_routerx_config_process proc ON proc.code = pmd.process_code LEFT JOIN param_model pm ON pm.id = pmd.param_model_id WHERE pmd.gmt_create >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND pmd.type = 2 ORDER BY pmd.gmt_create DESC' },
       { label: '制程工艺参数', nlquery: '查询近7天制程参数录入数据，包含工站、参数名称和数值' },
     ],
   },
@@ -178,7 +178,10 @@ function PresetDatasetPicker({ presets, onSelect }: {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>快速选择常用数据集：</div>
       {presets.map((p, i) => (
-        <button key={i} onClick={() => onSelect({ type: 'nlquery', nlquery: p.nlquery, limit: 2000 })}
+        <button key={i} onClick={() => p.sql
+            ? onSelect({ type: 'sql', sql: p.sql, limit: 2000 })
+            : onSelect({ type: 'nlquery', nlquery: p.nlquery!, limit: 2000 })
+          }
           style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
             borderRadius: 8, border: '1px solid #e5e7eb', background: '#f9fafb',
