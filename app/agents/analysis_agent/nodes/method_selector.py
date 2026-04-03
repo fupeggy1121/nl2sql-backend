@@ -171,7 +171,8 @@ def _llm_gen_adhoc_sql(user_input: str) -> Optional[Dict[str, Any]]:
         table_catalog = mapping.build_table_catalog(max_tables=30)
         value_summary = mapping.build_value_summary(max_domains=8)
 
-        start_date, end_date = _extract_date_range(user_input)
+        today = datetime.now().date()
+        fallback_start, fallback_end = _extract_date_range(user_input)
 
         prompt = f"""你是一个数据工程师，负责为半导体 MES 系统生成 SQL 查询。
 
@@ -182,7 +183,10 @@ def _llm_gen_adhoc_sql(user_input: str) -> Optional[Dict[str, Any]]:
 {value_summary}
 
 ## 时间上下文
-当前查询时间范围: {start_date} 至 {end_date}（如果用户指定了时间范围则使用用户指定的）
+当前日期: {today}
+请从用户问题中理解时间范围（"两个星期"=14天，"上个月"=上个日历月，"最近N周"=N×7天，"两周"=14天 等），
+并在 SQL 的 WHERE 条件中直接写出正确的日期过滤（MySQL 语法，时间字段通常为 gmt_create）。
+如果用户未明确指定时间，使用 fallback 范围: {fallback_start} 至 {fallback_end}。
 
 ## 用户问题
 "{user_input}"
@@ -215,9 +219,22 @@ def _llm_gen_adhoc_sql(user_input: str) -> Optional[Dict[str, Any]]:
         match = re.search(r"\{.*\}", content, re.DOTALL)
         if match:
             data = json.loads(match.group())
-            if data.get("sql"):
+            sql = (data.get("sql") or "").strip()
+            if sql:
+                if not _has_date_filter(sql):
+                    logger.warning(
+                        "[method_selector] adhoc SQL has no date filter — "
+                        f"injecting fallback range {fallback_start} ~ {fallback_end}"
+                    )
+                    fallback_clause = (
+                        f" AND gmt_create >= '{fallback_start} 00:00:00'"
+                        f" AND gmt_create <= '{fallback_end} 23:59:59'"
+                    )
+                    sql = re.sub(
+                        r"(\bLIMIT\b)", fallback_clause + r" \1", sql, count=1, flags=re.IGNORECASE
+                    ) if re.search(r'\bLIMIT\b', sql, re.IGNORECASE) else sql + fallback_clause
                 return {
-                    "sql": data["sql"],
+                    "sql": sql,
                     "tables_used": data.get("tables_used", []),
                     "cot_summary": data.get("cot_summary", ""),
                     "approach": data.get("approach", "sql"),
@@ -365,7 +382,8 @@ def _llm_build_aggregate_sql(metric_def, skill, user_input: str) -> Optional[str
         mapping = get_mapping()
         metric_context = mapping.build_metric_context(metric_def)
         value_summary = mapping.build_value_summary(max_domains=6)
-        start_date, end_date = _extract_date_range(user_input)
+        today = datetime.now().date()
+        fallback_start, fallback_end = _extract_date_range(user_input)
 
         skill_block = ""
         if skill:
@@ -385,8 +403,10 @@ def _llm_build_aggregate_sql(metric_def, skill, user_input: str) -> Optional[str
 {value_summary}
 
 ## 时间上下文
-查询时间范围: {start_date} 至 {end_date}
-时间字段通常为 gmt_create 或 gmt_update
+当前日期: {today}
+请从用户问题中理解时间范围（"两个星期"=14天，"上个月"=上个日历月，"最近N周"=N×7天 等），
+并在 SQL 的 WHERE 条件中直接写出正确的日期过滤（MySQL 语法，时间字段为 gmt_create 或 gmt_update）。
+如果用户未明确提及时间，请使用 fallback 范围: {fallback_start} 至 {fallback_end}。
 
 ## 用户问题
 "{user_input}"
@@ -397,7 +417,7 @@ def _llm_build_aggregate_sql(metric_def, skill, user_input: str) -> Optional[str
 要求：
 - 使用聚合函数（COUNT / SUM / AVG）+ GROUP BY，返回统计结果
 - 必须应用"自动过滤条件"中的所有 WHERE 条件
-- 时间范围过滤用 gmt_create BETWEEN 或 >= / <=
+- 必须包含时间范围的 WHERE 过滤（根据上方"时间上下文"指引生成正确条件）
 - 加 LIMIT 10000 防止数据量过大
 - 完整、可直接执行的 MySQL 语法
 - **严禁**使用"涉及的物理表"的关键列列表以外的列名，不要凭借 Skill 说明发明不存在的列
@@ -418,6 +438,19 @@ def _llm_build_aggregate_sql(metric_def, skill, user_input: str) -> Optional[str
             data = json.loads(match.group())
             sql = data.get("sql", "").strip()
             if sql:
+                if not _has_date_filter(sql):
+                    logger.warning(
+                        f"[method_selector] LLM aggregate SQL for '{metric_def.metric_id}' "
+                        f"has no date filter — injecting fallback range "
+                        f"{fallback_start} ~ {fallback_end}"
+                    )
+                    fallback_clause = (
+                        f" AND gmt_create >= '{fallback_start} 00:00:00'"
+                        f" AND gmt_create <= '{fallback_end} 23:59:59'"
+                    )
+                    sql = re.sub(
+                        r"(\bLIMIT\b)", fallback_clause + r" \1", sql, count=1, flags=re.IGNORECASE
+                    ) if re.search(r'\bLIMIT\b', sql, re.IGNORECASE) else sql + fallback_clause
                 logger.info(
                     f"[method_selector] LLM aggregate SQL for '{metric_def.metric_id}': "
                     f"dims={data.get('groupby_dims')}, reason={data.get('reason')}"
@@ -442,7 +475,8 @@ def _llm_build_detail_sql(metric_def, skill, user_input: str) -> Optional[str]:
         mapping = get_mapping()
         metric_context = mapping.build_metric_context(metric_def)
         value_summary = mapping.build_value_summary(max_domains=6)
-        start_date, end_date = _extract_date_range(user_input)
+        today = datetime.now().date()
+        fallback_start, fallback_end = _extract_date_range(user_input)
 
         skill_block = ""
         if skill:
@@ -481,7 +515,10 @@ def _llm_build_detail_sql(metric_def, skill, user_input: str) -> Optional[str]:
 {value_summary}
 
 ## 时间上下文
-查询时间范围: {start_date} 至 {end_date}
+当前日期: {today}
+请从用户问题中理解时间范围（"两个星期"=14天，"上个月"=上个日历月，"最近N周"=N×7天 等），
+并在 SQL 的 WHERE 条件中直接写出正确的日期过滤（MySQL 语法，时间字段为 gmt_create 或 gmt_update）。
+如果用户未明确提及时间，请使用 fallback 范围: {fallback_start} 至 {fallback_end}。
 
 ## 用户问题
 "{user_input}"
@@ -514,6 +551,19 @@ def _llm_build_detail_sql(metric_def, skill, user_input: str) -> Optional[str]:
             data = json.loads(match.group())
             sql = data.get("sql", "").strip()
             if sql:
+                if not _has_date_filter(sql):
+                    logger.warning(
+                        f"[method_selector] LLM detail SQL for '{metric_def.metric_id}' "
+                        f"has no date filter — injecting fallback range "
+                        f"{fallback_start} ~ {fallback_end}"
+                    )
+                    fallback_clause = (
+                        f" AND gmt_create >= '{fallback_start} 00:00:00'"
+                        f" AND gmt_create <= '{fallback_end} 23:59:59'"
+                    )
+                    sql = re.sub(
+                        r"(\bLIMIT\b)", fallback_clause + r" \1", sql, count=1, flags=re.IGNORECASE
+                    ) if re.search(r'\bLIMIT\b', sql, re.IGNORECASE) else sql + fallback_clause
                 logger.info(
                     f"[method_selector] LLM detail SQL for '{metric_def.metric_id}': "
                     f"cols={data.get('key_columns')}, reason={data.get('reason')}"
@@ -978,11 +1028,36 @@ def method_selector_node(state: AnalysisState) -> dict:
 
 # ── SQL 模板构建器 ────────────────────────────────────────────────────────────
 
+def _has_date_filter(sql: str) -> bool:
+    """
+    检测 SQL 是否已包含日期/时间过滤条件（gmt_create / gmt_update / report_date）。
+    用于判断 LLM 生成的 SQL 是否需要补充 fallback 时间范围。
+    """
+    patterns = [
+        r"gmt_create\s*(>=|<=|BETWEEN|>|<|=)",
+        r"gmt_update\s*(>=|<=|BETWEEN|>|<|=)",
+        r"report_date\s*(>=|<=|BETWEEN|>|<|=)",
+        r"DATE\s*\(\s*gmt_(create|update)\s*\)\s*(>=|<=|=|>|<)",
+        r"gmt_(create|update)\s+BETWEEN",
+        r"DATE_SUB\s*\(",
+        r"INTERVAL\s+\d+\s+(DAY|WEEK|MONTH|YEAR)",
+        r"CURDATE\s*\(\s*\)",
+        r"NOW\s*\(\s*\)",
+    ]
+    for p in patterns:
+        if re.search(p, sql, re.IGNORECASE):
+            return True
+    return False
+
+
 def _extract_date_range(user_input: str) -> tuple[str, str]:
     """
-    从用户输入中提取日期范围。
+    从用户输入中提取日期范围（正则 fallback）。
     支持: 今天/昨天/本周/上周/本月/上月/最近N天 + 具体日期（YYYY-MM-DD）。
     默认: 最近 7 天。
+
+    此函数现为 **fallback**：LLM SQL 生成路径中，LLM 自己负责解析时间范围并写入 SQL；
+    仅当 LLM 生成的 SQL 未含任何日期过滤条件时，才用本函数计算兜底范围注入。
     """
     today = datetime.now().date()
 
