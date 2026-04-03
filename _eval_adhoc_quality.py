@@ -633,6 +633,41 @@ def main():
         print(f"  {label:<18}{w:>10.3f}{wo:>14.3f}  {diff:+.3f} {arrow}")
         summary[label] = {"with_hint": round(w, 3), "without_hint": round(wo, 3), "diff": round(diff, 3)}
 
+    # ── 延迟统计 ──
+    all_latencies_with = [r["with_hint"]["latency_s"] for r in results]
+    all_latencies_without = [r["without_hint"]["latency_s"] for r in results]
+
+    def pct(lst, p):
+        s = sorted(lst)
+        idx = int(len(s) * p / 100)
+        return s[min(idx, len(s) - 1)]
+
+    print(f"\n{'='*60}")
+    print("延迟统计（秒）:")
+    print(f"  {'':18}{'with_hint':>10}{'without_hint':>14}")
+    print(f"  {'avg':18}{avg(all_latencies_with):>10.1f}{avg(all_latencies_without):>14.1f}")
+    print(f"  {'p50':18}{pct(all_latencies_with,50):>10.1f}{pct(all_latencies_without,50):>14.1f}")
+    print(f"  {'p90':18}{pct(all_latencies_with,90):>10.1f}{pct(all_latencies_without,90):>14.1f}")
+    print(f"  {'p99':18}{pct(all_latencies_with,99):>10.1f}{pct(all_latencies_without,99):>14.1f}")
+    print(f"  {'max':18}{max(all_latencies_with):>10.1f}{max(all_latencies_without):>14.1f}")
+
+    # Top-10 最慢查询
+    top_slow = sorted(results, key=lambda r: r["with_hint"]["latency_s"], reverse=True)[:10]
+    print("\n  Top-10 最慢查询（with_hint）:")
+    for r in top_slow:
+        print(f"    [{r['id']:3d}] {r['with_hint']['latency_s']:5.1f}s  {r['query'][:50]}")
+
+    summary["latency"] = {
+        "with_hint": {"avg": round(avg(all_latencies_with), 1),
+                      "p50": pct(all_latencies_with, 50),
+                      "p90": pct(all_latencies_with, 90),
+                      "max": max(all_latencies_with)},
+        "without_hint": {"avg": round(avg(all_latencies_without), 1),
+                         "p50": pct(all_latencies_without, 50),
+                         "p90": pct(all_latencies_without, 90),
+                         "max": max(all_latencies_without)},
+    }
+
     # 决策建议
     wo_syntax = avg(agg_without["syntax"])
     w_syntax = avg(agg_with["syntax"])
