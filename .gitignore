@@ -113,5 +113,7 @@ dmypy.json
 Thumbs.db
 
 # Runtime artifacts
-logs/
+logs/*.log
+logs/*.pid
+logs/*.jsonl
 *.pid
