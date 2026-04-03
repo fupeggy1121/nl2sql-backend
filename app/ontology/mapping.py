@@ -135,6 +135,7 @@ class MetricDefinition:
     join_path: Optional[str] = None   # JOIN 路径提示（物理层）
     auto_filter: Optional[str] = None # 自动注入的 WHERE 条件（物理层）
     compute_mode: str = "sql_aggregate"  # "sql_aggregate" | "python_compute"
+    ontology_entities: List[str] = field(default_factory=list)  # 参与计算的 ontology 实体（logic_class 列表）
 
 
 @dataclass
@@ -522,6 +523,7 @@ class MappingDictionary:
                 join_path=md.get("join_path"),
                 auto_filter=md.get("auto_filter"),
                 compute_mode=md.get("compute_mode", "sql_aggregate"),
+                ontology_entities=md.get("ontology_entities", []),
             )
 
     def _parse_query_patterns(self, items: List[Dict]) -> None:
@@ -962,6 +964,101 @@ class MappingDictionary:
             rule_lines.append("")
 
         parts = table_lines + join_lines + filter_lines + rule_lines
+        return "\n".join(parts).rstrip()
+
+    def build_metric_context_by_entity(self, metric_def: "MetricDefinition") -> str:
+        """
+        **B 路径**：按 ontology_entities 构建指标上下文，不提供 anchor_table / join_path /
+        auto_filter 等指标级物理定位信息。
+
+        LLM 需要从实体描述 + 实体间关系自行推断 JOIN 路径和 WHERE 条件。
+        用于对比测试：若 B 路径质量与 A 路径相当，可将 MetricDefinition 的物理定位字段标记
+        deprecated。
+
+        输入: metric_def.ontology_entities — logic_class 列表，如
+              ["semi:CheckOutEventRecord", "semi:WaferTransitionSnapshot"]
+
+        输出格式:
+          ## 本体实体
+          ### semi:CheckOutEventRecord（批次出站操作记录）
+          物理表: matrix_routerx_operation_lot_batch_resume_log
+          行级过滤: operation_type = 9
+          关键列: id, operation_type, lot_id, ...
+          说明: ...
+
+          ## 实体间关联
+          - semi:hasWaferTransitionDetail: ProductionEventRecord → WaferTransitionSnapshot
+            JOIN: batch_resume_log.id → batch_resume_log_detail.batch_resume_log_id
+            ...
+
+          ## 相关业务规则
+          - [rule_id] ...
+        """
+        entities = metric_def.ontology_entities
+        if not entities:
+            # 无实体声明 → 降级到 A 路径
+            return self.build_metric_context(metric_def)
+
+        # 1. 实体物理信息
+        entity_lines: List[str] = ["## 本体实体"]
+        involved_tables: List[str] = []
+        for lc in entities:
+            pt = self.get_physical_table(lc)
+            if not pt:
+                entity_lines.append(f"### {lc}（未找到物理映射）")
+                continue
+            short_name = lc.replace("semi:", "")
+            entity_lines.append(f"### {lc}（{pt.label_cn}）")
+            if pt.table_name:
+                entity_lines.append(f"物理表: {pt.table_name}")
+                involved_tables.append(pt.table_name)
+            if pt.filter_condition:
+                entity_lines.append(f"行级过滤: {pt.filter_condition}")
+            if pt.key_columns:
+                entity_lines.append(f"关键列: {', '.join(pt.key_columns[:12])}")
+            if pt.note:
+                entity_lines.append(f"说明: {pt.note}")
+            entity_lines.append("")
+
+        # 2. 实体间关联（只输出涉及这些实体的 relation_mappings）
+        entity_set = set(entities)
+        relation_lines: List[str] = ["## 实体间关联"]
+        seen_relations: set = set()
+        for rm in self._relation_map_list:
+            dc = rm.domain_class or ""
+            rc = rm.range_class
+            range_set = set(rc) if isinstance(rc, list) else ({rc} if rc else set())
+            if (dc in entity_set or range_set & entity_set) and rm.join_conditions:
+                key = (rm.logic_relation, dc, str(sorted(range_set)))
+                if key in seen_relations:
+                    continue
+                seen_relations.add(key)
+                rc_str = ", ".join(sorted(range_set)) if isinstance(rc, list) else (rc or "")
+                relation_lines.append(f"- {rm.logic_relation}: {dc} → {rc_str}")
+                if rm.description:
+                    relation_lines.append(f"  描述: {rm.description}")
+                for jc in rm.join_conditions:
+                    filt = f" （过滤: {jc.filter_condition}）" if jc.filter_condition else ""
+                    relation_lines.append(
+                        f"  JOIN: {jc.from_table}.{jc.from_key} → {jc.to_table}.{jc.to_key}{filt}"
+                    )
+                if rm.note:
+                    relation_lines.append(f"  注: {rm.note[:150]}")
+                relation_lines.append("")
+
+        if len(relation_lines) == 1:
+            relation_lines = []  # 没有关联，不输出该节
+
+        # 3. 业务规则
+        rules = self.get_business_rules(involved_tables=involved_tables)
+        rule_lines: List[str] = []
+        if rules:
+            rule_lines = ["## 相关业务规则"]
+            for r in rules[:5]:
+                rule_lines.append(f"- [{r.id}] {r.name}: {r.description}")
+            rule_lines.append("")
+
+        parts = entity_lines + relation_lines + rule_lines
         return "\n".join(parts).rstrip()
 
     # ----------------------------------------------------------------- #
