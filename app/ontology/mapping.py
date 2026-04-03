@@ -837,6 +837,89 @@ class MappingDictionary:
             lines.extend(domain_lines)
         return "\n".join(lines)
 
+    @staticmethod
+    def _extract_tables_from_join_path(join_path: Optional[str], anchor_table: str) -> List[str]:
+        """
+        从 join_path 字符串中提取所有涉及的物理表名（含 anchor_table）。
+
+        格式: "table_a → table_b(fk) → table_c(fk)"
+        返回有序列表，anchor 在首位。
+        """
+        import re as _re
+        tables: List[str] = [anchor_table]
+        if not join_path:
+            return tables
+        for part in join_path.replace("→", "→").split("→"):
+            part = part.strip()
+            tname = _re.sub(r'\(.*?\)', '', part).strip()
+            if tname and tname != anchor_table and tname not in tables:
+                tables.append(tname)
+        return tables
+
+    def build_metric_context(self, metric_def: "MetricDefinition") -> str:
+        """
+        为 LLM 构建指定指标的完整物理上下文（硬约束：只输出 join_path 涉及的表）。
+
+        Skill 路径专用——已知涉及哪几张表（通常 2-4 张），全量输出 note，不截断。
+        与 build_table_catalog()（即席路径：全量表目录，截断 note）互相独立。
+
+        输出格式:
+          ## 涉及的物理表
+          ### table_name（label_cn）
+          关键列: col1, col2, ...
+          说明: <完整 note>
+
+          ## 表间关联路径
+          <join_path 原始字符串>
+
+          ## 自动过滤条件
+          <auto_filter>
+
+          ## 相关业务规则
+          - rule_name: description
+        """
+        tables = self._extract_tables_from_join_path(
+            metric_def.join_path, metric_def.anchor_table
+        )
+
+        # 1. 表结构详情（全量 note，不截断）
+        table_lines: List[str] = ["## 涉及的物理表"]
+        for tname in tables:
+            entry = self.get_table_by_physical_name(tname)
+            if not entry:
+                table_lines.append(f"### {tname}（未找到映射）")
+                continue
+            table_lines.append(f"### {tname}（{entry.label_cn}）")
+            if entry.key_columns:
+                table_lines.append(f"关键列: {', '.join(entry.key_columns)}")
+            if entry.filter_condition:
+                table_lines.append(f"行级过滤: {entry.filter_condition}")
+            if entry.note:
+                table_lines.append(f"说明: {entry.note}")
+            table_lines.append("")
+
+        # 2. JOIN 路径
+        join_lines: List[str] = []
+        if metric_def.join_path:
+            join_lines = ["## 表间关联路径", metric_def.join_path, ""]
+
+        # 3. 自动过滤条件
+        filter_lines: List[str] = []
+        if metric_def.auto_filter:
+            filter_lines = ["## 自动过滤条件（必须注入 WHERE）", metric_def.auto_filter, ""]
+
+        # 4. 相关业务规则（按涉及的表过滤）
+        rules = self.get_business_rules(involved_tables=tables)
+        rule_lines: List[str] = []
+        if rules:
+            rule_lines = ["## 相关业务规则"]
+            for r in rules[:5]:  # 最多 5 条，避免 token 爆炸
+                rule_lines.append(f"- [{r.id}] {r.name}: {r.description}")
+            rule_lines.append("")
+
+        parts = table_lines + join_lines + filter_lines + rule_lines
+        return "\n".join(parts).rstrip()
+
     # ----------------------------------------------------------------- #
     # 4. 业务规则
     # ----------------------------------------------------------------- #

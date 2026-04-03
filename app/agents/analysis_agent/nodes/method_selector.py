@@ -354,6 +354,188 @@ def _resolve_metric_context(user_input: str):
         return None, None, None
 
 
+# ── LLM 编排 SQL（skill 路径，替代确定性 _build_metric_sql）─────────────────
+
+# 灰度开关：metric_id 在此集合内才走 LLM 路径，其余 fallback 到确定性生成
+_LLM_SQL_ENABLED_METRICS: set = {"wafer_wip"}
+
+
+def _llm_build_aggregate_sql(metric_def, skill, user_input: str) -> Optional[str]:
+    """
+    sql_aggregate 模式：LLM 读取 Skill 方法论 + Mapping 物理上下文，生成聚合 SQL。
+
+    Prompt 结构与 _llm_build_detail_sql 完全独立，不出现"明细"/"不要 GROUP BY"等词。
+    失败时返回 None，调用方 fallback 到 _build_metric_sql()。
+    """
+    try:
+        from app.agent.llm import get_llm
+        from app.ontology.mapping import get_mapping
+
+        mapping = get_mapping()
+        metric_context = mapping.build_metric_context(metric_def)
+        value_summary = mapping.build_value_summary(max_domains=6)
+        start_date, end_date = _extract_date_range(user_input)
+
+        skill_block = ""
+        if skill:
+            skill_block = f"""## Skill 方法论
+指标名称: {', '.join(skill.zh_names[:3])}
+标准定义: {skill.standard_definition}
+计算公式: {skill.formula}
+支持粒度: {', '.join(skill.granularity)}
+
+{skill.body}
+"""
+
+        prompt = f"""{skill_block}
+{metric_context}
+
+## 业务值域（状态码枚举）
+{value_summary}
+
+## 时间上下文
+查询时间范围: {start_date} 至 {end_date}
+时间字段通常为 gmt_create 或 gmt_update
+
+## 用户问题
+"{user_input}"
+
+## 任务
+根据以上 Skill 方法论和数据物理结构，生成一条可执行的 MySQL 聚合查询 SQL。
+
+要求：
+- 使用聚合函数（COUNT / SUM / AVG）+ GROUP BY，返回统计结果
+- 必须应用"自动过滤条件"中的所有 WHERE 条件
+- 时间范围过滤用 gmt_create BETWEEN 或 >= / <=
+- 加 LIMIT 10000 防止数据量过大
+- 完整、可直接执行的 MySQL 语法
+- **严禁**使用"涉及的物理表"的关键列列表以外的列名，不要凭借 Skill 说明发明不存在的列
+
+输出 JSON（只返回 JSON，不要任何解释）：
+{{
+  "sql": "SELECT ... FROM ... WHERE ... GROUP BY ... LIMIT 10000",
+  "groupby_dims": ["col1", "col2"],
+  "reason": "一句话说明为什么这样写"
+}}"""
+
+        llm = get_llm()
+        resp = llm.invoke(prompt)
+        content = resp.content if hasattr(resp, "content") else str(resp)
+
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if match:
+            data = json.loads(match.group())
+            sql = data.get("sql", "").strip()
+            if sql:
+                logger.info(
+                    f"[method_selector] LLM aggregate SQL for '{metric_def.metric_id}': "
+                    f"dims={data.get('groupby_dims')}, reason={data.get('reason')}"
+                )
+                return sql
+    except Exception as e:
+        logger.warning(f"[method_selector] _llm_build_aggregate_sql error: {e}")
+    return None
+
+
+def _llm_build_detail_sql(metric_def, skill, user_input: str) -> Optional[str]:
+    """
+    python_compute 模式：LLM 生成明细查询 SQL（计算由 Python MetricComputer 执行）。
+
+    Prompt 结构与 _llm_build_aggregate_sql 完全独立，不出现聚合/GROUP BY 相关词。
+    失败时返回 None，调用方 fallback 到 _build_metric_sql()。
+    """
+    try:
+        from app.agent.llm import get_llm
+        from app.ontology.mapping import get_mapping
+
+        mapping = get_mapping()
+        metric_context = mapping.build_metric_context(metric_def)
+        value_summary = mapping.build_value_summary(max_domains=6)
+        start_date, end_date = _extract_date_range(user_input)
+
+        skill_block = ""
+        if skill:
+            skill_block = f"""## Skill 方法论
+指标名称: {', '.join(skill.zh_names[:3])}
+标准定义: {skill.standard_definition}
+计算公式: {skill.formula}
+
+{skill.body}
+"""
+
+        prompt = f"""{skill_block}
+{metric_context}
+
+## 业务值域（状态码枚举）
+{value_summary}
+
+## 时间上下文
+查询时间范围: {start_date} 至 {end_date}
+
+## 用户问题
+"{user_input}"
+
+## 任务
+根据以上 Skill 方法论和数据物理结构，生成明细查询 SQL。
+后续 Python 程序将读取这些明细行并完成指标计算，SQL 不做指标聚合。
+
+要求：
+- 返回计算所需的原始明细行（行级数据）
+- 必须应用"自动过滤条件"中的所有 WHERE 条件
+- 时间范围过滤用 gmt_create BETWEEN 或 >= / <=
+- 加 LIMIT 100000
+- **严禁**使用"涉及的物理表"的关键列列表以外的列名，不要凭借 Skill 说明发明不存在的列
+
+输出 JSON（只返回 JSON）：
+{{
+  "sql": "SELECT ... FROM ... WHERE ... LIMIT 100000",
+  "key_columns": ["col1", "col2"],
+  "reason": "一句话说明返回了哪些字段，用于什么计算"
+}}"""
+
+        llm = get_llm()
+        resp = llm.invoke(prompt)
+        content = resp.content if hasattr(resp, "content") else str(resp)
+
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if match:
+            data = json.loads(match.group())
+            sql = data.get("sql", "").strip()
+            if sql:
+                logger.info(
+                    f"[method_selector] LLM detail SQL for '{metric_def.metric_id}': "
+                    f"cols={data.get('key_columns')}, reason={data.get('reason')}"
+                )
+                return sql
+    except Exception as e:
+        logger.warning(f"[method_selector] _llm_build_detail_sql error: {e}")
+    return None
+
+
+def _dispatch_metric_sql(metric_def, skill, user_input: str) -> str:
+    """
+    SQL 生成入口：根据 metric_id 灰度开关决定走 LLM 路径还是确定性路径。
+
+    灰度策略（_LLM_SQL_ENABLED_METRICS）：
+      - 在集合内 → 尝试 LLM 生成，失败则 fallback 到 _build_metric_sql()
+      - 不在集合内 → 直接走确定性 _build_metric_sql()
+    """
+    if metric_def.metric_id in _LLM_SQL_ENABLED_METRICS:
+        if metric_def.compute_mode == "sql_aggregate":
+            llm_sql = _llm_build_aggregate_sql(metric_def, skill, user_input)
+        else:
+            llm_sql = _llm_build_detail_sql(metric_def, skill, user_input)
+
+        if llm_sql:
+            return llm_sql
+        logger.warning(
+            f"[method_selector] LLM SQL failed for '{metric_def.metric_id}', "
+            "falling back to deterministic _build_metric_sql()"
+        )
+
+    return _build_metric_sql(metric_def, skill, user_input)
+
+
 def _build_metric_sql(metric_def, skill, user_input: str) -> str:
     """
     从 Mapping 物理信息 + Skill 方法论 编排 SQL。
@@ -616,7 +798,7 @@ def method_selector_node(state: AnalysisState) -> dict:
                 route_decision = "skill"
                 logger.info(f"[method_selector] skill → metric_compute ({metric_def.metric_id})")
 
-                raw_sql = _build_metric_sql(metric_def, skill, user_input)
+                raw_sql = _dispatch_metric_sql(metric_def, skill, user_input)
                 data_source_config = {"type": "sql", "sql": raw_sql, "limit": 100000}
                 params = {"metric_name": metric_def.metric_id}
 
@@ -635,7 +817,7 @@ def method_selector_node(state: AnalysisState) -> dict:
                 reason = f"[Skill路径/聚合] '{metric_def.metric_id}'"
                 route_decision = "skill"
 
-                raw_sql = _build_metric_sql(metric_def, skill, user_input)
+                raw_sql = _dispatch_metric_sql(metric_def, skill, user_input)
                 data_source_config = {"type": "sql", "sql": raw_sql, "limit": 10000}
 
                 if skill:
