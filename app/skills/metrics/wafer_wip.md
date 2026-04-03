@@ -13,28 +13,7 @@ zh_names:
   - 在制
 compute_mode: sql_aggregate
 standard_definition: "在制品数量 = COUNT(DISTINCT wafer记录) 当前还在线上活跃子批次中的晶圆数"
-formula: "COUNT(DISTINCT matrix_routerx_operation_lot_wafer.id)"
-required_tables:
-  - matrix_routerx_operation_lot_wafer
-  - matrix_routerx_operation_lot
-  - matrix_routerx_config_process
-anchor_table: matrix_routerx_operation_lot_wafer
-auto_filter: "matrix_routerx_operation_lot.status = 50 AND matrix_routerx_operation_lot.parent_id != 0"
-join_path: "matrix_routerx_operation_lot_wafer → matrix_routerx_operation_lot(parent_id!=0) → matrix_routerx_config_process"
-raw_sql_template: |
-  SELECT
-    {GROUP_BY_COLS}
-    COUNT(DISTINCT w.id) AS wip_count
-  FROM matrix_routerx_operation_lot_wafer w
-  JOIN matrix_routerx_operation_lot lot
-       ON lot.id = w.lot_id
-       AND lot.parent_id != 0
-  LEFT JOIN matrix_routerx_config_process proc
-       ON proc.id = lot.process_id
-  WHERE lot.status = 50
-    {WHERE_EXTRA}
-  GROUP BY {GROUP_BY_COLS}
-  ORDER BY wip_count DESC
+formula: "COUNT(DISTINCT wafer.id) WHERE lot.status=50 AND lot.parent_id!=0"
 granularity:
   - 工站
   - 机台

@@ -51,8 +51,10 @@ class MetricComputer(ABC):
       - skill_name: 对应 skill 文件名
       - compute(df, **kwargs) -> MetricResult: 用 pandas 在 Python 侧完成计算
 
-    数据 SQL 由 ontology 层的 MetricDefinition.raw_sql_template 提供（mapping JSON），
-    不再在 Python 类中硬编码。子类无需实现 required_raw_sql()。
+    数据 SQL 由 method_selector 三层协同编排：
+      - Mapping 层: join_path / auto_filter / anchor_table（物理数据源定位）
+      - Skill 层: formula / body（计算方法论，指导 SQL 列推断）
+    子类只负责纯计算逻辑，不涉及 SQL 构建。
     """
 
     metric_name: str = ""
@@ -68,7 +70,7 @@ class MetricComputer(ABC):
         """
         基于明细 DataFrame 计算指标。
 
-        :param df: 由 ontology raw_sql_template 查询得到的明细数据 DataFrame
+        :param df: 由 method_selector 编排的 SQL 查询得到的明细数据 DataFrame
         :param group_by: 分组维度 (e.g. ["process_code", "report_date"])
         :param kwargs: 额外参数
         """

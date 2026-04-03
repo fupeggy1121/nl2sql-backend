@@ -25,16 +25,16 @@ _FM_DELIMITER = "---"
 
 @dataclass
 class SkillDefinition:
-    """解析后的 Skill 定义"""
+    """解析后的 Skill 定义 — 仅包含计算方法论，不含物理数据源信息。
+
+    物理表名、JOIN 路径、过滤条件等属于 Mapping 层 (MetricDefinition)。
+    Skill 层只关注"如何计算"，不关注"数据从哪来"。
+    """
     skill_name: str
     zh_names: List[str] = field(default_factory=list)
     compute_mode: str = "python_compute"
     standard_definition: str = ""
     formula: str = ""
-    required_tables: List[str] = field(default_factory=list)
-    anchor_table: str = ""
-    auto_filter: str = ""
-    raw_sql_template: str = ""
     granularity: List[str] = field(default_factory=list)
     body: str = ""          # Markdown body（供 LLM 阅读）
     source_file: str = ""   # 来源文件路径
@@ -254,11 +254,10 @@ class SkillLoader:
             logger.warning(f"[SkillLoader] missing skill_name in {path.name}")
             return None
 
-        # 已知字段
+        # 已知字段（仅方法论相关，不含物理数据源字段）
         known_keys = {
             "skill_name", "zh_names", "compute_mode", "standard_definition",
-            "formula", "required_tables", "anchor_table", "auto_filter",
-            "raw_sql_template", "granularity",
+            "formula", "granularity",
         }
         extra = {k: v for k, v in meta.items() if k not in known_keys}
 
@@ -268,10 +267,6 @@ class SkillLoader:
             compute_mode=meta.get("compute_mode", "python_compute"),
             standard_definition=meta.get("standard_definition", ""),
             formula=meta.get("formula", ""),
-            required_tables=meta.get("required_tables", []),
-            anchor_table=meta.get("anchor_table", ""),
-            auto_filter=meta.get("auto_filter", ""),
-            raw_sql_template=meta.get("raw_sql_template", ""),
             granularity=meta.get("granularity", []),
             body=body,
             source_file=str(path),

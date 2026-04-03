@@ -208,8 +208,8 @@ class SemanticContext:
             lines.append("-- Metrics")
             for m in self.metrics:
                 lines.append(f"-- Metric: {m.zh_names[0] if m.zh_names else m.metric_id}")
-                lines.append(f"   FORMULA: {m.formula}")
                 lines.append(f"   ANCHOR_TABLE: {m.anchor_table}")
+                lines.append(f"   COMPUTE_MODE: {m.compute_mode}")
                 if m.join_path:
                     lines.append(f"   JOIN_PATH: {m.join_path}")
                 if m.auto_filter:
@@ -296,15 +296,11 @@ class SemanticContext:
                     "metric_id": m.metric_id,
                     "zh_names": m.zh_names,
                     "anchor_table": m.anchor_table,
-                    "formula": m.formula,
                     "granularity": m.granularity,
                     "join_path": m.join_path,
                     "auto_filter": m.auto_filter,
                     "description": m.description,
                     "compute_mode": m.compute_mode,
-                    **({
-                        "sql_template": m.sql_template,
-                    } if m.sql_template else {}),
                 }
                 for m in self.metrics
             ],

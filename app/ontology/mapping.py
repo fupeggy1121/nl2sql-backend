@@ -122,17 +122,18 @@ class BusinessRule:
 
 @dataclass
 class MetricDefinition:
-    """Phase 2: 指标定义 — 为 LLM 提供结构化指标语义"""
+    """Phase 2: 指标定义 — 语义到物理数据源的映射。
+
+    只存 *定位数据源* 所需的信息（表名、JOIN、过滤条件、粒度）。
+    计算方法论（公式、SQL 模板）属于 Skill 层，不在此处维护。
+    """
     metric_id: str
     zh_names: List[str]           # 触发该指标的中文名称列表
     anchor_table: str             # 指标的主表
-    formula: str                  # 聚合公式（PostgreSQL 语法）
     granularity: List[str]        # 支持的统计粒度
     description: str
-    join_path: Optional[str] = None   # JOIN 路径提示（可选）
-    auto_filter: Optional[str] = None # 自动注入的 WHERE 条件（可选）
-    sql_template: Optional[str] = None  # 聚合结果 SQL（含 {WHERE_EXTRA} 占位符，直接返回指标%值）
-    raw_sql_template: Optional[str] = None  # 明细数据 SQL（同 {WHERE_EXTRA}/{LIMIT} 占位符，供 Python compute 使用）
+    join_path: Optional[str] = None   # JOIN 路径提示（物理层）
+    auto_filter: Optional[str] = None # 自动注入的 WHERE 条件（物理层）
     compute_mode: str = "sql_aggregate"  # "sql_aggregate" | "python_compute"
 
 
@@ -492,19 +493,16 @@ class MappingDictionary:
             self._business_rules.append(br)
 
     def _parse_metrics(self, data: Dict[str, Dict]) -> None:
-        """Phase 2: 解析 metric_definitions 节"""
+        """Phase 2: 解析 metric_definitions 节（仅物理映射字段）"""
         for metric_id, md in data.items():
             self._metrics[metric_id] = MetricDefinition(
                 metric_id=metric_id,
                 zh_names=md.get("zh_names", []),
                 anchor_table=md.get("anchor_table", ""),
-                formula=md.get("formula", ""),
                 granularity=md.get("granularity", []),
                 description=md.get("description", ""),
                 join_path=md.get("join_path"),
                 auto_filter=md.get("auto_filter"),
-                sql_template=md.get("sql_template"),
-                raw_sql_template=md.get("raw_sql_template"),
                 compute_mode=md.get("compute_mode", "sql_aggregate"),
             )
 

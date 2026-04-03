@@ -4442,7 +4442,6 @@
         "站点在制品"
       ],
       "anchor_table": "matrix_routerx_operation_lot_wafer",
-      "formula": "COUNT(DISTINCT matrix_routerx_operation_lot_wafer.id)",
       "join_path": "matrix_routerx_operation_lot_wafer → matrix_routerx_operation_lot(parent_id!=0) → matrix_routerx_config_process",
       "auto_filter": "matrix_routerx_operation_lot.status = 50 AND matrix_routerx_operation_lot.parent_id != 0",
       "granularity": [
@@ -4466,10 +4465,8 @@
         "一次通过率"
       ],
       "anchor_table": "matrix_routerx_operation_lot_batch_resume_log",
-      "formula": "COUNT(DISTINCT CASE WHEN rn=1 AND COALESCE(wafer_type,'good')='good' AND (ng_code IS NULL OR ng_code='') THEN wafer_id END) / NULLIF(COUNT(DISTINCT CASE WHEN rn=1 THEN wafer_id END), 0)",
-      "join_path": "matrix_routerx_operation_lot_batch_resume_log → _log_detail(batch_resume_log_id) → _wafer_detail_log(batch_resume_detail_log_id)",
+      "join_path": "matrix_routerx_operation_lot_batch_resume_log → matrix_routerx_operation_lot_batch_resume_log_detail(batch_resume_log_id) → matrix_routerx_operation_lot_batch_resume_wafer_detail_log(batch_resume_detail_log_id)",
       "auto_filter": "operation_type = 9 AND (deleted = 0 OR deleted IS NULL)",
-      "sql_template": "WITH first_checkout AS (\n  SELECT wdl.wafer_id, log.process_code, log.product_code,\n         DATE(log.gmt_create) AS report_date,\n         wdl.wafer_type, wdl.ng_code,\n         ROW_NUMBER() OVER (\n           PARTITION BY wdl.wafer_id, log.process_code\n           ORDER BY log.gmt_create ASC\n         ) AS rn\n  FROM matrix_routerx_operation_lot_batch_resume_log log\n  JOIN matrix_routerx_operation_lot_batch_resume_log_detail d\n       ON d.batch_resume_log_id = log.id\n  JOIN matrix_routerx_operation_lot_batch_resume_wafer_detail_log wdl\n       ON wdl.batch_resume_detail_log_id = d.id\n  WHERE log.operation_type = 9\n    AND (log.deleted = 0 OR log.deleted IS NULL)\n    {WHERE_EXTRA}\n)\nSELECT process_code, product_code, report_date,\n  COUNT(DISTINCT wafer_id) AS total_wafers,\n  COUNT(DISTINCT CASE\n    WHEN COALESCE(wafer_type,'good')='good' AND (ng_code IS NULL OR ng_code='')\n    THEN wafer_id END) AS first_pass_good,\n  ROUND(\n    COUNT(DISTINCT CASE\n      WHEN COALESCE(wafer_type,'good')='good' AND (ng_code IS NULL OR ng_code='')\n      THEN wafer_id END)\n    / NULLIF(COUNT(DISTINCT wafer_id), 0) * 100, 2\n  ) AS first_pass_yield\nFROM first_checkout\nWHERE rn = 1\nGROUP BY process_code, product_code, report_date\nORDER BY report_date DESC, process_code",
       "granularity": [
         "产品",
         "工站",
@@ -4495,10 +4492,8 @@
         "批次良率"
       ],
       "anchor_table": "matrix_routerx_operation_lot_batch_resume_log",
-      "formula": "COUNT(DISTINCT CASE WHEN rn=1 AND COALESCE(wafer_type,'good')='good' AND (ng_code IS NULL OR ng_code='') THEN wafer_id END) / NULLIF(COUNT(DISTINCT CASE WHEN rn=1 THEN wafer_id END), 0)",
-      "join_path": "matrix_routerx_operation_lot_batch_resume_log → _log_detail(batch_resume_log_id) → _wafer_detail_log(batch_resume_detail_log_id)",
+      "join_path": "matrix_routerx_operation_lot_batch_resume_log → matrix_routerx_operation_lot_batch_resume_log_detail(batch_resume_log_id) → matrix_routerx_operation_lot_batch_resume_wafer_detail_log(batch_resume_detail_log_id)",
       "auto_filter": "operation_type = 9 AND (deleted = 0 OR deleted IS NULL)",
-      "sql_template": "WITH last_checkout AS (\n  SELECT wdl.wafer_id, log.process_code, log.product_code,\n         DATE(log.gmt_create) AS report_date,\n         wdl.wafer_type, wdl.ng_code,\n         ROW_NUMBER() OVER (\n           PARTITION BY wdl.wafer_id, log.process_code\n           ORDER BY log.gmt_create DESC\n         ) AS rn\n  FROM matrix_routerx_operation_lot_batch_resume_log log\n  JOIN matrix_routerx_operation_lot_batch_resume_log_detail d\n       ON d.batch_resume_log_id = log.id\n  JOIN matrix_routerx_operation_lot_batch_resume_wafer_detail_log wdl\n       ON wdl.batch_resume_detail_log_id = d.id\n  WHERE log.operation_type = 9\n    AND (log.deleted = 0 OR log.deleted IS NULL)\n    {WHERE_EXTRA}\n)\nSELECT process_code, product_code, report_date,\n  COUNT(DISTINCT wafer_id) AS total_wafers,\n  COUNT(DISTINCT CASE\n    WHEN COALESCE(wafer_type,'good')='good' AND (ng_code IS NULL OR ng_code='')\n    THEN wafer_id END) AS final_good,\n  ROUND(\n    COUNT(DISTINCT CASE\n      WHEN COALESCE(wafer_type,'good')='good' AND (ng_code IS NULL OR ng_code='')\n      THEN wafer_id END)\n    / NULLIF(COUNT(DISTINCT wafer_id), 0) * 100, 2\n  ) AS final_yield\nFROM last_checkout\nWHERE rn = 1\nGROUP BY process_code, product_code, report_date\nORDER BY report_date DESC, process_code",
       "granularity": [
         "产品",
         "工站",
@@ -4516,10 +4511,8 @@
         "返工比例"
       ],
       "anchor_table": "matrix_routerx_operation_lot_batch_resume_log",
-      "formula": "COUNT(DISTINCT CASE WHEN visit_count > 1 THEN wafer_id END) / NULLIF(COUNT(DISTINCT wafer_id), 0)",
-      "join_path": "matrix_routerx_operation_lot_batch_resume_log → _log_detail(batch_resume_log_id) → _wafer_detail_log(batch_resume_detail_log_id)",
+      "join_path": "matrix_routerx_operation_lot_batch_resume_log → matrix_routerx_operation_lot_batch_resume_log_detail(batch_resume_log_id) → matrix_routerx_operation_lot_batch_resume_wafer_detail_log(batch_resume_detail_log_id)",
       "auto_filter": "operation_type = 8 AND (deleted = 0 OR deleted IS NULL)",
-      "sql_template": "WITH wafer_station_visits AS (\n  SELECT wdl.wafer_id, log.process_code, log.product_code,\n         DATE(log.gmt_create) AS report_date,\n         COUNT(*) AS visit_count\n  FROM matrix_routerx_operation_lot_batch_resume_log log\n  JOIN matrix_routerx_operation_lot_batch_resume_log_detail d\n       ON d.batch_resume_log_id = log.id\n  JOIN matrix_routerx_operation_lot_batch_resume_wafer_detail_log wdl\n       ON wdl.batch_resume_detail_log_id = d.id\n  WHERE log.operation_type = 8\n    AND (log.deleted = 0 OR log.deleted IS NULL)\n    {WHERE_EXTRA}\n  GROUP BY wdl.wafer_id, log.process_code, log.product_code, DATE(log.gmt_create)\n)\nSELECT process_code, product_code, report_date,\n  COUNT(DISTINCT wafer_id) AS total_wafers,\n  COUNT(DISTINCT CASE WHEN visit_count > 1 THEN wafer_id END) AS rework_wafers,\n  ROUND(\n    COUNT(DISTINCT CASE WHEN visit_count > 1 THEN wafer_id END)\n    / NULLIF(COUNT(DISTINCT wafer_id), 0) * 100, 2\n  ) AS rework_rate\nFROM wafer_station_visits\nGROUP BY process_code, product_code, report_date\nORDER BY report_date DESC, process_code",
       "granularity": [
         "产品",
         "工站",
@@ -4537,7 +4530,6 @@
         "CTQ"
       ],
       "anchor_table": "matrix_routerx_operation_lot",
-      "formula": "AVG(EXTRACT(EPOCH FROM (out_time - in_time)) / 3600.0)",
       "join_path": null,
       "auto_filter": "matrix_routerx_operation_lot.process_status = 200",
       "granularity": [
@@ -4556,7 +4548,6 @@
         "吞吐量"
       ],
       "anchor_table": "matrix_routerx_operation_lot",
-      "formula": "COUNT(DISTINCT matrix_routerx_operation_lot.id)",
       "join_path": null,
       "auto_filter": "matrix_routerx_operation_lot.process_status = 200",
       "granularity": [

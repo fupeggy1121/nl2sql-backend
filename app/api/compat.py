@@ -554,7 +554,7 @@ async def create_skill(request: Request):
             return JSONResponse({"success": False, "error": "skill 已存在，请使用 PUT 更新"}, status_code=409)
 
         if not content:
-            content = f"---\nskill_name: {safe_name}\nzh_names:\n  - \ncompute_mode: python_compute\nstandard_definition: \"\"\nformula: \"\"\nrequired_tables: []\nanchor_table: \"\"\nauto_filter: \"\"\nraw_sql_template: |\n  -- SQL here\n---\n\n## 指标说明\n\n{safe_name} 指标定义。\n"
+            content = f"---\nskill_name: {safe_name}\nzh_names:\n  - \ncompute_mode: python_compute\nstandard_definition: \"\"\nformula: \"\"\ngranularity: []\n---\n\n## 指标说明\n\n{safe_name} 指标定义。\n"
 
         md_file.write_text(content, encoding="utf-8")
         import app.skills.loader as _loader_mod

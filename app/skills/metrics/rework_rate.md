@@ -8,23 +8,6 @@ zh_names:
 compute_mode: python_compute
 standard_definition: "返工率 = 返工晶圆数 / 总晶圆数 × 100%"
 formula: "count(visit_count > 1) / total_count * 100"
-required_tables:
-  - matrix_routerx_operation_lot_batch_resume_log
-  - matrix_routerx_operation_lot_batch_resume_log_detail
-  - matrix_routerx_operation_lot_batch_resume_wafer_detail_log
-anchor_table: matrix_routerx_operation_lot_batch_resume_log
-auto_filter: "operation_type = 8 AND (deleted = 0 OR deleted IS NULL)"
-raw_sql_template: |
-  SELECT wdl.wafer_id, log.process_code, log.product_code,
-         DATE(log.gmt_create) AS report_date
-  FROM matrix_routerx_operation_lot_batch_resume_log log
-  JOIN matrix_routerx_operation_lot_batch_resume_log_detail d
-       ON d.batch_resume_log_id = log.id
-  JOIN matrix_routerx_operation_lot_batch_resume_wafer_detail_log wdl
-       ON wdl.batch_resume_detail_log_id = d.id
-  WHERE log.operation_type = 8
-    AND (log.deleted = 0 OR log.deleted IS NULL)
-    {WHERE_EXTRA}
 granularity:
   - daily
   - by_process
