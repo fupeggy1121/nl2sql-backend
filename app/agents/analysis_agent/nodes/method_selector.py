@@ -94,85 +94,139 @@ def _llm_classify(user_input: str) -> tuple[str, str, Dict[str, Any]]:
     return "descriptive", "默认使用描述性统计", {}
 
 
+def _skill_driven_classify(user_input: str):
+    """
+    技能驱动路由：通过 SkillLoader 将用户输入匹配到 compute_mode=python_compute 的技能。
+    技能 .md 文件是业务定义和 raw_sql_template 的**单一来源**。
+
+    Returns: (SkillDefinition, MetricComputer) or (None, None)
+    """
+    try:
+        from app.skills.loader import get_skill_loader
+        from app.analytics.registry import get_metric
+
+        loader = get_skill_loader()
+        skill = loader.find_by_zh_name(user_input)
+        if skill and skill.compute_mode == "python_compute":
+            computer = get_metric(skill.skill_name)
+            if computer:
+                logger.info(f"[method_selector] skill match: '{skill.skill_name}' via SkillLoader")
+                return skill, computer
+            else:
+                logger.warning(
+                    f"[method_selector] skill '{skill.skill_name}' has compute_mode=python_compute "
+                    f"but no MetricComputer registered — check @register_metric decorator"
+                )
+    except Exception as e:
+        logger.warning(f"[method_selector] SkillLoader error: {e}")
+
+    return None, None
+
+
 def method_selector_node(state: AnalysisState) -> dict:
     """
     节点：分析方法选择。
 
+    路由优先级（由高到低）：
+      1. SkillLoader 技能匹配 → python_compute 指标，SQL 来自 skill.md（单一来源）
+      2. 关键词快速分类 → 非指标计算方法（SPC / OEE / yield_report 聚合视图等）
+      3. LLM 分类 → 通用兜底
+
     输入: user_input
-    输出: suggested_method, method_reason, method_params, data_source_config
+    输出: suggested_method, method_reason, method_params, data_source_config, skill_context
     """
     user_input = state.get("user_input", "")
     logger.info(f"[method_selector] input={user_input[:80]}...")
 
-    # 1. 尝试关键词快速分类
-    method = _quick_classify(user_input)
-    if method:
-        reason = f"关键词匹配: '{method}'"
-        params: Dict[str, Any] = {}
-        logger.info(f"[method_selector] keyword match → {method}")
-    else:
-        # 2. 回退到 LLM
-        try:
-            method, reason, params = _llm_classify(user_input)
-            logger.info(f"[method_selector] LLM suggest → {method}")
-        except Exception as e:
-            logger.error(f"[method_selector] LLM error: {e}")
-            method, reason, params = "descriptive", "默认使用描述性统计", {}
-
-    # 3. 构造 data_source_config（如果 state 中尚未有）
     data_source_config = state.get("data_source_config")
+    skill_context: Dict[str, Any] | None = None
+    params: Dict[str, Any] = {}
+    method = ""
+    reason = ""
 
-    # 3.1 python_compute 路由: 若匹配到的指标有 compute_mode == python_compute，
-    #     改走 metric_compute 方法（SQL 只取明细，Python 侧计算）
-    #
-    # SQL 来源优先级（ontology 优先）:
-    #   1. MetricDefinition.raw_sql_template（ontology 层，单一来源）
-    #   2. _computer.required_raw_sql()（Python 类，已废弃，仅作 fallback）
+    # ── 1. 技能驱动路由（优先）: SkillLoader 匹配 python_compute 技能 ──
+    if not data_source_config:
+        skill, computer = _skill_driven_classify(user_input)
+        if skill and computer:
+            method = "metric_compute"
+            reason = f"技能匹配: '{skill.skill_name}' — {skill.standard_definition}"
+            logger.info(f"[method_selector] skill-driven → metric_compute ({skill.skill_name})")
+
+            # 提取时间范围 + 工站过滤
+            start_date, end_date = _extract_date_range(user_input)
+            station_clause = _extract_station_filter(user_input, alias="log")
+            date_filter = (
+                f"log.gmt_create >= '{start_date} 00:00:00' "
+                f"AND log.gmt_create <= '{end_date} 23:59:59'"
+            )
+
+            # SQL 来自 skill.md（单一来源）
+            where_parts = [f"AND {date_filter}"]
+            sc = station_clause.replace("\n  AND ", "").strip() if station_clause else ""
+            if sc:
+                where_parts.append(f"AND {sc}")
+            where_extra = "\n  ".join(where_parts)
+            raw_sql = skill.raw_sql_template.format(WHERE_EXTRA=where_extra, LIMIT=100000)
+
+            data_source_config = {"type": "sql", "sql": raw_sql, "limit": 100000}
+            params = {"metric_name": skill.skill_name}
+
+            # 技能业务上下文（供下游节点 / LLM 响应使用）
+            skill_context = {
+                "skill_name": skill.skill_name,
+                "standard_definition": skill.standard_definition,
+                "formula": skill.formula,
+                "granularity": skill.granularity,
+                "body": skill.body,
+            }
+
+    # ── 2. 关键词 + LLM 分类（技能未匹配时）──
+    if not method:
+        method = _quick_classify(user_input)
+        if method:
+            reason = f"关键词匹配: '{method}'"
+            logger.info(f"[method_selector] keyword match → {method}")
+        else:
+            try:
+                method, reason, params = _llm_classify(user_input)
+                logger.info(f"[method_selector] LLM suggest → {method}")
+            except Exception as e:
+                logger.error(f"[method_selector] LLM error: {e}")
+                method, reason, params = "descriptive", "默认使用描述性统计", {}
+
+    # ── 3. yield_report → python_compute 兜底（SkillLoader 未覆盖的指标）──
     if method == "yield_report" and not data_source_config:
         _metric_name, _computer, _metric_def = _detect_python_compute_metric(user_input)
         if _metric_name and _computer:
-            logger.info(f"[method_selector] python_compute detected: {_metric_name}, routing to metric_compute")
+            logger.info(f"[method_selector] ontology fallback: python_compute '{_metric_name}'")
             method = "metric_compute"
-            reason = f"指标 '{_metric_name}' 使用 Python 计算模式"
+            reason = f"指标 '{_metric_name}' 使用 Python 计算模式（本体兜底）"
             start_date, end_date = _extract_date_range(user_input)
             station_clause = _extract_station_filter(user_input, alias="log")
-            date_filter = f"log.gmt_create >= '{start_date} 00:00:00' AND log.gmt_create <= '{end_date} 23:59:59'"
+            date_filter = (
+                f"log.gmt_create >= '{start_date} 00:00:00' "
+                f"AND log.gmt_create <= '{end_date} 23:59:59'"
+            )
 
-            # ── 1. Ontology-driven SQL（从 MetricDefinition.raw_sql_template 读取）──
             raw_sql_template = _metric_def.raw_sql_template if _metric_def else None
             if raw_sql_template:
-                # 组装 WHERE_EXTRA 子句（日期 + 站点过滤）
-                where_parts = []
-                if date_filter:
-                    where_parts.append(f"AND {date_filter}")
-                station_filter_clean = (
-                    station_clause.replace("\n  AND ", "").strip() if station_clause else ""
-                )
-                if station_filter_clean:
-                    where_parts.append(f"AND {station_filter_clean}")
+                where_parts = [f"AND {date_filter}"]
+                sc = station_clause.replace("\n  AND ", "").strip() if station_clause else ""
+                if sc:
+                    where_parts.append(f"AND {sc}")
                 where_extra = "\n  ".join(where_parts)
-                raw_sql = raw_sql_template.format(
-                    WHERE_EXTRA=where_extra,
-                    LIMIT=100000,
-                )
+                raw_sql = raw_sql_template.format(WHERE_EXTRA=where_extra, LIMIT=100000)
                 logger.info(f"[method_selector] SQL from ontology raw_sql_template for '{_metric_name}'")
             else:
-                # ── 2. Fallback: Python 类的 required_raw_sql()（已废弃，仅兼容旧部署）──
                 logger.warning(
-                    f"[method_selector] '{_metric_name}' has no raw_sql_template in ontology; "
-                    f"falling back to MetricComputer.required_raw_sql() — "
-                    f"please add raw_sql_template to MetricDefinition in mapping JSON."
+                    f"[method_selector] '{_metric_name}' has no raw_sql_template in ontology or skill.md"
                 )
-                raw_sql = _computer.required_raw_sql(
-                    station_filter=(
-                        station_clause.replace("\n  AND ", "").strip() if station_clause else ""
-                    ),
-                    date_filter=date_filter,
-                )
+                raw_sql = ""
 
             data_source_config = {"type": "sql", "sql": raw_sql, "limit": 100000}
             params = {**params, "metric_name": _metric_name}
 
+    # ── 4. 其余 data_source_config 构建 ──
     if not data_source_config:
         if method == "yield_report":
             data_source_config = _build_yield_sql(user_input)
@@ -245,6 +299,7 @@ def method_selector_node(state: AnalysisState) -> dict:
         "method_reason": reason,
         "method_params": params,
         "data_source_config": data_source_config,
+        "skill_context": skill_context,
     }
 
 

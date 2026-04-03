@@ -40,6 +40,9 @@ class AnalysisState(TypedDict, total=False):
     analysis_charts: List[Dict[str, Any]]  # Plotly chart JSON 列表
     analysis_error: Optional[str]
 
+    # ── 技能上下文 ──
+    skill_context: Optional[Dict[str, Any]]  # 匹配到的 Skill 业务定义（供下游节点及 LLM 使用）
+
     # ── 最终输出 ──
     answer: str                          # 自然语言回答文本
     response: Dict[str, Any]             # 标准化响应（与 Query Agent 格式兼容）
