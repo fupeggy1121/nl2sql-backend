@@ -1,8 +1,18 @@
 """
 method_selector 节点
 
-利用 LLM + 本体元数据自动识别用户意图，推荐合适的分析方法，
-并构建 data_source_config 和 method_params。
+两条路径 + 统一 ontology/mapping 层：
+
+  ① Skill 路径  (有预定义指标 skill)
+        LLM 语义匹配 skill → 读取方法论 + Mapping 物理信息 → SQL 编排
+
+  ② 即席探索路径 (无匹配 skill)
+        Ontology/Mapping 提供数据目录 → LLM CoT 推理 → 生成 SQL
+
+  ③ 统计分析路径 (SPC / correlation / OEE 等)
+        关键词快速匹配 / LLM 从方法库中选择
+
+  两条路径共享 ontology+mapping 层和执行引擎。
 """
 
 from __future__ import annotations
@@ -12,49 +22,238 @@ import logging
 import numbers
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple
 
 from app.agents.analysis_agent.state import AnalysisState
 from app.analytics.registry import list_methods
 
 logger = logging.getLogger(__name__)
 
-# ── 关键词 → 方法名 快速映射（无需 LLM）──
-_KEYWORD_MAP = {
+# ── 统计分析关键词快速映射（高置信度 → 无需 LLM）──────────────────────────────
+_ANALYSIS_KEYWORD_MAP = {
     r"SPC|控制图|Cpk|Ppk|制程能力|control chart": "spc",
     r"相关性|相关系数|correlation|热力图": "correlation",
     r"ANOVA|方差分析|差异显著|t[-\s]?test|t检验|卡方|正态性": "hypothesis",
-    r"帕累托|pareto|80/20|80%-20%": "pareto",
+    r"帕累托|pareto|80/20|80%-20%\b": "pareto",
     r"回归|regression|线性分析|影响因素": "regression",
-    r"预测|predict|forecast|分类|random forest|随机森林": "prediction",
-    r"异常|anomaly|outlier|离群|孤立|3[σσ]|三倍标准差": "anomaly",
-    r"描述性|分布|基础统计|均值|方差|直方图|descriptive": "descriptive",
-    # ── 报表类（须在通用分析关键词之前匹配，防止被"预测"等截获） ──
-    r"OEE|oee|综合效率|设备效率|可用率.*性能|availability.*performance": "oee_report",
-    r"良率报表|良率分析|yield.*report|合格率报表|pass.*rate.*report|不良率.*报表|工站良率|站点良率": "yield_report",
-    r"良率|yield rate|合格率|pass rate|不良率|ng.*rate|报表" : "yield_report",
+    r"预测|predict|forecast|random forest|随机森林": "prediction",
+    r"异常检测|anomaly|outlier|离群|孤立|3[σσ]|三倍标准差": "anomaly",
+    r"描述性统计|基础统计|descriptive stats": "descriptive",
+    r"OEE|综合效率|设备效率": "oee_report",
 }
 
 
-def _quick_classify(user_input: str) -> str | None:
-    """关键词快速分类，返回方法名或 None（须走 LLM）。"""
-    for pattern, method in _KEYWORD_MAP.items():
+def _quick_analysis_classify(user_input: str) -> str | None:
+    """高置信度关键词匹配 → 统计分析方法名，或 None。"""
+    for pattern, method in _ANALYSIS_KEYWORD_MAP.items():
         if re.search(pattern, user_input, re.IGNORECASE):
             return method
     return None
 
 
-def _llm_classify(user_input: str) -> tuple[str, str, Dict[str, Any]]:
+# ── LLM 语义路由器 ─────────────────────────────────────────────────────────────
+
+
+def _llm_route(user_input: str) -> Dict[str, Any]:
     """
-    使用 LLM 从自然语言中提取分析意图。
+    中央语义路由器 — 用一次 LLM 调用决定走哪条处理路径。
+
+    路由决策（path 字段）:
+      "skill"     — 匹配到预定义指标 skill，携带 skill_name
+      "adhoc"     — 即席探索查询，ontology/mapping 提供数据字典，LLM 生成 SQL
+      "analysis"  — 统计分析方法（SPC/correlation/OEE 等），携带 method
+      "out_of_scope" — 超出系统语义覆盖范围
+
+    Returns: {"path": ..., "skill_name"?: ..., "method"?: ..., "reason": ...}
+    """
+    try:
+        from app.agent.llm import get_llm
+        from app.skills.loader import get_skill_loader
+
+        loader = get_skill_loader()
+        skills_text = "\n".join(
+            f"  - {s.skill_name}: {', '.join(s.zh_names[:5])}"
+            for s in loader.list_skills()
+        )
+
+        analysis_methods_text = "\n".join(
+            f"  - {m['name']}: {m['description']}" for m in list_methods()
+            if m["name"] not in ("metric_compute", "yield_report", "oee_report")
+        )
+
+        prompt = f"""你是一个半导体制造 MES 系统的查询路由器，负责将用户问题分发到正确的处理路径。
+
+可用指标 Skill（精确计算，有预定义方法论）:
+{skills_text}
+
+统计分析方法（探索性数据分析）:
+{analysis_methods_text}
+
+系统覆盖的业务领域: 半导体晶圆生产 MES，包括良率、在制品、载具、批次、设备、工站等。
+
+用户问题: "{user_input}"
+
+请判断应走哪条路径，以 JSON 返回：
+{{
+  "path": "skill",
+  "skill_name": "first_pass_yield",
+  "reason": "用户查询一次良率，匹配 first_pass_yield skill"
+}}
+或
+{{
+  "path": "adhoc",
+  "reason": "查询站点可用载具数量，需要即席 SQL 查询"
+}}
+或
+{{
+  "path": "analysis",
+  "method": "spc",
+  "reason": "用户要做 SPC 控制图分析"
+}}
+或
+{{
+  "path": "out_of_scope",
+  "reason": "问题与 MES 系统无关"
+}}
+
+判断规则：
+1. 如果问题明确提到 skill 列表中的指标名称或同义词 → skill
+2. 如果问题是查询统计分析（SPC/相关性/回归等）→ analysis
+3. 如果问题涉及 MES 业务数据查询但没有预定义 skill → adhoc
+4. 如果完全与 MES 无关 → out_of_scope
+
+只返回 JSON，不要其他内容。"""
+
+        llm = get_llm()
+        resp = llm.invoke(prompt)
+        content = resp.content if hasattr(resp, "content") else str(resp)
+
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if match:
+            data = json.loads(match.group())
+            path = data.get("path", "adhoc")
+            if path not in ("skill", "adhoc", "analysis", "out_of_scope"):
+                path = "adhoc"
+            return {
+                "path": path,
+                "skill_name": data.get("skill_name"),
+                "method": data.get("method"),
+                "reason": data.get("reason", "LLM 路由"),
+            }
+    except Exception as e:
+        logger.warning(f"[method_selector] _llm_route error: {e}")
+
+    # 兜底：走即席路径
+    return {"path": "adhoc", "reason": "路由失败，默认走即席路径"}
+
+
+def _llm_gen_adhoc_sql(user_input: str) -> Optional[Dict[str, Any]]:
+    """
+    即席路径：LLM CoT 推理 + SQL 生成。
+
+    LLM 接收:
+      - 系统数据字典（ontology 物理表目录）
+      - 预定义查询模板（query_patterns）
+      - 业务值域（状态码枚举）
+      - 用户问题
+
+    LLM 先做思维链推理（涉及几个实体、数据量、是否复杂），
+    然后生成可执行 SQL。
+
+    Returns: {"sql": ..., "tables_used": [...], "cot_summary": ...}
+             or None on failure
+    """
+    try:
+        from app.agent.llm import get_llm
+        from app.ontology.mapping import get_mapping
+
+        mapping = get_mapping()
+        table_catalog = mapping.build_table_catalog(max_tables=30)
+        value_summary = mapping.build_value_summary(max_domains=8)
+
+        # 检查是否有直接匹配的 query_pattern（直接给 LLM 作为参考模板）
+        matched_pattern = mapping.match_query_pattern(user_input)
+        pattern_hint = ""
+        if matched_pattern:
+            resolved_sql = mapping.resolve_sql_bindings(
+                matched_pattern.sql_template, matched_pattern.param_bindings
+            )
+            pattern_hint = f"""
+参考模板（类似查询的预定义 SQL，可以基于此调整）:
+目的: {matched_pattern.label_cn}
+SQL:
+{resolved_sql}
+"""
+
+        start_date, end_date = _extract_date_range(user_input)
+
+        prompt = f"""你是一个数据工程师，负责为半导体 MES 系统生成 SQL 查询。
+
+## 数据字典（可用物理表）
+{table_catalog}
+
+## 业务值域（状态码）
+{value_summary}
+{pattern_hint}
+## 时间上下文
+当前查询时间范围: {start_date} 至 {end_date}（如果用户指定了时间范围则使用用户指定的）
+
+## 用户问题
+"{user_input}"
+
+## 思考过程（请先分析，再生成 SQL）
+1. 这个问题涉及哪些实体/表？
+2. 需要 JOIN 吗？如果需要，通过哪个外键？
+3. 过滤条件是什么（状态码用上面的值域）？
+4. 是简单聚合还是复杂查询（窗口函数/子查询）？
+5. 预期数据量大不大？
+
+## 输出格式（JSON）
+{{
+  "cot_summary": "涉及 X 表，需要 JOIN Y 表，过滤条件 Z，简单 GROUP BY 聚合",
+  "sql": "SELECT ... FROM ... WHERE ... LIMIT 10000",
+  "tables_used": ["table1", "table2"],
+  "approach": "sql_aggregate"
+}}
+
+注意：
+- SQL 必须是 MySQL 语法，可以直接执行
+- 时间字段通常是 gmt_create 或 gmt_update
+- 加 LIMIT 防止大量数据返回（默认 10000 行）
+- 只返回 JSON"""
+
+        llm = get_llm()
+        resp = llm.invoke(prompt)
+        content = resp.content if hasattr(resp, "content") else str(resp)
+
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if match:
+            data = json.loads(match.group())
+            if data.get("sql"):
+                return {
+                    "sql": data["sql"],
+                    "tables_used": data.get("tables_used", []),
+                    "cot_summary": data.get("cot_summary", ""),
+                    "approach": data.get("approach", "sql"),
+                }
+    except Exception as e:
+        logger.warning(f"[method_selector] _llm_gen_adhoc_sql error: {e}")
+
+    return None
+
+
+def _llm_analysis_classify(user_input: str) -> Tuple[str, str, Dict[str, Any]]:
+    """
+    统计分析路径：LLM 从分析方法库中选择方法并提取参数。
     返回 (method_name, reason, params_hint)。
     """
-    from app.agent.llm import get_llm
+    try:
+        from app.agent.llm import get_llm
 
-    available = [f"  - {m['name']}: {m['description']}" for m in list_methods()]
-    methods_text = "\n".join(available)
+        available = [f"  - {m['name']}: {m['description']}" for m in list_methods()]
+        methods_text = "\n".join(available)
 
-    prompt = f"""你是一个数据分析专家，根据用户需求选择最合适的分析方法，并提取关键参数。
+        prompt = f"""你是一个数据分析专家，根据用户需求选择最合适的分析方法，并提取关键参数。
 
 可用分析方法：
 {methods_text}
@@ -74,12 +273,10 @@ def _llm_classify(user_input: str) -> tuple[str, str, Dict[str, Any]]:
 
 仅返回 JSON，不要其他内容。"""
 
-    llm = get_llm()
-    resp = llm.invoke(prompt)
-    content = resp.content if hasattr(resp, "content") else str(resp)
+        llm = get_llm()
+        resp = llm.invoke(prompt)
+        content = resp.content if hasattr(resp, "content") else str(resp)
 
-    try:
-        # 提取 JSON 块
         match = re.search(r"\{.*\}", content, re.DOTALL)
         if match:
             data = json.loads(match.group())
@@ -108,6 +305,10 @@ def _resolve_metric_context(user_input: str):
       - Mapping 不存公式/SQL 模板
       - Skill 不存物理表名/JOIN 路径
 
+    user_input 可以是:
+      - 用户自然语言（通过 zh_names 子串匹配）
+      - metric_id 直接字符串（如 "first_pass_yield"，先精确匹配）
+
     Returns: (MetricDefinition, SkillDefinition, MetricComputer) or (None, None, None)
     """
     try:
@@ -115,9 +316,11 @@ def _resolve_metric_context(user_input: str):
         from app.skills.loader import get_skill_loader
         from app.analytics.registry import get_metric
 
-        # 1. Ontology/Mapping 层：语义解析 → 物理数据源定位
+        # 1. Ontology/Mapping 层：先尝试 metric_id 精确匹配，再做 zh_names 子串匹配
         mapping = get_mapping()
-        metric_def = mapping.find_metric_by_name(user_input)
+        metric_def = mapping.get_metric_by_id(user_input)   # 精确匹配 metric_id
+        if not metric_def:
+            metric_def = mapping.find_metric_by_name(user_input)  # zh_names 模糊匹配
         if not metric_def:
             return None, None, None
 
@@ -360,107 +563,168 @@ def method_selector_node(state: AnalysisState) -> dict:
     """
     节点：分析方法选择。
 
-    信息流（三层各司其职，LLM 做编排）:
-      1. Ontology/Mapping: 语义解析 → MetricDefinition（表名、JOIN、过滤条件）
-      2. Skill: 计算方法论 → SkillDefinition（公式、业务定义、注意事项）
-      3. LLM 综合两层信息 → 编排 SQL + Python 计算方案
-      4. 关键词/LLM 兜底：非指标类分析（SPC/OEE 等）
+    四条路径，共享 ontology+mapping 层：
+
+      ① Skill 路径  (LLM 语义匹配到预定义 skill)
+            Mapping 物理信息 + Skill 方法论 → 确定性 SQL 编排 → Python metric_compute
+
+      ② 即席探索路径 (无匹配 skill，但在 MES 领域内)
+            Mapping 表目录 → LLM CoT 推理 + SQL 生成 → 直接返回数据
+
+      ③ 统计分析路径 (SPC / correlation / OEE 等)
+            关键词快速匹配 / LLM 从分析方法库选择 → AnalysisEngine 执行
+
+      ④ 超出范围  → 返回提示
 
     输入: user_input
-    输出: suggested_method, method_reason, method_params, data_source_config, skill_context
+    输出: suggested_method, method_reason, method_params, data_source_config,
+          skill_context, route_decision, adhoc_context
     """
     user_input = state.get("user_input", "")
     logger.info(f"[method_selector] input={user_input[:80]}...")
 
     data_source_config = state.get("data_source_config")
     skill_context: Dict[str, Any] | None = None
+    adhoc_context: str | None = None
     params: Dict[str, Any] = {}
     method = ""
     reason = ""
+    route_decision = "unknown"
 
-    # ── 1. 三层协同: Ontology(Mapping) + Skill + Registry ──
-    if not data_source_config:
-        metric_def, skill, computer = _resolve_metric_context(user_input)
+    # ── 快速路径：统计分析关键词（高置信度，无需 LLM 路由）──
+    fast_method = _quick_analysis_classify(user_input)
 
-        if metric_def and metric_def.compute_mode == "python_compute" and computer:
-            # python_compute: Mapping 提供物理信息，Skill 提供方法论，Python 执行计算
-            method = "metric_compute"
-            skill_desc = skill.standard_definition if skill else metric_def.description
-            reason = f"三层解析: '{metric_def.metric_id}' — {skill_desc}"
-            logger.info(
-                f"[method_selector] ontology+skill → metric_compute ({metric_def.metric_id})"
-            )
+    # ── 主路由：LLM 语义路由 ──
+    # 跳过条件：已有 data_source_config（前端显式传入），或已命中高置信度分析关键词
+    if not data_source_config and not fast_method:
+        route = _llm_route(user_input)
+        route_path = route.get("path", "adhoc")
+        route_reason = route.get("reason", "")
+        logger.info(f"[method_selector] LLM route → path={route_path}, reason={route_reason}")
 
-            # SQL 由 Mapping 物理信息 + Skill 方法论 编排
-            raw_sql = _build_metric_sql(metric_def, skill, user_input)
-            data_source_config = {"type": "sql", "sql": raw_sql, "limit": 100000}
-            params = {"metric_name": metric_def.metric_id}
+        # ── 路径①: Skill 路径 ──
+        if route_path == "skill":
+            skill_name = route.get("skill_name", "")
+            # _resolve_metric_context 通过 skill_name 或用户输入做三层解析
+            hint = skill_name or user_input
+            metric_def, skill, computer = _resolve_metric_context(hint)
 
-            # Skill 业务上下文（供下游节点 / LLM 响应使用）
-            if skill:
-                skill_context = {
-                    "skill_name": skill.skill_name,
-                    "standard_definition": skill.standard_definition,
-                    "formula": skill.formula,
-                    "granularity": skill.granularity,
-                    "body": skill.body,
+            if metric_def and metric_def.compute_mode == "python_compute" and computer:
+                method = "metric_compute"
+                skill_desc = skill.standard_definition if skill else metric_def.description
+                reason = f"[Skill路径] '{metric_def.metric_id}' — {skill_desc}"
+                route_decision = "skill"
+                logger.info(f"[method_selector] skill → metric_compute ({metric_def.metric_id})")
+
+                raw_sql = _build_metric_sql(metric_def, skill, user_input)
+                data_source_config = {"type": "sql", "sql": raw_sql, "limit": 100000}
+                params = {"metric_name": metric_def.metric_id}
+
+                if skill:
+                    skill_context = {
+                        "skill_name": skill.skill_name,
+                        "standard_definition": skill.standard_definition,
+                        "formula": skill.formula,
+                        "granularity": skill.granularity,
+                        "body": skill.body,
+                    }
+
+            elif metric_def and metric_def.compute_mode == "sql_aggregate":
+                method = "yield_report"
+                skill_desc = skill.standard_definition if skill else metric_def.description
+                reason = f"[Skill路径/聚合] '{metric_def.metric_id}'"
+                route_decision = "skill"
+
+                raw_sql = _build_metric_sql(metric_def, skill, user_input)
+                data_source_config = {"type": "sql", "sql": raw_sql, "limit": 10000}
+
+                if skill:
+                    skill_context = {
+                        "skill_name": skill.skill_name,
+                        "standard_definition": skill.standard_definition,
+                        "formula": skill.formula,
+                        "granularity": skill.granularity,
+                        "body": skill.body,
+                    }
+            else:
+                # Skill 路由但没找到对应 metric_def → 降级到即席路径
+                logger.warning(
+                    f"[method_selector] skill route for '{skill_name}' but no metric_def found, "
+                    "falling back to adhoc"
+                )
+                route_path = "adhoc"
+
+        # ── 路径②: 即席探索路径 ──
+        if route_path == "adhoc":
+            route_decision = "adhoc"
+            result = _llm_gen_adhoc_sql(user_input)
+            if result and result.get("sql"):
+                method = "adhoc_query"
+                reason = f"[即席路径] {result.get('cot_summary', 'LLM 生成 SQL')}"
+                adhoc_context = result.get("cot_summary", "")
+                data_source_config = {
+                    "type": "sql",
+                    "sql": result["sql"],
+                    "limit": 10000,
+                    "tables_used": result.get("tables_used", []),
                 }
+                logger.info(
+                    f"[method_selector] adhoc SQL generated, "
+                    f"tables={result.get('tables_used')}"
+                )
+            else:
+                # SQL 生成失败 → 兜底描述性统计
+                method = "descriptive"
+                reason = "[即席路径] SQL 生成失败，回退到描述性统计"
+                data_source_config = {"type": "data", "data": state.get("raw_data") or []}
 
-        elif metric_def and metric_def.compute_mode == "sql_aggregate":
-            # sql_aggregate: Mapping + Skill 编排出聚合 SQL
-            method = "yield_report"  # 保持兼容
-            skill_desc = skill.standard_definition if skill else metric_def.description
-            reason = f"三层解析(聚合): '{metric_def.metric_id}' — {skill_desc}"
-            logger.info(
-                f"[method_selector] ontology+skill → sql_aggregate ({metric_def.metric_id})"
-            )
+        # ── 路径③: LLM 选择统计分析方法 ──
+        elif route_path == "analysis":
+            route_decision = "analysis"
+            suggested_method = route.get("method")
+            if suggested_method:
+                method = suggested_method
+                reason = f"[统计分析] {route_reason}"
+            else:
+                method, reason, params = _llm_analysis_classify(user_input)
+                route_decision = "analysis"
 
-            raw_sql = _build_metric_sql(metric_def, skill, user_input)
-            data_source_config = {"type": "sql", "sql": raw_sql, "limit": 10000}
+        # ── 路径④: 超出范围 ──
+        elif route_path == "out_of_scope":
+            route_decision = "out_of_scope"
+            method = "out_of_scope"
+            reason = f"[超出范围] {route_reason}"
+            data_source_config = {"type": "data", "data": []}
 
-            if skill:
-                skill_context = {
-                    "skill_name": skill.skill_name,
-                    "standard_definition": skill.standard_definition,
-                    "formula": skill.formula,
-                    "granularity": skill.granularity,
-                    "body": skill.body,
-                }
+    # ── 高置信度统计分析关键词命中（跳过 LLM 路由）──
+    if fast_method and not method:
+        method = fast_method
+        reason = f"[快速匹配] 关键词命中 '{method}'"
+        route_decision = "analysis"
+        logger.info(f"[method_selector] fast keyword → {method}")
 
-    # ── 2. 关键词 + LLM 分类（三层未匹配时）──
+    # ── 最终兜底：如果所有路径都没设定 method ──
     if not method:
-        method = _quick_classify(user_input)
-        if method:
-            reason = f"关键词匹配: '{method}'"
-            logger.info(f"[method_selector] keyword match → {method}")
-        else:
-            try:
-                method, reason, params = _llm_classify(user_input)
-                logger.info(f"[method_selector] LLM suggest → {method}")
-            except Exception as e:
-                logger.error(f"[method_selector] LLM error: {e}")
-                method, reason, params = "descriptive", "默认使用描述性统计", {}
+        method = "descriptive"
+        reason = "默认描述性统计"
+        route_decision = "fallback"
 
-    # ── 3. 其余 data_source_config 构建 ──
+    # ── data_source_config 兜底构建（analysis 路径使用 raw_data 或预建 SQL）──
     if not data_source_config:
         if method == "yield_report":
             data_source_config = _build_yield_sql(user_input)
         elif method == "oee_report":
             data_source_config = _build_oee_sql(user_input)
         else:
-            data_source_config = {
-                "type": "data",
-                "data": state.get("raw_data") or [],
-            }
+            data_source_config = {"type": "data", "data": state.get("raw_data") or []}
 
-    # 4. 若方法需要 value_column 且尚未指定，从 raw_data 列名 + 用户输入关键词自动推断
+    # ── value_column 自动推断（SPC / correlation / anomaly / descriptive）──
     if method in ("spc", "correlation", "anomaly", "descriptive") and not params.get("value_column"):
         raw_data = state.get("raw_data") or []
         if raw_data and isinstance(raw_data[0], dict):
             cols = list(raw_data[0].keys())
 
             def _is_numeric(v: Any) -> bool:
-                """判断值是否为数值（含数值字符串，如 varchar 存储的测量值）。"""
                 if v is None:
                     return False
                 if isinstance(v, numbers.Number) and not isinstance(v, bool):
@@ -473,7 +737,6 @@ def method_selector_node(state: AnalysisState) -> dict:
                         return False
                 return False
 
-            # 排除计数/编码类列
             _EXCLUDE = ("数量", "count", "个数", "编码", "编号", "_id", "code", "id")
             candidate_cols = [
                 c for c in cols
@@ -481,7 +744,6 @@ def method_selector_node(state: AnalysisState) -> dict:
                 and not any(exc in c.lower() for exc in _EXCLUDE)
             ]
             detected = None
-            # 优先：从用户输入中提取量纲关键词（厚度、宽度、电阻等），匹配含该词且含"值/均"的列
             dim_match = re.search(
                 r"(厚度|宽度|深度|高度|长度|电阻|张力|压力|温度|湿度|粗糙度|应力"
                 r"|thickness|width|depth|height|resistance|pressure|temp)",
@@ -494,7 +756,6 @@ def method_selector_node(state: AnalysisState) -> dict:
                      if dim in c and any(kw in c for kw in ("值", "均", "value", "avg", "mean"))),
                     None,
                 ) or next((c for c in candidate_cols if dim in c), None)
-            # 退回：第一个含 "值"/"均"/"value" 关键词的数值列
             if detected is None:
                 _MEASURE_KEYWORDS = ("均值", "平均值", "测量值", "量测值", "value", "avg", "mean")
                 detected = next(
@@ -502,7 +763,6 @@ def method_selector_node(state: AnalysisState) -> dict:
                      if any(kw in c.lower() for kw in _MEASURE_KEYWORDS)),
                     None,
                 )
-            # 最后退回：第一个候选数值列
             if detected is None:
                 detected = candidate_cols[0] if candidate_cols else None
             if detected:
@@ -515,6 +775,8 @@ def method_selector_node(state: AnalysisState) -> dict:
         "method_params": params,
         "data_source_config": data_source_config,
         "skill_context": skill_context,
+        "route_decision": route_decision,
+        "adhoc_context": adhoc_context,
     }
 
 

@@ -137,6 +137,22 @@ class MetricDefinition:
     compute_mode: str = "sql_aggregate"  # "sql_aggregate" | "python_compute"
 
 
+@dataclass
+class QueryPattern:
+    """即席查询模板 — 来自 mapping JSON 的 query_patterns 节。
+
+    代表一类频繁出现的业务查询，通过 nl_triggers 匹配用户意图，
+    直接返回 sql_template（填入 param_bindings 后可执行）。
+    """
+    intent: str
+    label_cn: str
+    nl_triggers: List[str]
+    sql_template: str
+    param_bindings: Dict[str, str] = field(default_factory=dict)
+    tables: List[str] = field(default_factory=list)
+    note: Optional[str] = None
+
+
 # --------------------------------------------------------------------- #
 # MappingDictionary
 # --------------------------------------------------------------------- #
@@ -269,6 +285,7 @@ class MappingDictionary:
         self._value_map: Dict[str, Dict[str, ValueMapping]] = {}     # "semi:WaferState" -> {"WIP": ValueMapping}
         self._business_rules: List[BusinessRule] = []
         self._metrics: Dict[str, MetricDefinition] = {}              # Phase 2: "wafer_wip" → MetricDefinition
+        self._query_patterns: List[QueryPattern] = []               # 即席查询模板列表
 
         self._load()
 
@@ -285,6 +302,7 @@ class MappingDictionary:
         self._parse_value_mappings(self._raw.get("value_mappings", {}))
         self._parse_business_rules(self._raw.get("business_rules", []))
         self._parse_metrics(self._raw.get("metric_definitions", {}))
+        self._parse_query_patterns(self._raw.get("query_patterns", []))
 
     def _parse_object_mappings(self, items: List[Dict]) -> None:
         for item in items:
@@ -506,6 +524,20 @@ class MappingDictionary:
                 compute_mode=md.get("compute_mode", "sql_aggregate"),
             )
 
+    def _parse_query_patterns(self, items: List[Dict]) -> None:
+        """解析 query_patterns 节 — 即席查询模板（nl_triggers + sql_template）"""
+        for item in items:
+            qp = QueryPattern(
+                intent=item.get("intent", ""),
+                label_cn=item.get("label_cn", ""),
+                nl_triggers=item.get("nl_triggers", []),
+                sql_template=item.get("sql_template", ""),
+                param_bindings=item.get("param_bindings", {}),
+                tables=item.get("tables", []),
+                note=item.get("note"),
+            )
+            self._query_patterns.append(qp)
+
     # ----------------------------------------------------------------- #
     # 1. 逻辑类 → 物理表
     # ----------------------------------------------------------------- #
@@ -702,6 +734,108 @@ class MappingDictionary:
     def list_all_metrics(self) -> List["MetricDefinition"]:
         """Phase 2: 返回所有指标定义"""
         return list(self._metrics.values())
+
+    def get_metric_by_id(self, metric_id: str) -> Optional["MetricDefinition"]:
+        """Phase 2: 按 metric_id 精确查找指标定义（e.g. 'first_pass_yield'）"""
+        return self._metrics.get(metric_id)
+
+    def match_query_pattern(self, user_input: str) -> Optional["QueryPattern"]:
+        """
+        在 query_patterns 的 nl_triggers 中做关键词匹配（即席查询快速路径）。
+
+        匹配逻辑：任意一个 nl_trigger 出现在用户输入中则命中，优先选最多 triggers 命中的。
+        """
+        best: Optional[QueryPattern] = None
+        best_score = 0
+        q = user_input.lower()
+        for qp in self._query_patterns:
+            hits = sum(1 for t in qp.nl_triggers if t.lower() in q)
+            if hits > best_score:
+                best = qp
+                best_score = hits
+        return best if best_score > 0 else None
+
+    def resolve_sql_bindings(self, sql_template: str, param_bindings: Dict[str, str]) -> str:
+        """
+        将 sql_template 中的 {ParamName} 占位符替换为实际值。
+
+        param_bindings 格式:
+          "CarrierAvailableStatus": "value_mappings.semi:CarrierMaintenanceStatus.Available"
+
+        解析路径: "value_mappings.<domain>.<key>" → 查询 self._value_map → physical_values[0]
+        """
+        import re as _re
+        result = sql_template
+        for param, path in param_bindings.items():
+            value = None
+            if path.startswith("value_mappings."):
+                # "value_mappings.semi:CarrierMaintenanceStatus.Available"
+                rest = path[len("value_mappings."):]
+                # 按最后一个 '.' 分割 domain 和 key
+                last_dot = rest.rfind(".")
+                if last_dot > 0:
+                    domain = rest[:last_dot]
+                    key = rest[last_dot + 1:]
+                    vm = self.map_value(domain, key)
+                    if vm and vm.physical_values:
+                        value = vm.physical_values[0]
+                    elif vm and vm.physical_condition:
+                        # 从条件中提取数值, e.g. "status = 1" → "1"
+                        m = _re.search(r'=\s*(-?\d+)', vm.physical_condition)
+                        if m:
+                            value = m.group(1)
+            if value is not None:
+                result = result.replace(f"{{{param}}}", str(value))
+        return result
+
+    def build_table_catalog(self, max_tables: int = 25) -> str:
+        """
+        为 LLM 构建物理表目录字符串（即席路径 context 构建）。
+
+        格式:
+          - <table_name>: <label_cn>  # <note 摘要>
+            关键列: col1, col2, ...
+
+        按表名字母序返回，跳过虚拟表，最多 max_tables 条。
+        """
+        lines = []
+        tables = sorted(
+            [t for t in self.list_physical_tables()],
+            key=lambda t: t.table_name or ""
+        )[:max_tables]
+        for t in tables:
+            if not t.table_name:
+                continue
+            note_snippet = (t.note or "")[:80].replace("\n", " ")
+            key_cols = ", ".join(t.key_columns[:8]) if t.key_columns else ""
+            line = f"- {t.table_name}: {t.label_cn}"
+            if note_snippet:
+                line += f"  # {note_snippet}"
+            if key_cols:
+                line += f"\n  关键列: {key_cols}"
+            lines.append(line)
+        return "\n".join(lines)
+
+    def build_value_summary(self, max_domains: int = 10) -> str:
+        """
+        为 LLM 构建业务枚举值摘要（状态码、类型码等）。
+
+        格式:
+          <domain>:
+            <key>=<physical_value>  # <description>
+        """
+        lines = []
+        for domain, values in list(self._value_map.items())[:max_domains]:
+            if not values:
+                continue
+            domain_label = domain.replace("semi:", "")
+            domain_lines = [f"{domain_label}:"]
+            for k, vm in list(values.items())[:6]:
+                phys = vm.physical_values[0] if vm.physical_values else vm.physical_condition or "?"
+                desc = vm.description or vm.name or ""
+                domain_lines.append(f"  {k}={phys}  # {desc[:50]}")
+            lines.extend(domain_lines)
+        return "\n".join(lines)
 
     # ----------------------------------------------------------------- #
     # 4. 业务规则

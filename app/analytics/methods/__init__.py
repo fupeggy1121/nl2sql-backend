@@ -12,6 +12,7 @@ from app.analytics.methods import anomaly  # noqa: F401
 from app.analytics.methods import yield_report  # noqa: F401
 from app.analytics.methods import oee_report  # noqa: F401
 from app.analytics.methods import metric_compute  # noqa: F401
+from app.analytics.methods import adhoc_query  # noqa: F401
 
 # 导入指标计算器模块，触发 @register_metric 装饰器注册
 import app.analytics.metrics  # noqa: F401

@@ -43,6 +43,10 @@ class AnalysisState(TypedDict, total=False):
     # ── 技能上下文 ──
     skill_context: Optional[Dict[str, Any]]  # 匹配到的 Skill 业务定义（供下游节点及 LLM 使用）
 
+    # ── 路由决策 ──
+    route_decision: str   # "skill" | "adhoc" | "analysis" | "out_of_scope" | "fallback"
+    adhoc_context: Optional[str]  # 即席路径 LLM CoT 推理摘要
+
     # ── 最终输出 ──
     answer: str                          # 自然语言回答文本
     response: Dict[str, Any]             # 标准化响应（与 Query Agent 格式兼容）
