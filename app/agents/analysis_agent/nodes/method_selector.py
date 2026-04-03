@@ -171,20 +171,6 @@ def _llm_gen_adhoc_sql(user_input: str) -> Optional[Dict[str, Any]]:
         table_catalog = mapping.build_table_catalog(max_tables=30)
         value_summary = mapping.build_value_summary(max_domains=8)
 
-        # 检查是否有直接匹配的 query_pattern（直接给 LLM 作为参考模板）
-        matched_pattern = mapping.match_query_pattern(user_input)
-        pattern_hint = ""
-        if matched_pattern:
-            resolved_sql = mapping.resolve_sql_bindings(
-                matched_pattern.sql_template, matched_pattern.param_bindings
-            )
-            pattern_hint = f"""
-参考模板（类似查询的预定义 SQL，可以基于此调整）:
-目的: {matched_pattern.label_cn}
-SQL:
-{resolved_sql}
-"""
-
         start_date, end_date = _extract_date_range(user_input)
 
         prompt = f"""你是一个数据工程师，负责为半导体 MES 系统生成 SQL 查询。
@@ -194,7 +180,7 @@ SQL:
 
 ## 业务值域（状态码）
 {value_summary}
-{pattern_hint}
+
 ## 时间上下文
 当前查询时间范围: {start_date} 至 {end_date}（如果用户指定了时间范围则使用用户指定的）
 
