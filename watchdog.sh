@@ -11,8 +11,11 @@ LOG_FILE="$LOG_DIR/backend.log"
 PID_FILE="$LOG_DIR/backend.pid"
 PYTHON="$SCRIPT_DIR/.venv/bin/python"
 START_CMD="$PYTHON run.py"
-RESTART_DELAY=3  # 崩溃后等待 N 秒再重启
-BACKEND_PORT="${PORT:-8000}"  # 与 run.py 保持一致
+RESTART_DELAY=3              # 崩溃后等待 N 秒再重启
+BACKEND_PORT="${PORT:-8000}" # 与 run.py 保持一致
+HEALTH_CHECK_INTERVAL=15     # 每 N 秒做一次 HTTP 健康检查
+HEALTH_CHECK_TIMEOUT=3       # 单次健康检查超时秒数
+HEALTH_CHECK_URL="http://127.0.0.1:${BACKEND_PORT}/docs"
 
 mkdir -p "$LOG_DIR"
 
@@ -59,12 +62,32 @@ while true; do
   echo "$BACKEND_PID" > "$PID_FILE"
   log "后端进程已启动 (PID=$BACKEND_PID)"
 
-  # 等待子进程退出
-  if wait "$BACKEND_PID"; then
+  # 后台健康检查：uvicorn reload 模式下 reloader 进程不会崩溃
+  # 但 worker 子进程可能已死（HTTP 超时），需主动探测并杀掉僵死 reloader
+  (
+    sleep 20  # 等待初始启动完成
+    while kill -0 "$BACKEND_PID" 2>/dev/null; do
+      sleep "$HEALTH_CHECK_INTERVAL"
+      if ! kill -0 "$BACKEND_PID" 2>/dev/null; then break; fi
+      HTTP_CODE=$(curl -sm "$HEALTH_CHECK_TIMEOUT" -o /dev/null -w "%{http_code}" "$HEALTH_CHECK_URL" 2>/dev/null || echo "000")
+      if [[ "$HTTP_CODE" == "000" ]]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] 健康检查失败 (HTTP=$HTTP_CODE)，杀掉僵死 reloader PID=$BACKEND_PID" >> "$LOG_FILE"
+        kill -9 "$BACKEND_PID" 2>/dev/null || true
+        break
+      fi
+    done
+  ) &
+  HEALTH_PID=$!
+
+  # 等待主进程退出
+  if wait "$BACKEND_PID" 2>/dev/null; then
     EXIT_CODE=0
   else
     EXIT_CODE=$?
   fi
+
+  # 清理健康检查子shell
+  kill "$HEALTH_PID" 2>/dev/null || true
 
   log "后端进程退出 (PID=$BACKEND_PID, ExitCode=$EXIT_CODE)"
   rm -f "$PID_FILE"
