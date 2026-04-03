@@ -343,7 +343,12 @@ def _resolve_metric_context(user_input: str):
 # ── LLM 编排 SQL（skill 路径，替代确定性 _build_metric_sql）─────────────────
 
 # 灰度开关：metric_id 在此集合内才走 LLM 路径，其余 fallback 到确定性生成
-_LLM_SQL_ENABLED_METRICS: set = {"wafer_wip"}
+_LLM_SQL_ENABLED_METRICS: set = {
+    "wafer_wip",          # sql_agg  — L1+L2 verified
+    "rework_rate",        # python_compute — L1+L2+L3 verified
+    "first_pass_yield",   # python_compute — L1+L2+L3 verified
+    "final_yield",        # python_compute — L1+L2+L3 verified
+}
 
 
 def _llm_build_aggregate_sql(metric_def, skill, user_input: str) -> Optional[str]:
@@ -449,9 +454,29 @@ def _llm_build_detail_sql(metric_def, skill, user_input: str) -> Optional[str]:
 {skill.body}
 """
 
+        # required_columns 硬约束：Python Computer 依赖的列，LLM 必须全部 SELECT
+        req_cols_block = ""
+        if skill and skill.required_columns:
+            col_lines = []
+            for col in skill.required_columns:
+                if col == "rn":
+                    order = skill.rn_order or "ASC"
+                    col_lines.append(
+                        f"  - rn   （必须用 ROW_NUMBER() OVER "
+                        f"(PARTITION BY wafer_id, process_code ORDER BY gmt_create {order}) AS rn）"
+                    )
+                elif col == "report_date":
+                    col_lines.append("  - report_date   （必须用 DATE(gmt_create) AS report_date）")
+                else:
+                    col_lines.append(f"  - {col}")
+            req_cols_block = (
+                "\n## Python Computer 必须列（SELECT 中必须包含，列名须完全一致）\n"
+                + "\n".join(col_lines) + "\n"
+            )
+
         prompt = f"""{skill_block}
 {metric_context}
-
+{req_cols_block}
 ## 业务值域（状态码枚举）
 {value_summary}
 
@@ -466,6 +491,7 @@ def _llm_build_detail_sql(metric_def, skill, user_input: str) -> Optional[str]:
 后续 Python 程序将读取这些明细行并完成指标计算，SQL 不做指标聚合。
 
 要求：
+- SELECT 中必须包含"Python Computer 必须列"中的所有列（列名须与列表完全一致）
 - 返回计算所需的原始明细行（行级数据）
 - 必须应用"自动过滤条件"中的所有 WHERE 条件
 - 时间范围过滤用 gmt_create BETWEEN 或 >= / <=

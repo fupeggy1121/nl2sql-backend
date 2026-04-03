@@ -11,6 +11,15 @@ zh_names:
 compute_mode: python_compute
 standard_definition: "一次良率 = 首次检验合格晶圆数 / 首次检验总晶圆数 × 100%"
 formula: "good_count(rn=1 ASC, wafer_type='good', ng_code IS NULL) / total_count(rn=1) * 100"
+required_columns:
+  - wafer_id
+  - process_code
+  - wafer_type
+  - ng_code
+  - rn
+  - product_code
+  - report_date
+rn_order: ASC
 granularity:
   - daily
   - by_process

@@ -8,6 +8,11 @@ zh_names:
 compute_mode: python_compute
 standard_definition: "返工率 = 返工晶圆数 / 总晶圆数 × 100%"
 formula: "count(visit_count > 1) / total_count * 100"
+required_columns:
+  - wafer_id
+  - process_code
+  - product_code
+  - report_date
 granularity:
   - daily
   - by_process
