@@ -14,6 +14,7 @@ zh_names:
   - 工序良率
   - 批次良率
 compute_mode: python_compute
+compute_tool: final_yield_computer
 standard_definition: "综合良率 = 最终检验合格晶圆数 / 最终检验总晶圆数 × 100%"
 formula: "good_count(rn=1 DESC, wafer_type='good', ng_code IS NULL) / total_count(rn=1 DESC) * 100"
 required_columns:

@@ -16,11 +16,22 @@ import pandas as pd
 
 from app.analytics.metrics.base import MetricComputer, MetricResult
 from app.analytics.registry import register_metric
+from app.analytics.tool_registry import register_compute_tool
 
 logger = logging.getLogger(__name__)
 
 
 @register_metric
+@register_compute_tool(
+    name="rework_rate_computer",
+    description=(
+        "计算返工率 (Rework Rate)。"
+        "按 (wafer_id, process_code) 统计每片晶圆在每个工站的访问次数，"
+        "visit_count > 1 即为返工，公式: 返工晶圆数 / 总晶圆数 × 100%。"
+        "适用场景: 统计各工站/产品/日期的晶圆返工比例，反映工艺稳定性。"
+    ),
+    input_schema=["wafer_id", "process_code", "product_code", "report_date"],
+)
 class ReworkRateComputer(MetricComputer):
     metric_name = "rework_rate"
     skill_name = "rework_rate"

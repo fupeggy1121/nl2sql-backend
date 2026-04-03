@@ -33,6 +33,7 @@ class SkillDefinition:
     skill_name: str
     zh_names: List[str] = field(default_factory=list)
     compute_mode: str = "python_compute"
+    compute_tool: str = ""                                      # 对应 tool_registry 中的工具名
     standard_definition: str = ""
     formula: str = ""
     granularity: List[str] = field(default_factory=list)
@@ -258,8 +259,9 @@ class SkillLoader:
 
         # 已知字段（仅方法论相关，不含物理数据源字段）
         known_keys = {
-            "skill_name", "zh_names", "compute_mode", "standard_definition",
-            "formula", "granularity", "required_columns", "rn_order",
+            "skill_name", "zh_names", "compute_mode", "compute_tool",
+            "standard_definition", "formula", "granularity",
+            "required_columns", "rn_order",
         }
         extra = {k: v for k, v in meta.items() if k not in known_keys}
 
@@ -267,6 +269,7 @@ class SkillLoader:
             skill_name=skill_name,
             zh_names=meta.get("zh_names", []),
             compute_mode=meta.get("compute_mode", "python_compute"),
+            compute_tool=meta.get("compute_tool", ""),
             standard_definition=meta.get("standard_definition", ""),
             formula=meta.get("formula", ""),
             granularity=meta.get("granularity", []),

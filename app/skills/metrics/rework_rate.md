@@ -6,6 +6,7 @@ zh_names:
   - rework rate
   - 返工比例
 compute_mode: python_compute
+compute_tool: rework_rate_computer
 standard_definition: "返工率 = 返工晶圆数 / 总晶圆数 × 100%"
 formula: "count(visit_count > 1) / total_count * 100"
 required_columns:

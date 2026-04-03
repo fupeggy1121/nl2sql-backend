@@ -16,11 +16,22 @@ import pandas as pd
 
 from app.analytics.metrics.base import MetricComputer, MetricResult
 from app.analytics.registry import register_metric
+from app.analytics.tool_registry import register_compute_tool
 
 logger = logging.getLogger(__name__)
 
 
 @register_metric
+@register_compute_tool(
+    name="final_yield_computer",
+    description=(
+        "计算综合良率 (Final Yield)。"
+        "筛选 rn=1（DESC，末次出站）的晶圆，判定 wafer_type='good' 且 ng_code 为空为合格，"
+        "公式: 末次出站合格晶圆数 / 末次出站总晶圆数 × 100%。"
+        "适用场景: 统计各工站/产品/日期的最终出站合格率（不含返工后恢复的晶圆）。"
+    ),
+    input_schema=["wafer_id", "process_code", "wafer_type", "ng_code", "rn", "product_code", "report_date"],
+)
 class FinalYieldComputer(MetricComputer):
     metric_name = "final_yield"
     skill_name = "final_yield"

@@ -9,6 +9,7 @@ zh_names:
   - 首次良率
   - 一次通过率
 compute_mode: python_compute
+compute_tool: first_pass_yield_computer
 standard_definition: "一次良率 = 首次检验合格晶圆数 / 首次检验总晶圆数 × 100%"
 formula: "good_count(rn=1 ASC, wafer_type='good', ng_code IS NULL) / total_count(rn=1) * 100"
 required_columns:

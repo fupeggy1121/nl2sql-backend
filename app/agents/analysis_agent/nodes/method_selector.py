@@ -817,6 +817,7 @@ def method_selector_node(state: AnalysisState) -> dict:
                 if skill:
                     skill_context = {
                         "skill_name": skill.skill_name,
+                        "compute_tool": skill.compute_tool,
                         "standard_definition": skill.standard_definition,
                         "formula": skill.formula,
                         "granularity": skill.granularity,
@@ -835,6 +836,7 @@ def method_selector_node(state: AnalysisState) -> dict:
                 if skill:
                     skill_context = {
                         "skill_name": skill.skill_name,
+                        "compute_tool": skill.compute_tool,
                         "standard_definition": skill.standard_definition,
                         "formula": skill.formula,
                         "granularity": skill.granularity,
