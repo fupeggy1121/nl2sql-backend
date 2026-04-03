@@ -1028,6 +1028,20 @@ def method_selector_node(state: AnalysisState) -> dict:
 
 # ── SQL 模板构建器 ────────────────────────────────────────────────────────────
 
+def _normalize_cn_numerals(text: str) -> str:
+    """
+    Replace single-character Chinese digit words with ASCII digits.
+    Covers the common range used in time expressions like "最近两个星期"、"最近三天"。
+    十 is intentionally left out (not used in time span patterns we handle).
+    """
+    _TABLE = {"零": "0", "一": "1", "二": "2", "两": "2",
+              "三": "3", "四": "4", "五": "5", "六": "6",
+              "七": "7", "八": "8", "九": "9"}
+    for cn, ar in _TABLE.items():
+        text = text.replace(cn, ar)
+    return text
+
+
 def _has_date_filter(sql: str) -> bool:
     """
     检测 SQL 是否已包含日期/时间过滤条件（gmt_create / gmt_update / report_date）。
@@ -1086,7 +1100,7 @@ def _extract_date_range(user_input: str) -> tuple[str, str]:
     if re.search(r"本月|this\s*month", user_input, re.IGNORECASE):
         start = today.replace(day=1)
         return str(start), str(today)
-    if re.search(r"上月|last\s*month", user_input, re.IGNORECASE):
+    if re.search(r"上个?月|last\s*month", user_input, re.IGNORECASE):
         first_of_this = today.replace(day=1)
         last_of_prev = first_of_this - timedelta(days=1)
         start = last_of_prev.replace(day=1)
@@ -1108,18 +1122,21 @@ def _extract_date_range(user_input: str) -> tuple[str, str]:
     if re.search(r"最近一年|过去一年", user_input, re.IGNORECASE):
         return str(today - timedelta(days=364)), str(today)
 
-    n_days_match = re.search(r"最近\s*(\d+)\s*天", user_input)
+    # 将中文数字字符转换为 ASCII 数字，使正则 \d+ 能匹配「最近两个星期」「最近三天」等
+    user_input_norm = _normalize_cn_numerals(user_input)
+
+    n_days_match = re.search(r"最近\s*(\d+)\s*天", user_input_norm)
     if n_days_match:
         n = int(n_days_match.group(1))
         return str(today - timedelta(days=n - 1)), str(today)
 
     # 「最近N周」/「最近N个星期」或「最近N个月」（数字形式）
-    n_weeks_match = re.search(r"最近\s*(\d+)\s*(?:周|个星期)", user_input)
+    n_weeks_match = re.search(r"最近\s*(\d+)\s*(?:周|个星期)", user_input_norm)
     if n_weeks_match:
         n = int(n_weeks_match.group(1))
         return str(today - timedelta(days=n * 7 - 1)), str(today)
 
-    n_months_match = re.search(r"最近\s*(\d+)\s*个?月", user_input)
+    n_months_match = re.search(r"最近\s*(\d+)\s*个?月", user_input_norm)
     if n_months_match:
         n = int(n_months_match.group(1))
         return str(today - timedelta(days=n * 30 - 1)), str(today)
