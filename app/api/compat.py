@@ -485,7 +485,7 @@ async def list_skills():
                     "skill_name": s.skill_name,
                     "zh_names": s.zh_names,
                     "compute_mode": s.compute_mode,
-                    "anchor_table": s.anchor_table,
+                    "anchor_table": s.extra.get("anchor_table", ""),
                     "standard_definition": s.standard_definition,
                     "source_file": s.source_file,
                 }
