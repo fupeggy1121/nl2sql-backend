@@ -297,48 +297,33 @@ def _llm_analysis_classify(user_input: str) -> Tuple[str, str, Dict[str, Any]]:
 # ── 三层解析: ontology → mapping → skill ──────────────────────────────────────
 
 
-def _resolve_metric_context(user_input: str):
+def _resolve_skill_context(user_input: str):
     """
-    三层协同解析：
-      1. Ontology/Mapping 层 → MetricDefinition（物理表、JOIN 路径、过滤条件）
-      2. Skill 层 → SkillDefinition（计算方法论：公式、业务定义、注意事项）
-      3. Registry → MetricComputer（Python 计算实例）
-
-    三层各司其职，互不越界：
-      - Mapping 不存公式/SQL 模板
-      - Skill 不存物理表名/JOIN 路径
+    Skill 层解析：通过 skill_name 精确匹配或 zh_names 子串匹配找到 SkillDefinition，
+    并加载对应的 MetricComputer（仅 python_compute 指标需要）。
 
     user_input 可以是:
+      - metric_id / skill_name（如 "first_pass_yield"，精确匹配）
       - 用户自然语言（通过 zh_names 子串匹配）
-      - metric_id 直接字符串（如 "first_pass_yield"，先精确匹配）
 
-    Returns: (MetricDefinition, SkillDefinition, MetricComputer) or (None, None, None)
+    Returns: (SkillDefinition, MetricComputer) or (None, None)
     """
     try:
-        from app.ontology.mapping import get_mapping
         from app.skills.loader import get_skill_loader
         from app.analytics.registry import get_metric
 
-        # 1. Ontology/Mapping 层：先尝试 metric_id 精确匹配，再做 zh_names 子串匹配
-        mapping = get_mapping()
-        metric_def = mapping.get_metric_by_id(user_input)   # 精确匹配 metric_id
-        if not metric_def:
-            metric_def = mapping.find_metric_by_name(user_input)  # zh_names 模糊匹配
-        if not metric_def:
-            return None, None, None
-
-        metric_id = metric_def.metric_id
-
-        # 2. Skill 层：计算方法论加载
         loader = get_skill_loader()
-        skill = loader.get_skill(metric_id)
-        # 也尝试 zh_names 匹配（覆盖 skill_name 与 metric_id 不同的场景）
+        skill = loader.get_skill(user_input)
         if not skill:
             skill = loader.find_by_zh_name(user_input)
+        if not skill:
+            return None, None
 
-        # 3. Registry: MetricComputer（仅 python_compute 有）
+        metric_id = skill.skill_name
+
+        # MetricComputer（仅 python_compute 有）
         computer = None
-        if metric_def.compute_mode == "python_compute":
+        if skill.compute_mode == "python_compute":
             computer = get_metric(metric_id)
             if not computer:
                 logger.warning(
@@ -348,39 +333,30 @@ def _resolve_metric_context(user_input: str):
 
         logger.info(
             f"[method_selector] resolved: metric={metric_id}, "
-            f"skill={'✓' if skill else '✗'}, computer={'✓' if computer else '✗'}"
+            f"skill=✓, computer={'✓' if computer else '✗'}"
         )
-        return metric_def, skill, computer
+        return skill, computer
 
     except Exception as e:
-        logger.warning(f"[method_selector] _resolve_metric_context error: {e}")
-        return None, None, None
+        logger.warning(f"[method_selector] _resolve_skill_context error: {e}")
+        return None, None
 
 
-# ── LLM 编排 SQL（skill 路径，替代确定性 _build_metric_sql）─────────────────
 
-# 灰度开关：metric_id 在此集合内才走 LLM 路径，其余 fallback 到确定性生成
-_LLM_SQL_ENABLED_METRICS: set = {
-    "wafer_wip",          # sql_agg  — L1+L2 verified
-    "rework_rate",        # python_compute — L1+L2+L3 verified
-    "first_pass_yield",   # python_compute — L1+L2+L3 verified
-    "final_yield",        # python_compute — L1+L2+L3 verified
-}
-
-
-def _llm_build_aggregate_sql(metric_def, skill, user_input: str) -> Optional[str]:
+def _llm_build_aggregate_sql(skill, user_input: str) -> Optional[str]:
     """
-    sql_aggregate 模式：LLM 读取 Skill 方法论 + Mapping 物理上下文，生成聚合 SQL。
+    sql_aggregate 模式：LLM 读取 Skill 方法论 + Mapping 实体上下文，生成聚合 SQL。
 
     Prompt 结构与 _llm_build_detail_sql 完全独立，不出现"明细"/"不要 GROUP BY"等词。
-    失败时返回 None，调用方 fallback 到 _build_metric_sql()。
+    失败时返回 None。
     """
     try:
         from app.agent.llm import get_llm
         from app.ontology.mapping import get_mapping
 
         mapping = get_mapping()
-        metric_context = mapping.build_metric_context(metric_def)
+        metric_context = mapping.build_entity_context(skill.required_entities if skill else [])
+        skill_id = skill.skill_name if skill else '?'
         value_summary = mapping.build_value_summary(max_domains=6)
         today = datetime.now().date()
         fallback_start, fallback_end = _extract_date_range(user_input)
@@ -440,7 +416,7 @@ def _llm_build_aggregate_sql(metric_def, skill, user_input: str) -> Optional[str
             if sql:
                 if not _has_date_filter(sql):
                     logger.warning(
-                        f"[method_selector] LLM aggregate SQL for '{metric_def.metric_id}' "
+                        f"[method_selector] LLM aggregate SQL for '{skill_id}' "
                         f"has no date filter — injecting fallback range "
                         f"{fallback_start} ~ {fallback_end}"
                     )
@@ -452,7 +428,7 @@ def _llm_build_aggregate_sql(metric_def, skill, user_input: str) -> Optional[str
                         r"(\bLIMIT\b)", fallback_clause + r" \1", sql, count=1, flags=re.IGNORECASE
                     ) if re.search(r'\bLIMIT\b', sql, re.IGNORECASE) else sql + fallback_clause
                 logger.info(
-                    f"[method_selector] LLM aggregate SQL for '{metric_def.metric_id}': "
+                    f"[method_selector] LLM aggregate SQL for '{skill_id}': "
                     f"dims={data.get('groupby_dims')}, reason={data.get('reason')}"
                 )
                 return sql
@@ -461,19 +437,20 @@ def _llm_build_aggregate_sql(metric_def, skill, user_input: str) -> Optional[str
     return None
 
 
-def _llm_build_detail_sql(metric_def, skill, user_input: str) -> Optional[str]:
+def _llm_build_detail_sql(skill, user_input: str) -> Optional[str]:
     """
     python_compute 模式：LLM 生成明细查询 SQL（计算由 Python MetricComputer 执行）。
 
     Prompt 结构与 _llm_build_aggregate_sql 完全独立，不出现聚合/GROUP BY 相关词。
-    失败时返回 None，调用方 fallback 到 _build_metric_sql()。
+    失败时返回 None。
     """
     try:
         from app.agent.llm import get_llm
         from app.ontology.mapping import get_mapping
 
         mapping = get_mapping()
-        metric_context = mapping.build_metric_context(metric_def)
+        metric_context = mapping.build_entity_context(skill.required_entities if skill else [])
+        skill_id = skill.skill_name if skill else '?'
         value_summary = mapping.build_value_summary(max_domains=6)
         today = datetime.now().date()
         fallback_start, fallback_end = _extract_date_range(user_input)
@@ -553,7 +530,7 @@ def _llm_build_detail_sql(metric_def, skill, user_input: str) -> Optional[str]:
             if sql:
                 if not _has_date_filter(sql):
                     logger.warning(
-                        f"[method_selector] LLM detail SQL for '{metric_def.metric_id}' "
+                        f"[method_selector] LLM detail SQL for '{skill_id}' "
                         f"has no date filter — injecting fallback range "
                         f"{fallback_start} ~ {fallback_end}"
                     )
@@ -565,7 +542,7 @@ def _llm_build_detail_sql(metric_def, skill, user_input: str) -> Optional[str]:
                         r"(\bLIMIT\b)", fallback_clause + r" \1", sql, count=1, flags=re.IGNORECASE
                     ) if re.search(r'\bLIMIT\b', sql, re.IGNORECASE) else sql + fallback_clause
                 logger.info(
-                    f"[method_selector] LLM detail SQL for '{metric_def.metric_id}': "
+                    f"[method_selector] LLM detail SQL for '{skill_id}': "
                     f"cols={data.get('key_columns')}, reason={data.get('reason')}"
                 )
                 return sql
@@ -574,233 +551,19 @@ def _llm_build_detail_sql(metric_def, skill, user_input: str) -> Optional[str]:
     return None
 
 
-def _dispatch_metric_sql(metric_def, skill, user_input: str) -> str:
-    """
-    SQL 生成入口：根据 metric_id 灰度开关决定走 LLM 路径还是确定性路径。
-
-    灰度策略（_LLM_SQL_ENABLED_METRICS）：
-      - 在集合内 → 尝试 LLM 生成，失败则 fallback 到 _build_metric_sql()
-      - 不在集合内 → 直接走确定性 _build_metric_sql()
-    """
-    if metric_def.metric_id in _LLM_SQL_ENABLED_METRICS:
-        if metric_def.compute_mode == "sql_aggregate":
-            llm_sql = _llm_build_aggregate_sql(metric_def, skill, user_input)
-        else:
-            llm_sql = _llm_build_detail_sql(metric_def, skill, user_input)
-
-        if llm_sql:
-            return llm_sql
-        logger.warning(
-            f"[method_selector] LLM SQL failed for '{metric_def.metric_id}', "
-            "falling back to deterministic _build_metric_sql()"
-        )
-
-    return _build_metric_sql(metric_def, skill, user_input)
-
-
-def _build_metric_sql(metric_def, skill, user_input: str) -> str:
-    """
-    从 Mapping 物理信息 + Skill 方法论 编排 SQL。
-
-    Mapping 提供:
-      - anchor_table, join_path, auto_filter（物理层）
-    Skill 提供:
-      - formula, body（计算逻辑描述，LLM 可用）
-    本函数根据 metric_def.join_path 解析表结构，组装 SELECT + JOIN + WHERE。
-    """
-    start_date, end_date = _extract_date_range(user_input)
-
-    # 解析 join_path 字符串获取表别名
-    # 格式: "table_a → table_b(fk_col) → table_c(fk_col)"
-    join_path_str = metric_def.join_path or ""
-    anchor = metric_def.anchor_table
-
-    # 根据 metric_id 选择合适的 SQL 构建策略
-    # 不同指标需要从不同维度取数据 — 由 skill.formula 中的语义指导
-    alias_map = _parse_join_path_aliases(join_path_str, anchor)
-    log_alias = alias_map.get(anchor, "log")
-
-    # 时间过滤
-    date_filter = (
-        f"{log_alias}.gmt_create >= '{start_date} 00:00:00' "
-        f"AND {log_alias}.gmt_create <= '{end_date} 23:59:59'"
-    )
-    station_clause = _extract_station_filter(user_input, alias=log_alias)
-
-    # auto_filter（来自 Mapping — 物理层条件）
-    auto_filter = metric_def.auto_filter or ""
-
-    # 组装 WHERE
-    where_parts = []
-    if auto_filter:
-        # auto_filter 已含表名限定，需加别名
-        af = auto_filter
-        for table, alias in alias_map.items():
-            af = af.replace(f"{table}.", f"{alias}.")
-        # 如果没有表限定，给裸列名加 log_alias 前缀
-        if "." not in af:
-            # 匹配 col = val, col != val, col IS NULL 等模式
-            af = re.sub(
-                r'\b([a-z_][a-z0-9_]*)\s*(=|!=|<>|>=|<=|>|<|IS\s)',
-                lambda m: f"{log_alias}.{m.group(1)} {m.group(2)}",
-                af
-            )
-        where_parts.append(af)
-    where_parts.append(date_filter)
-    sc = station_clause.replace("\n  AND ", "").strip() if station_clause else ""
-    if sc:
-        where_parts.append(sc)
-
-    where_clause = "\n  AND ".join(where_parts)
-
-    # 组装 JOIN
-    join_clause = _build_join_clause(join_path_str, alias_map)
-
-    # 根据指标类型构建 SELECT
-    # skill.formula 描述了计算逻辑 — 这里根据 compute_mode 决定取明细还是聚合
-    if metric_def.compute_mode == "python_compute":
-        # 明细数据：Python 侧计算，SQL 只取原始行
-        select_cols = _infer_detail_columns(metric_def, skill, alias_map)
-        sql = f"""SELECT {select_cols}
-FROM {anchor} {log_alias}
-{join_clause}WHERE {where_clause}
-LIMIT 100000"""
+def _dispatch_metric_sql(skill, user_input: str) -> str:
+    """SQL 生成入口（B 路径）：build_entity_context + LLM，无确定性 fallback。"""
+    if not skill:
+        raise ValueError("[method_selector] _dispatch_metric_sql called with skill=None")
+    if skill.compute_mode == "sql_aggregate":
+        llm_sql = _llm_build_aggregate_sql(skill, user_input)
     else:
-        # sql_aggregate: SQL 侧直接聚合
-        select_cols = _infer_aggregate_columns(metric_def, skill, alias_map)
-        sql = f"""SELECT {select_cols}
-FROM {anchor} {log_alias}
-{join_clause}WHERE {where_clause}"""
-
-    return sql
-
-
-def _parse_join_path_aliases(join_path_str: str, anchor: str) -> Dict[str, str]:
-    """
-    解析 join_path 字符串，为每张表分配短别名。
-
-    Input: "table_a → table_b(fk) → table_c(fk)"
-    Output: {"table_a": "log", "table_b": "d", "table_c": "wdl"}
-    """
-    aliases: Dict[str, str] = {}
-    if not join_path_str:
-        aliases[anchor] = "log"
-        return aliases
-
-    # 按 → 分割
-    parts = [p.strip() for p in join_path_str.replace("→", "→").split("→")]
-    _alias_pool = ["log", "d", "wdl", "t4", "t5", "t6"]
-    for i, part in enumerate(parts):
-        # 提取表名（去除括号内的 FK 信息）
-        table_name = re.sub(r'\(.*?\)', '', part).strip()
-        if not table_name:
-            continue
-        if i < len(_alias_pool):
-            aliases[table_name] = _alias_pool[i]
-
-    # 确保 anchor 有别名
-    if anchor not in aliases:
-        aliases[anchor] = "log"
-
-    return aliases
-
-
-def _build_join_clause(join_path_str: str, alias_map: Dict[str, str]) -> str:
-    """
-    从 join_path 字符串构建 JOIN 子句。
-
-    Input: "table_a → table_b(fk1) → table_c(fk2)"
-    Output:
-        JOIN table_b d ON d.fk1 = log.id
-        JOIN table_c wdl ON wdl.fk2 = d.id
-    """
-    if not join_path_str:
-        return ""
-
-    parts = [p.strip() for p in join_path_str.replace("→", "→").split("→")]
-    if len(parts) < 2:
-        return ""
-
-    tables_ordered = list(alias_map.keys())
-    lines = []
-    for i in range(1, len(parts)):
-        part = parts[i].strip()
-        # 提取表名和 FK
-        m = re.match(r'([^\(]+)\(([^\)]+)\)', part)
-        if m:
-            table_name = m.group(1).strip()
-            fk_col = m.group(2).strip()
-        else:
-            table_name = part.strip()
-            fk_col = "id"
-
-        alias = alias_map.get(table_name, f"t{i}")
-        # 前一张表
-        prev_table = tables_ordered[i - 1] if i - 1 < len(tables_ordered) else ""
-        prev_alias = alias_map.get(prev_table, "log")
-
-        lines.append(f"JOIN {table_name} {alias}\n     ON {alias}.{fk_col} = {prev_alias}.id")
-
-    return "\n".join(lines) + "\n" if lines else ""
-
-
-def _infer_detail_columns(metric_def, skill, alias_map: Dict[str, str]) -> str:
-    """
-    根据指标语义推断明细查询需要的列。
-
-    对于 python_compute 指标，SQL 只取原始明细行，具体计算由 Python MetricComputer 执行。
-    列推断基于 skill.formula 中引用的字段语义。
-    """
-    tables = list(alias_map.keys())
-    log_alias = alias_map.get(metric_def.anchor_table, "log")
-
-    # 基础列（所有指标都需要）
-    cols = [f"{log_alias}.process_code", f"{log_alias}.product_code",
-            f"DATE({log_alias}.gmt_create) AS report_date"]
-
-    formula = (skill.formula if skill else "").lower()
-
-    # 根据 formula 语义推断需要的明细列
-    if "wafer_id" in formula or "wafer" in (metric_def.description or "").lower():
-        # 需要 wafer 级别明细
-        wdl_alias = alias_map.get(tables[-1], "wdl") if len(tables) > 1 else log_alias
-        cols.insert(0, f"{wdl_alias}.wafer_id")
-        if "wafer_type" in formula:
-            cols.append(f"{wdl_alias}.wafer_type")
-        if "ng_code" in formula:
-            cols.append(f"{wdl_alias}.ng_code")
-
-    # ROW_NUMBER 窗口函数（ASC=首次, DESC=末次）
-    if "rn=" in formula or "row_number" in formula.lower():
-        wdl_alias = alias_map.get(tables[-1], "wdl") if len(tables) > 1 else log_alias
-        order_dir = "DESC" if "desc" in formula else "ASC"
-        cols.append(
-            f"ROW_NUMBER() OVER (\n"
-            f"           PARTITION BY {wdl_alias}.wafer_id, {log_alias}.process_code\n"
-            f"           ORDER BY {log_alias}.gmt_create {order_dir}\n"
-            f"         ) AS rn"
+        llm_sql = _llm_build_detail_sql(skill, user_input)
+    if not llm_sql:
+        raise RuntimeError(
+            f"[method_selector] LLM SQL generation failed for '{skill.skill_name}'"
         )
-
-    return ",\n       ".join(cols)
-
-
-def _infer_aggregate_columns(metric_def, skill, alias_map: Dict[str, str]) -> str:
-    """
-    根据指标语义推断聚合查询列（sql_aggregate 模式）。
-    """
-    log_alias = alias_map.get(metric_def.anchor_table, "log")
-    formula = skill.formula if skill else ""
-
-    # 默认按 process_code 和 日期 分组
-    cols = [f"{log_alias}.process_code", f"DATE({log_alias}.gmt_create) AS report_date"]
-
-    # 主聚合表达式
-    if formula:
-        cols.append(f"{formula} AS metric_value")
-    else:
-        cols.append(f"COUNT(*) AS metric_value")
-
-    return ",\n       ".join(cols)
+    return llm_sql
 
 
 def method_selector_node(state: AnalysisState) -> dict:
@@ -849,53 +612,50 @@ def method_selector_node(state: AnalysisState) -> dict:
         # ── 路径①: Skill 路径 ──
         if route_path == "skill":
             skill_name = route.get("skill_name", "")
-            # _resolve_metric_context 通过 skill_name 或用户输入做三层解析
             hint = skill_name or user_input
-            metric_def, skill, computer = _resolve_metric_context(hint)
+            skill, computer = _resolve_skill_context(hint)
 
-            if metric_def and metric_def.compute_mode == "python_compute" and computer:
+            if skill and skill.compute_mode == "python_compute" and computer:
                 method = "metric_compute"
-                skill_desc = skill.standard_definition if skill else metric_def.description
-                reason = f"[Skill路径] '{metric_def.metric_id}' — {skill_desc}"
+                skill_desc = skill.standard_definition
+                reason = f"[Skill路径] '{skill.skill_name}' — {skill_desc}"
                 route_decision = "skill"
-                logger.info(f"[method_selector] skill → metric_compute ({metric_def.metric_id})")
+                logger.info(f"[method_selector] skill → metric_compute ({skill.skill_name})")
 
-                raw_sql = _dispatch_metric_sql(metric_def, skill, user_input)
+                raw_sql = _dispatch_metric_sql(skill, user_input)
                 data_source_config = {"type": "sql", "sql": raw_sql, "limit": 100000}
-                params = {"metric_name": metric_def.metric_id}
+                params = {"metric_name": skill.skill_name}
 
-                if skill:
-                    skill_context = {
-                        "skill_name": skill.skill_name,
-                        "compute_tool": skill.compute_tool,
-                        "standard_definition": skill.standard_definition,
-                        "formula": skill.formula,
-                        "granularity": skill.granularity,
-                        "body": skill.body,
-                    }
+                skill_context = {
+                    "skill_name": skill.skill_name,
+                    "compute_tool": skill.compute_tool,
+                    "standard_definition": skill.standard_definition,
+                    "formula": skill.formula,
+                    "granularity": skill.granularity,
+                    "body": skill.body,
+                }
 
-            elif metric_def and metric_def.compute_mode == "sql_aggregate":
+            elif skill and skill.compute_mode == "sql_aggregate":
                 method = "yield_report"
-                skill_desc = skill.standard_definition if skill else metric_def.description
-                reason = f"[Skill路径/聚合] '{metric_def.metric_id}'"
+                skill_desc = skill.standard_definition
+                reason = f"[Skill路径/聚合] '{skill.skill_name}'"
                 route_decision = "skill"
 
-                raw_sql = _dispatch_metric_sql(metric_def, skill, user_input)
+                raw_sql = _dispatch_metric_sql(skill, user_input)
                 data_source_config = {"type": "sql", "sql": raw_sql, "limit": 10000}
 
-                if skill:
-                    skill_context = {
-                        "skill_name": skill.skill_name,
-                        "compute_tool": skill.compute_tool,
-                        "standard_definition": skill.standard_definition,
-                        "formula": skill.formula,
-                        "granularity": skill.granularity,
-                        "body": skill.body,
-                    }
+                skill_context = {
+                    "skill_name": skill.skill_name,
+                    "compute_tool": skill.compute_tool,
+                    "standard_definition": skill.standard_definition,
+                    "formula": skill.formula,
+                    "granularity": skill.granularity,
+                    "body": skill.body,
+                }
             else:
-                # Skill 路由但没找到对应 metric_def → 降级到即席路径
+                # Skill 路由但没找到对应 skill → 降级到即席路径
                 logger.warning(
-                    f"[method_selector] skill route for '{skill_name}' but no metric_def found, "
+                    f"[method_selector] skill route for '{skill_name}' but no skill found, "
                     "falling back to adhoc"
                 )
                 route_path = "adhoc"
@@ -1150,7 +910,7 @@ def _build_yield_sql(user_input: str) -> Dict[str, Any]:
     构建良率报表数据查询 SQL（兜底路径）。
 
     仅在三层解析未匹配到指标时使用 — CheckIn 聚合 SQL（input_wafers/ng_wafers 格式）。
-    Python 指标（FPY/FinalYield/ReworkRate）应通过 _resolve_metric_context → metric_compute 路由。
+    Python 指标（FPY/FinalYield/ReworkRate）应通过 _resolve_skill_context → metric_compute 路由。
     """
     start_date, end_date = _extract_date_range(user_input)
 

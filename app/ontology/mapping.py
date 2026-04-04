@@ -123,23 +123,6 @@ class BusinessRule:
 
 
 @dataclass
-class MetricDefinition:
-    """Phase 2: 指标定义 — 语义到物理数据源的映射。
-
-    只存 *定位数据源* 所需的信息（表名、JOIN、过滤条件、粒度）。
-    计算方法论（公式、SQL 模板）属于 Skill 层，不在此处维护。
-    """
-    metric_id: str
-    zh_names: List[str]           # 触发该指标的中文名称列表
-    anchor_table: str             # 指标的主表
-    granularity: List[str]        # 支持的统计粒度
-    description: str
-    join_path: Optional[str] = None   # JOIN 路径提示（物理层）
-    auto_filter: Optional[str] = None # 自动注入的 WHERE 条件（物理层）
-    compute_mode: str = "sql_aggregate"  # "sql_aggregate" | "python_compute"
-
-
-@dataclass
 class QueryPattern:
     """即席查询模板 — 来自 mapping JSON 的 query_patterns 节。
 
@@ -286,7 +269,6 @@ class MappingDictionary:
         self._recursive_map: Dict[str, RecursiveMapping] = {}        # "semi:hasParentLot" → RecursiveMapping
         self._value_map: Dict[str, Dict[str, ValueMapping]] = {}     # "semi:WaferState" -> {"WIP": ValueMapping}
         self._business_rules: List[BusinessRule] = []
-        self._metrics: Dict[str, MetricDefinition] = {}              # Phase 2: "wafer_wip" → MetricDefinition
         self._query_patterns: List[QueryPattern] = []               # 即席查询模板列表
 
         self._load()
@@ -303,7 +285,6 @@ class MappingDictionary:
         self._parse_relation_mappings(self._raw.get("relation_mappings", []))
         self._parse_value_mappings(self._raw.get("value_mappings", {}))
         self._parse_business_rules(self._raw.get("business_rules", []))
-        self._parse_metrics(self._raw.get("metric_definitions", {}))
         self._parse_query_patterns(self._raw.get("query_patterns", []))
 
     def _parse_object_mappings(self, items: List[Dict]) -> None:
@@ -514,20 +495,6 @@ class MappingDictionary:
             )
             self._business_rules.append(br)
 
-    def _parse_metrics(self, data: Dict[str, Dict]) -> None:
-        """Phase 2: 解析 metric_definitions 节（仅物理映射字段）"""
-        for metric_id, md in data.items():
-            self._metrics[metric_id] = MetricDefinition(
-                metric_id=metric_id,
-                zh_names=md.get("zh_names", []),
-                anchor_table=md.get("anchor_table", ""),
-                granularity=md.get("granularity", []),
-                description=md.get("description", ""),
-                join_path=md.get("join_path"),
-                auto_filter=md.get("auto_filter"),
-                compute_mode=md.get("compute_mode", "sql_aggregate"),
-            )
-
     def _parse_query_patterns(self, items: List[Dict]) -> None:
         """解析 query_patterns 节 — 即席查询模板（nl_triggers + sql_template）"""
         for item in items:
@@ -718,31 +685,6 @@ class MappingDictionary:
         col_ref = prefix_match.group(1).rstrip()  # e.g. "matrix_routerx_operation_lot.status"
         return f"{col_ref} NOT IN ({', '.join(nums)})"
 
-    def find_metric_by_name(self, query: str) -> Optional["MetricDefinition"]:
-        """Phase 2: 在所有指标 zh_names 中做子串匹配，返回最长匹配的 MetricDefinition。
-
-        优先选择名称更长（更具体）的匹配，避免 '良率' 模糊命中多个指标。
-        """
-        q = query.lower()
-        best: Optional["MetricDefinition"] = None
-        best_len = 0
-        for metric in self._metrics.values():
-            for name in metric.zh_names:
-                nl = name.lower()
-                if nl in q or name in query:
-                    if len(name) > best_len:
-                        best = metric
-                        best_len = len(name)
-        return best
-
-    def list_all_metrics(self) -> List["MetricDefinition"]:
-        """Phase 2: 返回所有指标定义"""
-        return list(self._metrics.values())
-
-    def get_metric_by_id(self, metric_id: str) -> Optional["MetricDefinition"]:
-        """Phase 2: 按 metric_id 精确查找指标定义（e.g. 'first_pass_yield'）"""
-        return self._metrics.get(metric_id)
-
     def match_query_pattern(self, user_input: str) -> Optional["QueryPattern"]:
         """
         在 query_patterns 的 nl_triggers 中做关键词匹配（即席查询快速路径）。
@@ -884,89 +826,6 @@ class MappingDictionary:
                 domain_lines.append(f"  {k}={phys}  # {desc[:50]}")
             lines.extend(domain_lines)
         return "\n".join(lines)
-
-    @staticmethod
-    def _extract_tables_from_join_path(join_path: Optional[str], anchor_table: str) -> List[str]:
-        """
-        从 join_path 字符串中提取所有涉及的物理表名（含 anchor_table）。
-
-        格式: "table_a → table_b(fk) → table_c(fk)"
-        返回有序列表，anchor 在首位。
-        """
-        import re as _re
-        tables: List[str] = [anchor_table]
-        if not join_path:
-            return tables
-        for part in join_path.replace("→", "→").split("→"):
-            part = part.strip()
-            tname = _re.sub(r'\(.*?\)', '', part).strip()
-            if tname and tname != anchor_table and tname not in tables:
-                tables.append(tname)
-        return tables
-
-    def build_metric_context(self, metric_def: "MetricDefinition") -> str:
-        """
-        为 LLM 构建指定指标的完整物理上下文（硬约束：只输出 join_path 涉及的表）。
-
-        Skill 路径专用——已知涉及哪几张表（通常 2-4 张），全量输出 note，不截断。
-        与 build_table_catalog()（即席路径：全量表目录，截断 note）互相独立。
-
-        输出格式:
-          ## 涉及的物理表
-          ### table_name（label_cn）
-          关键列: col1, col2, ...
-          说明: <完整 note>
-
-          ## 表间关联路径
-          <join_path 原始字符串>
-
-          ## 自动过滤条件
-          <auto_filter>
-
-          ## 相关业务规则
-          - rule_name: description
-        """
-        tables = self._extract_tables_from_join_path(
-            metric_def.join_path, metric_def.anchor_table
-        )
-
-        # 1. 表结构详情（全量 note，不截断）
-        table_lines: List[str] = ["## 涉及的物理表"]
-        for tname in tables:
-            entry = self.get_table_by_physical_name(tname)
-            if not entry:
-                table_lines.append(f"### {tname}（未找到映射）")
-                continue
-            table_lines.append(f"### {tname}（{entry.label_cn}）")
-            if entry.key_columns:
-                table_lines.append(f"关键列: {', '.join(entry.key_columns)}")
-            if entry.filter_condition:
-                table_lines.append(f"行级过滤: {entry.filter_condition}")
-            if entry.note:
-                table_lines.append(f"说明: {entry.note}")
-            table_lines.append("")
-
-        # 2. JOIN 路径
-        join_lines: List[str] = []
-        if metric_def.join_path:
-            join_lines = ["## 表间关联路径", metric_def.join_path, ""]
-
-        # 3. 自动过滤条件
-        filter_lines: List[str] = []
-        if metric_def.auto_filter:
-            filter_lines = ["## 自动过滤条件（必须注入 WHERE）", metric_def.auto_filter, ""]
-
-        # 4. 相关业务规则（按涉及的表过滤）
-        rules = self.get_business_rules(involved_tables=tables)
-        rule_lines: List[str] = []
-        if rules:
-            rule_lines = ["## 相关业务规则"]
-            for r in rules[:5]:  # 最多 5 条，避免 token 爆炸
-                rule_lines.append(f"- [{r.id}] {r.name}: {r.description}")
-            rule_lines.append("")
-
-        parts = table_lines + join_lines + filter_lines + rule_lines
-        return "\n".join(parts).rstrip()
 
     def build_entity_context(self, entities: List[str]) -> str:
         """

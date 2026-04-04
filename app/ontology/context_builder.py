@@ -26,7 +26,6 @@ from app.ontology.mapping import (
     BusinessRule,
     JoinCondition,
     MappingDictionary,
-    MetricDefinition,
     PhysicalTable,
     RecursiveMapping,
     RelationMapping,
@@ -107,7 +106,6 @@ class SemanticContext:
     filters: List[ResolvedFilter] = field(default_factory=list)
     recursive: List[ResolvedRecursive] = field(default_factory=list)
     business_rules: List[BusinessRule] = field(default_factory=list)
-    metrics: List[MetricDefinition] = field(default_factory=list)  # Phase 2: matched metric definitions
 
     # 快捷属性
     @staticmethod
@@ -203,19 +201,6 @@ class SemanticContext:
             for r in self.recursive:
                 lines.append(f"  -- {r.description}")
                 lines.append(r.cte_sql)
-        if self.metrics:
-            lines.append("")
-            lines.append("-- Metrics")
-            for m in self.metrics:
-                lines.append(f"-- Metric: {m.zh_names[0] if m.zh_names else m.metric_id}")
-                lines.append(f"   ANCHOR_TABLE: {m.anchor_table}")
-                lines.append(f"   COMPUTE_MODE: {m.compute_mode}")
-                if m.join_path:
-                    lines.append(f"   JOIN_PATH: {m.join_path}")
-                if m.auto_filter:
-                    lines.append(f"   AUTO_FILTER: {m.auto_filter}")
-                if m.granularity:
-                    lines.append(f"   GRANULARITY: {', '.join(m.granularity)}")
         return "\n".join(lines)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -291,19 +276,6 @@ class SemanticContext:
                 for br in self.business_rules
             ],
             "schema_snippet": self.schema_snippet,
-            "metrics": [
-                {
-                    "metric_id": m.metric_id,
-                    "zh_names": m.zh_names,
-                    "anchor_table": m.anchor_table,
-                    "granularity": m.granularity,
-                    "join_path": m.join_path,
-                    "auto_filter": m.auto_filter,
-                    "description": m.description,
-                    "compute_mode": m.compute_mode,
-                }
-                for m in self.metrics
-            ],
         }
 
 
@@ -660,23 +632,6 @@ class SemanticContextBuilder:
             len(matched),
             [m.keyword for m in matched],
         )
-
-        # Step 1.5: Phase 2 — 指标匹配
-        ctx.metrics = self._match_metrics(user_query)
-        if ctx.metrics:
-            logger.info(
-                "Matched %d metrics: %s",
-                len(ctx.metrics),
-                [m.metric_id for m in ctx.metrics],
-            )
-
-        # Step 1.6: 指标驱动的实体注入
-        # 当查询命中指标时，自动将指标 join_path 中所有锚点表/中间表对应的逻辑类
-        # 注入 matched_classes，使 _resolve_joins 能推导出完整 JOIN 路径。
-        # 非指标查询：ctx.metrics 为空，本步直接跳过，完全不影响原有流程。
-        if ctx.metrics:
-            matched = self._inject_metric_required_classes(matched, ctx.metrics)
-            ctx.matched_classes = matched
 
         # Step 2: 値映射
         filters = self._match_values(user_query)
@@ -1062,111 +1017,6 @@ class SemanticContextBuilder:
             virtual=pt.virtual,
             filter_condition=pt.filter_condition,
         )
-
-    # ----------------------------------------------------------------- #
-    # Step 1.5: Phase 2 --- 指标匹配
-    # ----------------------------------------------------------------- #
-
-    def _match_metrics(self, query: str) -> List[MetricDefinition]:
-        """Phase 2: 从查询中识别指标名称，返回匹配到的 MetricDefinition 列表"""
-        results: List[MetricDefinition] = []
-        seen_ids: Set[str] = set()
-        for metric in self._mapping.list_all_metrics():
-            if metric.metric_id in seen_ids:
-                continue
-            for name in metric.zh_names:
-                if name.lower() in query.lower() or name in query:
-                    results.append(metric)
-                    seen_ids.add(metric.metric_id)
-                    break
-        return results
-
-    # ----------------------------------------------------------------- #
-    # Step 1.6: 指标驱动的实体注入
-    # ----------------------------------------------------------------- #
-
-    def _inject_metric_required_classes(
-        self,
-        matched: List[MatchedClass],
-        metrics: List[MetricDefinition],
-    ) -> List[MatchedClass]:
-        """
-        将指标 join_path 中的所有物理表自动映射为本体类并注入 matched_classes。
-
-        解析规则:
-          join_path 格式: "table1 → table2(filter_hint) → table3"
-          - anchor_table 作为第一个候选
-          - join_path 中的 → 分隔的每段提取表名 + 括号内过滤提示
-          - 若同一张物理表映射多个逻辑类（如 main/sublot 同表），
-            优先选择 filter_condition 与提示匹配的那个
-
-        非指标查询（metrics 为空）不调用此方法，无副作用。
-        """
-        seen_tables: Set[str] = {mc.physical_table for mc in matched if mc.physical_table}
-        seen_classes: Set[str] = {mc.logic_class for mc in matched}
-        added: List[MatchedClass] = []
-
-        for metric in metrics:
-            # 收集 (table_name, optional_filter_hint)
-            table_hints: List[Tuple[Optional[str], Optional[str]]] = []
-
-            if metric.anchor_table:
-                table_hints.append((metric.anchor_table, None))
-
-            if metric.join_path:
-                # 支持 → (U+2192) 和 -> 两种分隔符
-                for part in re.split(r'\s*[\u2192>-]+\s*', metric.join_path):
-                    part = part.strip()
-                    if not part:
-                        continue
-                    m = re.match(r'^(\w+)(?:\(([^)]*)\))?$', part)
-                    if m:
-                        tbl = m.group(1)
-                        hint = m.group(2)  # e.g. "parent_id!=0"
-                        if tbl != metric.anchor_table:
-                            table_hints.append((tbl, hint))
-
-            for tbl, hint in table_hints:
-                if not tbl or tbl in seen_tables:
-                    continue
-
-                # 找出所有匹配该物理表名的 PhysicalTable
-                candidates = [
-                    pt for pt in self._mapping.list_all_tables()
-                    if pt.table_name == tbl and not pt.virtual
-                ]
-                if not candidates:
-                    continue
-
-                chosen = None
-                if len(candidates) == 1:
-                    chosen = candidates[0]
-                elif hint:
-                    # 规范化比较（去空格）
-                    hint_norm = hint.replace(" ", "")
-                    for pt in candidates:
-                        fc = (pt.filter_condition or "").replace(" ", "")
-                        if fc and (hint_norm in fc or fc in hint_norm):
-                            chosen = pt
-                            break
-                    if not chosen:
-                        chosen = candidates[0]
-                else:
-                    chosen = candidates[0]
-
-                if chosen.logic_class in seen_classes:
-                    continue
-
-                seen_tables.add(tbl)
-                seen_classes.add(chosen.logic_class)
-                mc = self._to_matched_class(f"[{metric.metric_id}]", chosen)
-                added.append(mc)
-                logger.info(
-                    "[context_builder] Metric '%s' auto-injected: %s → %s",
-                    metric.metric_id, tbl, chosen.logic_class,
-                )
-
-        return matched + added
 
     # ----------------------------------------------------------------- #
     # Step 2.1: Phase 1 --- nl_triggers 精确匹配 + WIP 终态自动推导
