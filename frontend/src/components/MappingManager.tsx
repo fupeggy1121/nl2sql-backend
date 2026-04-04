@@ -18,7 +18,7 @@ import mermaid from 'mermaid';
 import {
   Plus, Search, RefreshCw, Trash2, Edit2, ChevronDown, ChevronRight,
   History, Database, GitBranch, Tag, FileText, AlertCircle, X, Check,
-  Book, BarChart2, Link2, Eye
+  Book, Link2, Eye
 } from 'lucide-react';
 import { mappingApi } from '../services/mappingApi';
 import { ontologyApi } from '../services/ontologyApi';
@@ -87,16 +87,6 @@ interface BusinessRule {
   semantic_pattern?: string;
 }
 
-interface MetricDefinition {
-  metric_id: string;
-  zh_names: string[];
-  anchor_table: string;
-  formula: string;
-  granularity: string[];
-  description: string;
-  join_path?: string | null;
-  auto_filter?: string | null;
-}
 
 interface ChangelogEntry {
   timestamp: string;
@@ -116,10 +106,9 @@ interface Summary {
   relation_mappings: number;
   value_domains: number;
   business_rules: number;
-  metric_definitions: number;
 }
 
-type Tab = 'objects' | 'relations' | 'values' | 'rules' | 'metrics' | 'skills' | 'changelog' | 'baselines';
+type Tab = 'objects' | 'relations' | 'values' | 'rules' | 'skills' | 'changelog' | 'baselines';
 
 // ══════════════════════════════════════════════════════════════════
 // Helper: Modal
@@ -2105,191 +2094,6 @@ function BusinessRulesTab() {
   );
 }
 
-// ══════════════════════════════════════════════════════════════════
-// Tab 5: Metrics
-// ══════════════════════════════════════════════════════════════════
-
-function MetricsTab() {
-  const [items, setItems] = useState<MetricDefinition[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [editItem, setEditItem] = useState<Partial<MetricDefinition> | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const load = useCallback(async (q = search) => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await mappingApi.getMetrics({ q });
-      setItems(res.data || []);
-    } catch (e: any) {
-      setError(e.message || '加载指标定义失败');
-      setItems([]);
-    }
-    setLoading(false);
-  }, [search]);
-
-  useEffect(() => { load(); }, []);
-
-  const openAdd = () => {
-    setEditItem({
-      metric_id: '',
-      zh_names: [],
-      anchor_table: '',
-      formula: '',
-      granularity: [],
-      description: '',
-      join_path: '',
-      auto_filter: '',
-    });
-    setIsEditing(false);
-    setShowModal(true);
-  };
-
-  const openEdit = (item: MetricDefinition) => {
-    setEditItem({ ...item });
-    setIsEditing(true);
-    setShowModal(true);
-  };
-
-  const handleSave = async () => {
-    if (!editItem) return;
-    setSaving(true);
-    setError('');
-    try {
-      const payload = {
-        ...editItem,
-        zh_names: typeof editItem.zh_names === 'string'
-          ? (editItem.zh_names as any).split(',').map((s: string) => s.trim()).filter(Boolean)
-          : (editItem.zh_names || []),
-        granularity: typeof editItem.granularity === 'string'
-          ? (editItem.granularity as any).split(',').map((s: string) => s.trim()).filter(Boolean)
-          : (editItem.granularity || []),
-      };
-
-      if (isEditing) {
-        await mappingApi.updateMetric(editItem.metric_id!, payload);
-      } else {
-        await mappingApi.createMetric(payload);
-      }
-
-      setShowModal(false);
-      load();
-    } catch (e: any) {
-      setError(e.message || '保存指标定义失败');
-    }
-    setSaving(false);
-  };
-
-  const handleDelete = async (metricId: string) => {
-    if (!confirm(`删除指标定义 ${metricId}？`)) return;
-    try {
-      await mappingApi.deleteMetric(metricId);
-      load();
-    } catch (e: any) {
-      alert(e.message || '删除失败');
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            value={search}
-            onChange={e => { setSearch(e.target.value); load(e.target.value); }}
-            placeholder="搜索 metric_id / 中文别名 / anchor_table..."
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-          />
-        </div>
-        <button onClick={() => load()} className="p-2 text-gray-500 border border-gray-300 rounded-lg hover:bg-gray-50">
-          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-        </button>
-        <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700">
-          <Plus size={16} />添加
-        </button>
-      </div>
-
-      {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{error}</div>}
-
-      {!loading && items.length === 0 && !error && (
-        <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center text-gray-400">
-          <BarChart2 size={32} className="mx-auto mb-3 opacity-40" />
-          <p className="text-sm">暂无指标定义</p>
-          <p className="text-xs mt-1">请先在 mapping_prod.json 的 metric_definitions 中配置后再编辑</p>
-        </div>
-      )}
-
-      <div className="space-y-3">
-        {items.map(item => (
-          <div key={item.metric_id} className="border border-gray-200 rounded-xl p-4 space-y-2">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="font-mono text-sm font-medium text-blue-700">{item.metric_id}</span>
-                {item.zh_names?.length > 0 && (
-                  <span className="ml-2 text-sm text-gray-700">{item.zh_names.join(' / ')}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => openEdit(item)} className="p-1 text-gray-400 hover:text-blue-600"><Edit2 size={14} /></button>
-                <button onClick={() => handleDelete(item.metric_id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 size={14} /></button>
-              </div>
-            </div>
-
-            <div className="text-xs text-gray-600">anchor_table: <span className="font-mono">{item.anchor_table || '—'}</span></div>
-            <div className="text-xs text-gray-600">formula: <span className="font-mono">{item.formula || '—'}</span></div>
-            <div className="text-xs text-gray-600">granularity: {(item.granularity || []).join(', ') || '—'}</div>
-            {item.description && <p className="text-xs text-gray-600">{item.description}</p>}
-          </div>
-        ))}
-      </div>
-
-      {showModal && editItem && (
-        <Modal title={isEditing ? `编辑指标：${editItem.metric_id}` : '新增指标定义'} onClose={() => setShowModal(false)} onConfirm={handleSave} confirmText={saving ? '保存中...' : '保存'} wide>
-          {error && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{error}</div>}
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="metric_id" required>
-              <input value={editItem.metric_id || ''} onChange={e => setEditItem({ ...editItem, metric_id: e.target.value })} disabled={isEditing} className={`${inputCls} ${isEditing ? 'bg-gray-50 text-gray-500' : ''}`} placeholder="wip_count_by_station" />
-            </Field>
-            <Field label="anchor_table" required>
-              <input value={editItem.anchor_table || ''} onChange={e => setEditItem({ ...editItem, anchor_table: e.target.value })} className={inputCls} placeholder="matrix_routerx_operation_lot" />
-            </Field>
-          </div>
-
-          <Field label="中文别名（zh_names，逗号分隔）">
-            <input value={Array.isArray(editItem.zh_names) ? editItem.zh_names.join(', ') : (editItem.zh_names as any) || ''} onChange={e => setEditItem({ ...editItem, zh_names: e.target.value as any })} className={inputCls} placeholder="在制品数量, 工站WIP" />
-          </Field>
-
-          <Field label="formula" required>
-            <textarea value={editItem.formula || ''} onChange={e => setEditItem({ ...editItem, formula: e.target.value })} className={`${textareaCls} min-h-[90px]`} placeholder="COUNT(DISTINCT lot_id)" />
-          </Field>
-
-          <Field label="granularity（逗号分隔）">
-            <input value={Array.isArray(editItem.granularity) ? editItem.granularity.join(', ') : (editItem.granularity as any) || ''} onChange={e => setEditItem({ ...editItem, granularity: e.target.value as any })} className={inputCls} placeholder="process, product, day" />
-          </Field>
-
-          <Field label="description">
-            <input value={editItem.description || ''} onChange={e => setEditItem({ ...editItem, description: e.target.value })} className={inputCls} />
-          </Field>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="join_path（可选）">
-              <input value={editItem.join_path || ''} onChange={e => setEditItem({ ...editItem, join_path: e.target.value })} className={inputCls} />
-            </Field>
-            <Field label="auto_filter（可选）">
-              <input value={editItem.auto_filter || ''} onChange={e => setEditItem({ ...editItem, auto_filter: e.target.value })} className={inputCls} />
-            </Field>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
 
 // ══════════════════════════════════════════════════════════════════
 // Tab 6: Changelog
@@ -3058,7 +2862,6 @@ export default function MappingManager() {
     { key: 'relations', label: '关系映射',  icon: <GitBranch size={15} />,   count: summary?.relation_mappings },
     { key: 'values',    label: '状态映射',    icon: <Tag size={15} />,          count: summary?.value_domains },
     { key: 'rules',     label: '业务规则',  icon: <Book size={15} />,         count: summary?.business_rules },
-    { key: 'metrics',   label: '指标(JSON旧版)',  icon: <BarChart2 size={15} />,    count: summary?.metric_definitions },
     { key: 'skills',    label: '指标定义',          icon: <FileText size={15} /> },
     { key: 'changelog', label: '变更记录',          icon: <History size={15} /> },
     { key: 'baselines', label: '预警基线',  icon: <AlertCircle size={15} /> },
@@ -3115,7 +2918,6 @@ export default function MappingManager() {
             {tab === 'relations' && <RelationMappingsTab />}
             {tab === 'values'    && <ValueMappingsTab />}
             {tab === 'rules'     && <BusinessRulesTab />}
-            {tab === 'metrics'   && <MetricsTab />}
             {tab === 'skills'    && <SkillEditorTab />}
             {tab === 'changelog' && <ChangelogTab />}
             {tab === 'baselines' && <BaselinesTab />}
