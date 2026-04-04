@@ -25,6 +25,9 @@ granularity:
   - daily
   - by_process
   - by_product
+required_entities:
+  - semi:CheckOutEventRecord
+  - semi:WaferTransitionSnapshot
 ---
 
 # 一次良率 (First Pass Yield / FPY)

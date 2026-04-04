@@ -30,6 +30,9 @@ granularity:
   - daily
   - by_process
   - by_product
+required_entities:
+  - semi:CheckOutEventRecord
+  - semi:WaferTransitionSnapshot
 ---
 
 # 综合良率 (Final Yield)

@@ -20,6 +20,10 @@ granularity:
   - 产品
   - 路线
   - 时段
+required_entities:
+  - semi:Wafer
+  - semi:Sublot
+  - semi:ProcessStation
 ---
 
 # 在制品数量 (Wafer WIP)

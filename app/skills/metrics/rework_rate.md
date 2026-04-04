@@ -18,6 +18,9 @@ granularity:
   - daily
   - by_process
   - by_product
+required_entities:
+  - semi:CheckInEventRecord
+  - semi:WaferTransitionSnapshot
 ---
 
 # 返工率 (Rework Rate)

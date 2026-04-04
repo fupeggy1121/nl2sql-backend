@@ -39,6 +39,7 @@ class SkillDefinition:
     granularity: List[str] = field(default_factory=list)
     required_columns: List[str] = field(default_factory=list)  # Python Computer 必需列
     rn_order: str = ""                                          # ROW_NUMBER 排序方向（ASC/DESC）
+    required_entities: List[str] = field(default_factory=list)  # 依赖的 ontology 实体（logic_class）
     body: str = ""          # Markdown body（供 LLM 阅读）
     source_file: str = ""   # 来源文件路径
     is_override: bool = False
@@ -261,7 +262,7 @@ class SkillLoader:
         known_keys = {
             "skill_name", "zh_names", "compute_mode", "compute_tool",
             "standard_definition", "formula", "granularity",
-            "required_columns", "rn_order",
+            "required_columns", "rn_order", "required_entities",
         }
         extra = {k: v for k, v in meta.items() if k not in known_keys}
 
@@ -275,6 +276,7 @@ class SkillLoader:
             granularity=meta.get("granularity", []),
             required_columns=meta.get("required_columns", []),
             rn_order=meta.get("rn_order", ""),
+            required_entities=meta.get("required_entities", []),
             body=body,
             source_file=str(path),
             is_override=is_override,

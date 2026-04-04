@@ -262,7 +262,7 @@ for metric_id, queries in METRICS_QUERIES.items():
     is_python = metric_def.compute_mode == "python_compute"
 
     ctx_a = mapping.build_metric_context(metric_def)
-    ctx_b = mapping.build_metric_context_by_entity(metric_def)
+    ctx_b = mapping.build_entity_context(skill.required_entities if skill else [])
 
     print(f"\n[context sizes] A={len(ctx_a)} chars, B={len(ctx_b)} chars")
 
