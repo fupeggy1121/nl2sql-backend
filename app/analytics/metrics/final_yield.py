@@ -82,6 +82,20 @@ class FinalYieldComputer(MetricComputer):
                 & (last_pass["ng_code"].fillna("").astype(str).str.strip().eq(""))
             )
 
+            # 将 last_pass 的 report_date 统一为首次出站日期（与 FPY 相同的日期基准），
+            # 确保返工晶圆落入同一日期桶，FPY/FY 分母一致，避免 FPY > FY 的假象
+            if "report_date" in df.columns:
+                key_cols = ["wafer_id", "process_code"] if "process_code" in df.columns else ["wafer_id"]
+                first_dates = (
+                    df.groupby(key_cols)["report_date"]
+                    .min()
+                    .reset_index()
+                    .rename(columns={"report_date": "_first_date"})
+                )
+                last_pass = last_pass.merge(first_dates, on=key_cols, how="left")
+                last_pass["report_date"] = last_pass["_first_date"].fillna(last_pass["report_date"])
+                last_pass.drop(columns=["_first_date"], inplace=True)
+
             if group_by is None:
                 group_by = self._detect_group_by(last_pass)
 

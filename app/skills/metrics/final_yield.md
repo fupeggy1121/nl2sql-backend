@@ -69,6 +69,7 @@ required_entities:
 - 需排除已逻辑删除的记录（`l.deleted = 0 OR l.deleted IS NULL`）
 - **时间过滤必须用 `l.gmt_create`**（批次主表时间戳），不能用 `w.gmt_create`（明细表），以保证与一次良率使用同一时间基准，确保两者可对比
 - **ROW_NUMBER 排序必须用 `l.gmt_create DESC`**，不能用 `w.gmt_create`
+- **report_date 对齐**：Python 层会自动将 `report_date` 替换为该 `(wafer_id, process_code)` 的首次出站日期（与 FPY 一致），确保返工晶圆落入同一日期桶，分母完全一致；SQL 只需返回 `DATE(l.gmt_create)` 作为初始 report_date 即可
 - **适用站点**：良率计算仅针对量测类型站点（Measurement Station）的 CheckOut 记录；工艺站点出站时无 `wafer_type` 判定，其良率定义另行维护
 - **返工场景**：返工子路径的量测站点与主路径为同一 `process_code`，`waferID` 不变。综合良率取末次出站（`rn=1 DESC`），返工救回的片末次为 good，自然计入分子，无需针对返工场景做额外过滤
 - **全流程串联良率**：用户未指定站点时，SQL 应返回全量站点数据（不加 process_code 过滤），Python 层会按 process_code 分组各自计算站点综合良率，再对所有站点良率连乘得到全流程综合良率；用户指定了站点（提到 process_code 或站点名），SQL 加 `WHERE process_code = '...'` 精确过滤
