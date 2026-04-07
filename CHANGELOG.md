@@ -2,6 +2,23 @@
 
 ---
 
+## 技术债（待清理，不影响运行）
+
+- **`app/api/v1/mapping.py`**：`MetricDefinitionIn` / `MetricDefinitionUpdate` 模型及
+  `GET/POST/PUT/DELETE /api/v1/mapping/metrics` 四个 endpoint 为死代码，
+  mapping JSON 中 `metric_definitions` 节已不存在，确认无外部调用后可整体删除。
+- **`app/skills/loader.py` L30**：注释仍写「物理表名、JOIN 路径等属于 Mapping 层 (MetricDefinition)」，
+  描述已过时，下次触碰该文件时顺手更新为「Skill 层只关注计算方法论，物理映射由 object_mappings/relation_mappings 提供」。
+- **`app/agent/nodes/sql_generator.py` L1027**：注释 `# 指标定义（Phase 2: metric_definitions）`
+  与实际逻辑（读 `semantic_ctx.get("metrics")`）不符，下次触碰该文件时更新。
+- **`mapping_prod.json` — `reworkTargetLot` join 路径**（写权限获取后处理）：
+  当前路径经 `_log_detail.extra.targetLotCode`（JSON 字段，无索引）关联 `lot.current_lot_code`。
+  可改为直接用 `batch_resume_log` 主表的 `lot_code` 字段（有 `idx_lot_code` 索引），
+  数据验证两路结果一致（COUNT=0 差异），修改仅影响查询性能，不影响结果准确性。
+  同批处理：`lot_id`（varchar，无索引）→ `lot.current_lot_code` 关联也需补索引确认。
+
+---
+
 ## v0.4 — 多指标并行调度 + B08/C08 澄清流程 (2026-04)
 
 **测试基准：26/26 通过 (100%)，multi_skill 验证 6/6 通过**
