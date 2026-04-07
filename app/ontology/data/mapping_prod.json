@@ -1364,6 +1364,96 @@
       "note": "取消本地批次创建操作执行记录，filter_condition = operation_type=21。仅针对通过本地批次创建（op=18）生成的批次可执行此操作，撤销投料，批次状态转为结批（Closed），生产流转终止。不产出新批次，output_lot_id 为 null。_detail.extra 为空 {}，无 detention 相关字段。【三层快照路径】CancelLocalLotEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(localLotSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(localLotSnapshotOfSublot)→ Sublot；每片 wafer 写一行快照，无 isSource 侧别。与 CreateLocalLotEventRecord（op=18）互为逆操作，共用 localLotSnapshotOfWafer/localLotSnapshotOfSublot 快照路径。"
     },
     {
+      "logic_class": "semi:ReworkEvent",
+      "physical_table": null,
+      "label_cn": "批次返工事件类型",
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "note": "Type层定义，对应 LotOperationType operation_type=12（批次返工）的规则/类型模板。将不良片批次切入返工子路径，创建新返工批次编号，wafer_id 不变。物理层三联写入：主记录表 + _detail（extra 含 sourceLotCode/targetLotCode，isSource 区分源/目标侧）+ _wafer_detail_log。执行记录见 semi:ReworkEventRecord。"
+    },
+    {
+      "logic_class": "semi:ReworkEventRecord",
+      "physical_table": "matrix_routerx_operation_lot_batch_resume_log",
+      "primary_key": "id",
+      "label_cn": "批次返工操作执行记录",
+      "display_column": "lot_code",
+      "filter_condition": "operation_type = 12",
+      "virtual": false,
+      "properties": {
+        "semi:hasEventStartTime": "gmt_create",
+        "semi:hasOperatorId": "create_user_id",
+        "semi:hasOperator": "create_user"
+      },
+      "key_columns": [
+        "id",
+        "operation_type",
+        "lot_id",
+        "lot_code",
+        "product_id",
+        "product_code",
+        "product_name",
+        "process_id",
+        "process_code",
+        "process_name",
+        "extra",
+        "create_user_id",
+        "create_user",
+        "gmt_create",
+        "update_user_id",
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "trace_id"
+      ],
+      "operation_type_ref": "value_mappings.semi:LotOperationType",
+      "note": "批次返工操作执行记录，filter_condition = operation_type=12。将不良片批次切入返工子路径，创建新返工批次编号（批次编码中特定位数体现返工信息），wafer_id 全程不变。返工后片类型默认 Good，需后续检测确认是否救回。物理层三联写入：主记录表（op=12）+ _detail（extra 含 sourceLotCode/targetLotCode，isSource=true/false 区分源/目标侧快照）+ _wafer_detail_log（逐片 Wafer 迁移明细）。【三层快照路径】ReworkEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(reworkSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(reworkSnapshotOfSublot)→ Sublot；源侧（isSource=true）：WaferTransitionSnapshot →(reworkSourceLot)→ ProductionLot（extra.sourceLotCode）；目标侧（isSource=false）：WaferTransitionSnapshot →(reworkTargetLot)→ ProductionLot（extra.targetLotCode）。取消返工操作见 semi:CancelReworkEventRecord（op=13）。"
+    },
+    {
+      "logic_class": "semi:CancelReworkEvent",
+      "physical_table": null,
+      "label_cn": "取消返工事件类型",
+      "virtual": true,
+      "virtual_kind": "action_event",
+      "note": "Type层定义，对应 LotOperationType operation_type=13（取消返工）的规则/类型模板。对已切入返工子路径的返工批次执行取消，返工批次转为完结状态（Closed）。执行记录见 semi:CancelReworkEventRecord。"
+    },
+    {
+      "logic_class": "semi:CancelReworkEventRecord",
+      "physical_table": "matrix_routerx_operation_lot_batch_resume_log",
+      "primary_key": "id",
+      "label_cn": "取消返工操作执行记录",
+      "display_column": "lot_code",
+      "filter_condition": "operation_type = 13",
+      "virtual": false,
+      "properties": {
+        "semi:hasEventStartTime": "gmt_create",
+        "semi:hasOperatorId": "create_user_id",
+        "semi:hasOperator": "create_user"
+      },
+      "key_columns": [
+        "id",
+        "operation_type",
+        "lot_id",
+        "lot_code",
+        "product_id",
+        "product_code",
+        "product_name",
+        "process_id",
+        "process_code",
+        "process_name",
+        "extra",
+        "create_user_id",
+        "create_user",
+        "gmt_create",
+        "update_user_id",
+        "update_user",
+        "gmt_update",
+        "deleted",
+        "trace_id"
+      ],
+      "operation_type_ref": "value_mappings.semi:LotOperationType",
+      "note": "取消返工操作执行记录，filter_condition = operation_type=13。对已通过批次返工（op=12）创建的返工批次执行取消，返工批次转为完结状态（Closed），流转终止。不产出新批次。【三层快照路径】CancelReworkEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(reworkSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(reworkSnapshotOfSublot)→ Sublot；每片 wafer 写一行快照，无 isSource 侧别区分。与 ReworkEventRecord（op=12）互为逆操作，共用 reworkSnapshotOfWafer/reworkSnapshotOfSublot 快照路径。"
+    },
+    {
       "logic_class": "semi:CheckInEvent",
       "physical_table": null,
       "label_cn": "批次进站事件类型",
@@ -1628,9 +1718,11 @@
             "semi:OpenLotEventRecord",
             "semi:CancelOpenLotEventRecord",
             "semi:CreateLocalLotEventRecord",
-            "semi:CancelLocalLotEventRecord"
+            "semi:CancelLocalLotEventRecord",
+            "semi:ReworkEventRecord",
+            "semi:CancelReworkEventRecord"
           ],
-          "note": "wafer_type 直接列，null=good(良品)/reject(不良)/loss(报销)；SQL查询时需 COALESCE(wafer_type,'good') 处理 null 值。不良录入(op=6)后 wafer_type=reject；取消不良(op=7)后 wafer_type=null/good"
+          "note": "wafer_type 直接列，null=good(良品)/reject(不良)/loss(报销)；SQL查询时需 COALESCE(wafer_type,'good') 处理 null 值。不良录入(op=6)后 wafer_type=reject；取消不良(op=7)后 wafer_type=null/good；返工(op=12)后 wafer_type=good（默认）"
         }
       }
     },
@@ -3543,6 +3635,79 @@
       },
       "domain_class": "semi:WaferTransitionSnapshot",
       "range_class": "semi:Wafer"
+    },
+    {
+      "logic_relation": "semi:reworkSnapshotOfSublot",
+      "description": "返工/取消返工事件快照对应子批次实体（返工操作专用，仅 op=12/13）",
+      "strategy": "ForeignKey",
+      "applicable_record_types": [
+        "semi:ReworkEventRecord",
+        "semi:CancelReworkEventRecord"
+      ],
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
+        "source_key": "sub_lot_code",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "current_lot_code",
+        "filter_condition": "parent_id != 0",
+        "note": "路径：_wafer_detail_log.sub_lot_code = matrix_routerx_operation_lot.current_lot_code（WHERE parent_id != 0 即子批次）。无 isSource 侧别区分（子批次导航不依赖 isSource）。与 openLotSnapshotOfSublot/holdSnapshotOfSublot 同构。"
+      },
+      "domain_class": "semi:WaferTransitionSnapshot",
+      "range_class": "semi:Sublot"
+    },
+    {
+      "logic_relation": "semi:reworkSnapshotOfWafer",
+      "description": "返工/取消返工事件快照对应晶圆实体（返工操作专用，仅 op=12/13）",
+      "strategy": "ForeignKey",
+      "applicable_record_types": [
+        "semi:ReworkEventRecord",
+        "semi:CancelReworkEventRecord"
+      ],
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
+        "source_key": "wafer_id",
+        "target_table": "matrix_routerx_operation_lot_wafer",
+        "target_key": "wafer_id",
+        "note": "路径：_wafer_detail_log.wafer_id = matrix_routerx_operation_lot_wafer.wafer_id。返工操作不改变 wafer_id，仅创建新返工批次编号。无 isSource 侧别区分（Wafer 导航不依赖 isSource）。与 openLotSnapshotOfWafer/holdSnapshotOfWafer 同构。"
+      },
+      "domain_class": "semi:WaferTransitionSnapshot",
+      "range_class": "semi:Wafer"
+    },
+    {
+      "logic_relation": "semi:reworkSourceLot",
+      "description": "返工事件源侧快照对应源批次（被返工的原始批次，仅 op=12 isSource=true）",
+      "strategy": "ForeignKey",
+      "applicable_record_types": [
+        "semi:ReworkEventRecord"
+      ],
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
+        "source_key": "JSON_EXTRACT(extra,'$.sourceLotCode')",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "current_lot_code",
+        "filter_condition": "isSource = true （通过 batch_resume_detail_log_id → _detail WHERE isSource=true）",
+        "note": "路径：_wafer_detail_log（isSource=true 侧）→ batch_resume_detail_log_id → _detail.extra.sourceLotCode = matrix_routerx_operation_lot.current_lot_code。表达本次返工从哪个批次发起的血缘语义。与 splitsFromLot 同构。"
+      },
+      "domain_class": "semi:WaferTransitionSnapshot",
+      "range_class": "semi:ProductionLot"
+    },
+    {
+      "logic_relation": "semi:reworkTargetLot",
+      "description": "返工事件目标侧快照对应返工批次（新创建的返工批次，仅 op=12 isSource=false）",
+      "strategy": "ForeignKey",
+      "applicable_record_types": [
+        "semi:ReworkEventRecord"
+      ],
+      "join_logic": {
+        "source_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
+        "source_key": "JSON_EXTRACT(extra,'$.targetLotCode')",
+        "target_table": "matrix_routerx_operation_lot",
+        "target_key": "current_lot_code",
+        "filter_condition": "isSource = false （通过 batch_resume_detail_log_id → _detail WHERE isSource=false）",
+        "note": "路径：_wafer_detail_log（isSource=false 侧）→ batch_resume_detail_log_id → _detail.extra.targetLotCode = matrix_routerx_operation_lot.current_lot_code。新批次编码含返工标识，wafer_id 全程不变。表达本次返工操作创建了哪个返工批次的血缘语义。与 producesLot（拆批）同构。"
+      },
+      "domain_class": "semi:WaferTransitionSnapshot",
+      "range_class": "semi:ProductionLot"
     }
   ],
   "value_mappings": {
@@ -4160,7 +4325,7 @@
       "Rework": {
         "value": 12,
         "name": "返工操作",
-        "description": "将批次送回前端工序重新加工（生成返工路径批次标识）",
+        "description": "将不良片批次切入返工子路径重返特定工序进行工艺加工，创建新返工批次号（批次编码含返工标识如 SP025K→SPQ25K），wafer_id 全程不变。物理层三联写：主记录表（op=12）+ _detail（extra.sourceLotCode/targetLotCode，isSource 区分源/目标侧）+ _wafer_detail_log（逐片快照）。三层快照导航：reworkSourceLot（isSource=true，源批次）/ reworkTargetLot（isSource=false，新返工批次）；wafer 导航：reworkSnapshotOfWafer；子批次导航：reworkSnapshotOfSublot。",
         "physical_condition": "operation_type = 12",
         "applies_to_table": "matrix_routerx_operation_lot_batch_resume_log",
         "applies_to_column": "operation_type",
@@ -4176,11 +4341,12 @@
       "CancelRework": {
         "value": 13,
         "name": "取消返工",
-        "description": "撤销返工操作，恢复批次原始状态",
+        "description": "对已切入返工子路径的返工批次执行取消，返工批次状态转为完结（Closed），生产流转终止。不创建新批次。三层快照导航：reworkSnapshotOfWafer（每片 wafer 一行快照，无 isSource 侧别区分）/ reworkSnapshotOfSublot。与 ReworkEventRecord（op=12）互为逆操作。",
         "physical_condition": "operation_type = 13",
         "applies_to_table": "matrix_routerx_operation_lot_batch_resume_log",
         "applies_to_column": "operation_type",
         "is_genealogy_event": false,
+        "maps_to_event_class": "semi:CancelReworkEvent",
         "nl_triggers": [
           "取消返工",
           "撤销返工"
