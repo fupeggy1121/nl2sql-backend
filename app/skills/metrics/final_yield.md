@@ -66,6 +66,6 @@ required_entities:
 
 - 综合良率 >= 一次良率（因为返工恢复的晶圆会提升综合良率）
 - `wafer_type` 为 NULL 时默认按 good 处理
-- 需排除已逻辑删除的记录
+- 需排除已逻辑删除的记录（`deleted = 0 OR deleted IS NULL`）
 - **适用站点**：良率计算仅针对量测类型站点（Measurement Station）的 CheckOut 记录；工艺站点出站时无 `wafer_type` 判定，其良率定义另行维护
 - **返工场景**：返工子路径的量测站点与主路径为同一 `process_code`，`waferID` 不变。综合良率取末次出站（`rn=1 DESC`），返工救回的片末次为 good，自然计入分子，无需针对返工场景做额外过滤
