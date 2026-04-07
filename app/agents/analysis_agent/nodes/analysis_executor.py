@@ -220,11 +220,15 @@ def analysis_executor_node(state: AnalysisState) -> dict:
         metric_result: Optional[MetricResult] = None
         chosen_tool = ""
 
+        # LLM 选出的 group_by 在降级时复用，避免降级路径因 group_by=None
+        # 触发 _detect_group_by 的机械逻辑（按列多值分组）产生错误结果
+        llm_group_by: Optional[List[str]] = None
+
         if llm_result:
-            chosen_tool = llm_result.get("tool", "")
-            group_by    = llm_result.get("group_by") or None
-            llm_reason  = llm_result.get("reason", "LLM 选择")
-            metric_result = _run_compute_tool(chosen_tool, df, group_by)
+            chosen_tool  = llm_result.get("tool", "")
+            llm_group_by = llm_result.get("group_by") or None
+            llm_reason   = llm_result.get("reason", "LLM 选择")
+            metric_result = _run_compute_tool(chosen_tool, df, llm_group_by)
 
         # ── 第二层降级: skill.compute_tool ──
         if metric_result is None:
@@ -233,7 +237,7 @@ def analysis_executor_node(state: AnalysisState) -> dict:
                 logger.info(f"[analysis_executor] LLM fallback → skill.compute_tool={fallback_tool}")
                 chosen_tool = fallback_tool
                 llm_reason  = "skill.compute_tool 降级"
-                metric_result = _run_compute_tool(fallback_tool, df, group_by=None)
+                metric_result = _run_compute_tool(fallback_tool, df, group_by=llm_group_by)
 
         # ── 第三层降级: registry metric_name ──
         if metric_result is None and metric_name:
@@ -243,7 +247,7 @@ def analysis_executor_node(state: AnalysisState) -> dict:
                 logger.info(f"[analysis_executor] final fallback → metric_registry[{metric_name}]")
                 chosen_tool = metric_name
                 llm_reason  = "metric_registry 兜底"
-                metric_result = computer.compute(df, group_by=None)
+                metric_result = computer.compute(df, group_by=llm_group_by)
 
         if metric_result is None:
             return {
@@ -255,7 +259,7 @@ def analysis_executor_node(state: AnalysisState) -> dict:
             }
 
         result = _metric_result_to_analysis_result(
-            metric_result, metric_name, llm_result.get("group_by") if llm_result else None,
+            metric_result, metric_name, llm_group_by,
             chosen_tool, llm_reason,
         )
 
