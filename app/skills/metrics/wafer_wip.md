@@ -21,7 +21,6 @@ required_columns:
   - wafer_id
   - process_name
   - product_code
-  - report_date
 granularity:
   - 工站
   - 机台
@@ -53,6 +52,8 @@ required_entities:
 - **必须 DISTINCT**: `COUNT(lot.id)` 会因 batch→sublot 一对多导致 wafer 行重复，必须用 `COUNT(DISTINCT wafer.id)`
 - **仅计子批次**: `lot.parent_id != 0` 过滤掉主批次记录，避免重复计数
 - **status = 50**: 仅统计"在制"状态批次，status 其他值代表已完成或暂停
+- **禁止时间过滤**: 在制品是**实时快照**，SQL 中**绝对不能**加任何 `gmt_create`/`gmt_modified` 的时间范围条件（如 `BETWEEN ... AND ...`）；用户说"当前"不代表要加时间过滤，在制品本身就是当前状态
+- **JOIN 路径（重要）**: 必须走两级关联：wafer → **子批次**（`sub.id = w.sub_lot_id`）→ 主批次（`lot.id = sub.parent_id`）；工站信息必须取自**子批次**的 `sub.process_id`，不是主批次的字段
 
 ## 支持维度
 
@@ -67,14 +68,33 @@ required_entities:
 ## 常见查询示例
 
 ```sql
--- 各工站当前在制品数
-SELECT proc.name AS station, COUNT(DISTINCT w.id) AS wip_count
+-- 各工站当前在制品数（正确 JOIN 路径：wafer → 子批次 → 主批次）
+-- ⚠️ 不加任何时间过滤，在制品是实时快照，"当前"语义来自 status=50，不是时间范围
+SELECT
+    proc.name        AS process_name,
+    pm.product_code  AS product_code,
+    COUNT(DISTINCT w.id) AS wip_count
 FROM matrix_routerx_operation_lot_wafer w
+JOIN matrix_routerx_operation_lot sub
+     ON sub.id = w.sub_lot_id      -- wafer → 子批次（不是 w.lot_id）
+     AND sub.parent_id != 0        -- 确保是子批次
+     AND sub.status = 50           -- 在制状态
 JOIN matrix_routerx_operation_lot lot
-     ON lot.id = w.lot_id AND lot.parent_id != 0
+     ON lot.id = sub.parent_id     -- 子批次 → 主批次
+JOIN product_model pm
+     ON pm.id = lot.product_id
 LEFT JOIN matrix_routerx_config_process proc
-     ON proc.id = lot.process_id
-WHERE lot.status = 50
-GROUP BY proc.name
+     ON proc.id = sub.process_id   -- 工站来自子批次，不是主批次
+GROUP BY proc.name, pm.product_code
 ORDER BY wip_count DESC;
+```
+
+```sql
+-- 汇总全部在制品总数（不按维度分组时使用）
+SELECT COUNT(DISTINCT w.id) AS total_wip
+FROM matrix_routerx_operation_lot_wafer w
+JOIN matrix_routerx_operation_lot sub
+     ON sub.id = w.sub_lot_id
+     AND sub.parent_id != 0
+     AND sub.status = 50;
 ```

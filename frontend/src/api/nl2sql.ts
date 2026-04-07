@@ -61,7 +61,7 @@ export async function getDbMode(): Promise<{ data: DbMode }> {
   return get('/api/mapping/mode')
 }
 
-/** 切换 DB 模式: mysql | supabase | auto */
+/** 切换 DB 模式: test | dev | epi */
 export async function switchDbMode(mode: string): Promise<unknown> {
-  return post('/api/mapping/switch', { db_mode: mode })
+  return post('/api/mapping/switch', { mode })
 }
