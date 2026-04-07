@@ -182,7 +182,7 @@ semi:ReworkOp a owl:NamedIndividual ;
 semi:ReworkEventRecord a owl:Class ;
     rdfs:label "返工操作记录" ;
     semi:tableFilter "operation_type = 12" ;
-    rdfs:comment "返工操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 12。【关联语义】返工是将经过评估的不良片批次切入返工子路径重返某个特定工序进行工艺加工操作，操作为其赋予新的返工生产批次号（批次编码中特定位数体现返工信息），片唯一标识符 wafer_id 保持不变。返工后片类型默认 Good，需内检确认就回率后计入综合良率。物理层三联写入：主记录表（op=12）+ _detail（返工前后子批次状态快照，extra.isSource 区分源/目标侧，extra 中记录 sourceLotCode/targetLotCode）+ _wafer_detail_log（逐片 Wafer 迁移明细快照）。【三层快照路径】ReworkEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot（Wafer粒度，_wafer_detail_log，含 wafer_type/slot_no/carrier_code/ng_code/ng_reason）→(reworkSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(reworkSnapshotOfSublot)→ Sublot。源侧批次导航：WaferTransitionSnapshot（isSource=true）→(reworkSourceLot)→ ProductionLot（extra.sourceLotCode）；目标侧返工批次导航：WaferTransitionSnapshot（isSource=false）→(reworkTargetLot)→ ProductionLot（extra.targetLotCode）。取消返工对应 semi:CancelReworkEventRecord（op=13），为逆操作。" ;
+    rdfs:comment "返工操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 12。【关联语义】返工是将经过评估的不良片批次切入返工子路径重返某个特定工序进行工艺加工操作，操作为其赋予新的返工生产批次号（批次编码中特定位数体现返工信息），片唯一标识符 wafer_id 保持不变。返工后片类型默认 Good，需内检确认就回率后计入综合良率。物理层三联写入：主记录表（op=12）+ _detail（每行 extra 直接含 sourceLotCode/targetLotCode，两者同时记录，无 isSource 字段）+ _wafer_detail_log（逐片 Wafer 迁移明细快照）。【三层快照路径】ReworkEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot（Wafer粒度，_wafer_detail_log，含 wafer_type/slot_no/carrier_code/ng_code/ng_reason）→(reworkSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(reworkSnapshotOfSublot)→ Sublot。血缘批次导航：WaferTransitionSnapshot →(reworkSourceLot)→ ProductionLot（_detail.extra.sourceLotCode）；WaferTransitionSnapshot →(reworkTargetLot)→ ProductionLot（_detail.extra.targetLotCode）。取消返工对应 semi:CancelReworkEventRecord（op=13），为逆操作。" ;
     rdfs:subClassOf [ a owl:Restriction ;
             owl:allValuesFrom semi:ReworkEvent ;
             owl:onProperty semi:isInstanceOfEvent ],
@@ -1476,13 +1476,13 @@ semi:reworkSnapshotOfWafer a owl:ObjectProperty ;
 
 semi:reworkSourceLot a owl:ObjectProperty ;
     rdfs:label "返工源批次" ;
-    rdfs:comment "返工事件的源侧 WaferTransitionSnapshot（isSource=true）所对应的源批次实体（被返工的原始批次）。【返工事件专用，仅 op=12 源侧有效】物理路径：_wafer_detail_log（isSource=true 侧，即 batch_resume_detail_log_id 关联 _detail WHERE isSource=true）→ JSON_EXTRACT(_detail.extra,'$.sourceLotCode') = matrix_routerx_operation_lot.current_lot_code。表达「本次返工操作从哪个批次发起」的血缘语义。对应批次谱系关系 reworkedAs 的源端。与 splitsFromLot 同构，区别在于适用事件类型为 ReworkEventRecord。" ;
+    rdfs:comment "返工事件的 WaferTransitionSnapshot 快照所对应的源批次实体（被返工的原始批次）。【返工事件专用，仅 op=12 有效】物理路径：_wafer_detail_log.batch_resume_detail_log_id → _log_detail.id → JSON_EXTRACT(_log_detail.extra,'$.sourceLotCode') = matrix_routerx_operation_lot.current_lot_code（无 isSource 过滤：每行 _log_detail.extra 同时含 sourceLotCode 和 targetLotCode，不存在 isSource 字段）。表达「本次返工操作从哪个批次发起」的血缘语义。对应批次谱系关系 reworkedAs 的源端。与 splitsFromLot 同构，区别在于适用事件类型为 ReworkEventRecord。" ;
     rdfs:domain semi:WaferTransitionSnapshot ;
     rdfs:range semi:ProductionLot .
 
 semi:reworkTargetLot a owl:ObjectProperty ;
     rdfs:label "返工目标批次" ;
-    rdfs:comment "返工事件的目标侧 WaferTransitionSnapshot（isSource=false）所对应的目标返工批次实体（新创建的返工批次）。【返工事件专用，仅 op=12 目标侧有效】物理路径：_wafer_detail_log（isSource=false 侧，即 batch_resume_detail_log_id 关联 _detail WHERE isSource=false）→ JSON_EXTRACT(_detail.extra,'$.targetLotCode') = matrix_routerx_operation_lot.current_lot_code。新批次编码含返工标识（如 SP025K→SPQ25K），wafer_id 全程不变。表达「本次返工操作创建了哪个返工批次」的血缘语义。对应批次谱系关系 reworkedAs 的目标端。与 producesLot（拆批）同构，区别在于适用事件类型为 ReworkEventRecord。" ;
+    rdfs:comment "返工事件的 WaferTransitionSnapshot 快照所对应的目标返工批次实体（新创建的返工批次）。【返工事件专用，仅 op=12 有效】物理路径：_wafer_detail_log.batch_resume_detail_log_id → _log_detail.id → JSON_EXTRACT(_log_detail.extra,'$.targetLotCode') = matrix_routerx_operation_lot.current_lot_code（无 isSource 过滤：每行 _log_detail.extra 同时含 sourceLotCode 和 targetLotCode，不存在 isSource 字段）。新批次编码含返工标识（如 SP025K→SPQ25K），wafer_id 全程不变。表达「本次返工操作创建了哪个返工批次」的血缘语义。对应批次谱系关系 reworkedAs 的目标端。与 producesLot（拆批）同构，区别在于适用事件类型为 ReworkEventRecord。" ;
     rdfs:domain semi:WaferTransitionSnapshot ;
     rdfs:range semi:ProductionLot .
 
@@ -1781,7 +1781,7 @@ semi:ReworkEvent a owl:Class ;
     semi:apiBinding "MES_CORE_SERVICE.executeRework" ;
     semi:inputSchema "{ lotId: string, targetRouteId: string, targetProcessId: string, waferList: [{waferId: string}] }" ;
     semi:postCondition "新返工 ProductionLot 创建，lot_code 含返工标识；wafer_id 不变；返工批次切入返工子路径" ;
-    rdfs:comment "定义批次返工（Rework）操作的规则/类型模板。对应 operation_type=12。将经过评估的不良片批次切入返工子路径重返特定工序进行工艺加工，创建新返工批次编号（批次编码中特定位数体现返工信息），wafer_id 全程不变。返工后片类型默认 Good，需后续检测确认，救回者计入综合良率。物理层三联写入：主记录表 + _detail（extra 含 sourceLotCode/targetLotCode，isSource 区分源/目标侧） + _wafer_detail_log。执行记录见 semi:ReworkEventRecord。与 CancelReworkEvent（op=13）互为逆操作。" ;
+    rdfs:comment "定义批次返工（Rework）操作的规则/类型模板。对应 operation_type=12。将经过评估的不良片批次切入返工子路径重返特定工序进行工艺加工，创建新返工批次编号（批次编码中特定位数体现返工信息），wafer_id 全程不变。返工后片类型默认 Good，需后续检测确认，救回者计入综合良率。物理层三联写入：主记录表 + _detail（extra 直接含 sourceLotCode/targetLotCode，每行同时含两者，无 isSource 字段） + _wafer_detail_log。执行记录见 semi:ReworkEventRecord。与 CancelReworkEvent（op=13）互为逆操作。" ;
     rdfs:subClassOf semi:ProductionEvent .
 
 semi:CancelReworkEvent a owl:Class ;

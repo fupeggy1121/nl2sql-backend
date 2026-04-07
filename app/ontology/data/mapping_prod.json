@@ -1406,7 +1406,7 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "批次返工操作执行记录，filter_condition = operation_type=12。将不良片批次切入返工子路径，创建新返工批次编号（批次编码中特定位数体现返工信息），wafer_id 全程不变。返工后片类型默认 Good，需后续检测确认是否救回。物理层三联写入：主记录表（op=12）+ _detail（extra 含 sourceLotCode/targetLotCode，isSource=true/false 区分源/目标侧快照）+ _wafer_detail_log（逐片 Wafer 迁移明细）。【三层快照路径】ReworkEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(reworkSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(reworkSnapshotOfSublot)→ Sublot；源侧（isSource=true）：WaferTransitionSnapshot →(reworkSourceLot)→ ProductionLot（extra.sourceLotCode）；目标侧（isSource=false）：WaferTransitionSnapshot →(reworkTargetLot)→ ProductionLot（extra.targetLotCode）。取消返工操作见 semi:CancelReworkEventRecord（op=13）。"
+      "note": "批次返工操作执行记录，filter_condition = operation_type=12。将不良片批次切入返工子路径，创建新返工批次编号（批次编码中特定位数体现返工信息），wafer_id 全程不变。返工后片类型默认 Good，需后续检测确认是否救回。物理层三联写入：主记录表（op=12）+ _detail（extra 直接含 sourceLotCode/targetLotCode，每行同时记录两个批次编码，无 isSource 字段）+ _wafer_detail_log（逐片 Wafer 迁移明细）。【三层快照路径】ReworkEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(reworkSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(reworkSnapshotOfSublot)→ Sublot；血缘批次导航：WaferTransitionSnapshot →(reworkSourceLot)→ ProductionLot（_detail.extra.sourceLotCode）；WaferTransitionSnapshot →(reworkTargetLot)→ ProductionLot（_detail.extra.targetLotCode）。取消返工操作见 semi:CancelReworkEventRecord（op=13）。"
     },
     {
       "logic_class": "semi:CancelReworkEvent",
@@ -3675,36 +3675,40 @@
     },
     {
       "logic_relation": "semi:reworkSourceLot",
-      "description": "返工事件源侧快照对应源批次（被返工的原始批次，仅 op=12 isSource=true）",
-      "strategy": "ForeignKey",
+      "description": "返工事件快照对应源批次（被返工的原始批次，仅 op=12）",
+      "strategy": "JoinVia",
       "applicable_record_types": [
         "semi:ReworkEventRecord"
       ],
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
-        "source_key": "JSON_EXTRACT(extra,'$.sourceLotCode')",
+        "source_key": "batch_resume_detail_log_id",
+        "via_table": "matrix_routerx_operation_lot_batch_resume_log_detail",
+        "via_source_key": "id",
+        "via_target_key": "JSON_EXTRACT(matrix_routerx_operation_lot_batch_resume_log_detail.extra, '$.sourceLotCode')",
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "current_lot_code",
-        "filter_condition": "isSource = true （通过 batch_resume_detail_log_id → _detail WHERE isSource=true）",
-        "note": "路径：_wafer_detail_log（isSource=true 侧）→ batch_resume_detail_log_id → _detail.extra.sourceLotCode = matrix_routerx_operation_lot.current_lot_code。表达本次返工从哪个批次发起的血缘语义。与 splitsFromLot 同构。"
+        "note": "路径：_wafer_detail_log.batch_resume_detail_log_id = _log_detail.id → JSON_EXTRACT(_log_detail.extra,'$.sourceLotCode') = matrix_routerx_operation_lot.current_lot_code。⚠ 无 isSource 过滤：每行 _log_detail.extra 同时含 sourceLotCode 和 targetLotCode，不存在 isSource 字段。_wafer_detail_log.extra 始终为 {}，批次编码信息从 _log_detail.extra 获取。表达本次返工从哪个批次发起的血缘语义。"
       },
       "domain_class": "semi:WaferTransitionSnapshot",
       "range_class": "semi:ProductionLot"
     },
     {
       "logic_relation": "semi:reworkTargetLot",
-      "description": "返工事件目标侧快照对应返工批次（新创建的返工批次，仅 op=12 isSource=false）",
-      "strategy": "ForeignKey",
+      "description": "返工事件快照对应返工目标批次（新创建的返工批次，仅 op=12）",
+      "strategy": "JoinVia",
       "applicable_record_types": [
         "semi:ReworkEventRecord"
       ],
       "join_logic": {
         "source_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
-        "source_key": "JSON_EXTRACT(extra,'$.targetLotCode')",
+        "source_key": "batch_resume_detail_log_id",
+        "via_table": "matrix_routerx_operation_lot_batch_resume_log_detail",
+        "via_source_key": "id",
+        "via_target_key": "JSON_EXTRACT(matrix_routerx_operation_lot_batch_resume_log_detail.extra, '$.targetLotCode')",
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "current_lot_code",
-        "filter_condition": "isSource = false （通过 batch_resume_detail_log_id → _detail WHERE isSource=false）",
-        "note": "路径：_wafer_detail_log（isSource=false 侧）→ batch_resume_detail_log_id → _detail.extra.targetLotCode = matrix_routerx_operation_lot.current_lot_code。新批次编码含返工标识，wafer_id 全程不变。表达本次返工操作创建了哪个返工批次的血缘语义。与 producesLot（拆批）同构。"
+        "note": "路径：_wafer_detail_log.batch_resume_detail_log_id = _log_detail.id → JSON_EXTRACT(_log_detail.extra,'$.targetLotCode') = matrix_routerx_operation_lot.current_lot_code。⚠ 无 isSource 过滤：每行 _log_detail.extra 同时含 sourceLotCode 和 targetLotCode，不存在 isSource 字段。_wafer_detail_log.extra 始终为 {}，批次编码信息从 _log_detail.extra 获取。新批次编码含返工标识，wafer_id 全程不变。表达本次返工操作创建了哪个返工批次的血缘语义。"
       },
       "domain_class": "semi:WaferTransitionSnapshot",
       "range_class": "semi:ProductionLot"
@@ -4325,7 +4329,7 @@
       "Rework": {
         "value": 12,
         "name": "返工操作",
-        "description": "将不良片批次切入返工子路径重返特定工序进行工艺加工，创建新返工批次号（批次编码含返工标识如 SP025K→SPQ25K），wafer_id 全程不变。物理层三联写：主记录表（op=12）+ _detail（extra.sourceLotCode/targetLotCode，isSource 区分源/目标侧）+ _wafer_detail_log（逐片快照）。三层快照导航：reworkSourceLot（isSource=true，源批次）/ reworkTargetLot（isSource=false，新返工批次）；wafer 导航：reworkSnapshotOfWafer；子批次导航：reworkSnapshotOfSublot。",
+        "description": "将不良片批次切入返工子路径重返特定工序进行工艺加工，创建新返工批次号（批次编码含返工标识如 SP025K→SPQ25K），wafer_id 全程不变。物理层三联写：主记录表（op=12）+ _detail（extra 直接含 sourceLotCode/targetLotCode，每行同时记录两个批次编码，无 isSource 字段）+ _wafer_detail_log（逐片快照）。三层快照导航：reworkSourceLot（源批次，_detail.extra.sourceLotCode）/ reworkTargetLot（新返工批次，_detail.extra.targetLotCode）；wafer 导航：reworkSnapshotOfWafer；子批次导航：reworkSnapshotOfSublot。",
         "physical_condition": "operation_type = 12",
         "applies_to_table": "matrix_routerx_operation_lot_batch_resume_log",
         "applies_to_column": "operation_type",
