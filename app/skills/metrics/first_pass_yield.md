@@ -57,3 +57,4 @@ required_entities:
 - 需排除已逻辑删除的记录（`deleted = 0 OR deleted IS NULL`）
 - **适用站点**：良率计算仅针对量测类型站点（Measurement Station）的 CheckOut 记录；工艺站点出站时无 `wafer_type` 判定，其良率定义另行维护
 - **返工场景**：返工子路径的量测站点与主路径为同一 `process_code`，`waferID` 不变。一次良率取首次出站（`rn=1 ASC`），返工后再经过该量测站点的记录 `rn > 1`，不会混入计算，无需额外过滤
+- **全流程串联良率**：用户未指定站点时，SQL 应返回全量站点数据（不加 process_code 过滤），Python 层会按 process_code 分组各自计算站点良率，再对所有站点良率连乘得到全流程一次良率；用户指定了站点（提到 process_code 或站点名），SQL 加 `WHERE process_code = '...'` 精确过滤

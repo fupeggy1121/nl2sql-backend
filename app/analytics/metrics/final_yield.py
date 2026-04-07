@@ -135,11 +135,10 @@ class FinalYieldComputer(MetricComputer):
     def _compute_grouped(
         self, df: pd.DataFrame, group_by: List[str]
     ) -> tuple[List[Dict[str, Any]], float]:
-        total = df["wafer_id"].nunique()
-        good = df[df["is_good"]]["wafer_id"].nunique()
-        overall_yield = (good / total * 100) if total > 0 else 0.0
-
         if not group_by:
+            total = df["wafer_id"].nunique()
+            good = df[df["is_good"]]["wafer_id"].nunique()
+            overall_yield = (good / total * 100) if total > 0 else 0.0
             return [
                 {"total_wafers": total, "good_wafers": good, "final_yield": round(overall_yield, 2)}
             ], overall_yield
@@ -158,6 +157,19 @@ class FinalYieldComputer(MetricComputer):
             detail_rows.append(row)
 
         detail_rows.sort(key=lambda r: r["final_yield"], reverse=True)
+
+        # 全流程串联良率：当分组含 process_code 时 = 各站点良率的乘积
+        # 当不含 process_code 时（仅按日期/产品分组）= 全量 good/total
+        if "process_code" in group_by:
+            product = 1.0
+            for row in detail_rows:
+                product *= row["final_yield"] / 100.0
+            overall_yield = round(product * 100, 2)
+        else:
+            total = df["wafer_id"].nunique()
+            good = df[df["is_good"]]["wafer_id"].nunique()
+            overall_yield = (good / total * 100) if total > 0 else 0.0
+
         return detail_rows, overall_yield
 
     def _build_charts(self, detail: List[Dict[str, Any]], group_by: List[str]) -> List[Dict[str, Any]]:
