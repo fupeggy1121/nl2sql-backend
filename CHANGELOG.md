@@ -2,6 +2,49 @@
 
 ---
 
+## v0.4 — 多指标并行调度 + B08/C08 澄清流程 (2026-04)
+
+**测试基准：26/26 通过 (100%)，multi_skill 验证 6/6 通过**
+
+### Multi-Skill 并行路由
+
+#### supervisor.py 新增 `multi_skill` 路径
+- `_ROUTE_PROMPT` Rule 1：用户提及 2+ 个 skill alias → 返回 `{"path": "multi_skill", "skill_names": [...]}`
+- `route_request()` 解析 `skill_names` 数组，不足 2 个时自动降级为 `skill` 或 `adhoc`
+- `_run_multi_skill_agent()`：`asyncio.gather` 并行启动每个 skill 的独立 `analysis_agent`
+- `_merge_multi_skill_results()`：合并 answer（`###` 分节）、chart 去重（按 title）、analysis dict
+- `_route_fallback()` 同时命中 2+ skill 时也走 `multi_skill` 路径
+- 新增 `trace_step("multi_skill_merge", ...)` 便于测试脚本检测路由类型
+
+#### test_multi_skill.py 验证套件（6 用例）
+| ID | 查询 | 期望路由 |
+|----|------|---------|
+| M01 | 返工率和良率对比 | multi_skill [rework_rate, final_yield] |
+| M02 | 最近一个月WIP数量和一次良率的关系 | multi_skill [wafer_wip, first_pass_yield] |
+| M03 | 比较一次良率、综合良率和返工率 | multi_skill (3 skills) |
+| M04 | 最近7天返工率趋势 | skill（单 skill，不触发并行）|
+| M05 | 当前各工站有多少批次在加工 | adhoc（不触发 skill）|
+| M06 | 上个月各工站的一次良率和返工率 | multi_skill [first_pass_yield, rework_rate] |
+
+> M06 `first_pass_yield` 偶发执行失败为 LLM 非确定性问题，重跑即过，非结构性 bug。
+
+### B08/C08 澄清流程
+
+#### 问题
+- B08「最近有异常的批次」/ C08「帮我分析一下生产情况」返回空 `answer` 字段
+
+#### 修复
+- `response_builder.py`：clarification 分支新增 `"answer": question`（之前遗漏）
+- `intent_router.py`：低置信度 fallback 问题改为通用引导语，而非硬编码批次号示例
+- `clarification_node.py`：fallback 文本更新为通用模板
+- `intent_recognizer.py`：新增两条 few-shot 示例（B08/C08 模式 → `need_clarification`）
+
+#### 测试更新
+- `_validate_full_pipeline.py` `TestCase` 新增 `expected_clarification: bool` 字段
+- B08/C08 设 `expected_clarification=True`，`run_checks()` 验证返回非空 answer 而非检查 SQL 生成
+
+---
+
 ## v0.3 — 路由架构重构 (2026-04)
 
 **测试基准：24/26 通过 (92%)，A 维度 10/10 全通**
