@@ -42,8 +42,11 @@ def _build_mysql_connect_kwargs() -> dict:
     db       = _get("DB",       "cc_semi_mvp")
     user     = _get("USER",     "root")
     password = _get("PASSWORD", "")
+    # read_timeout: max seconds to wait for a query response.
+    # Prevents slow / full-table-scan queries from hanging indefinitely.
+    read_timeout = int(os.getenv("MYSQL_QUERY_TIMEOUT", "45"))
     return dict(host=host, port=port, db=db, user=user, password=password,
-                connect_timeout=3, charset="utf8mb4")
+                connect_timeout=3, read_timeout=read_timeout, charset="utf8mb4")
 
 
 class MySQLExecutor:

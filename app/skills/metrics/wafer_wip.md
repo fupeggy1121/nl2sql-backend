@@ -6,13 +6,14 @@ zh_names:
   - 在制wafer数
   - 在机台wafer数
   - 在制品wafer
-  - 各站在制
+  - 各站在制品
   - 站点在制品
-  - 在制品
-  - WIP
-  - 在制
+  - WIP分布
+  - 在制品分布
+  - wafer在制品
+  - 当前在制品
 compute_mode: sql_aggregate
-standard_definition: "在制品数量 = COUNT(DISTINCT wafer记录) 当前还在线上活跃子批次中的晶圆数"
+standard_definition: "在制品数量 = COUNT(DISTINCT wafer记录) 当前还在线上活跃子批次中的晶圆数，按工站/产品/路线维度汇总的预定义指标；不是批次计数查询"
 formula: "COUNT(DISTINCT wafer.id) WHERE lot.status=50 AND lot.parent_id!=0"
 granularity:
   - 工站

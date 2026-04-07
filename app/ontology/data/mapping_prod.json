@@ -1007,7 +1007,7 @@
       "label_cn": "批次扣留事件类型",
       "virtual": true,
       "virtual_kind": "action_event",
-      "note": "Type层定义，对应 LotOperationType operation_type=4（批次扣留）的规则/类型模板。作为 ProductionEvent 子类，通过 Named Individual semi:HoldOp 定义。批次扣留后状态变为 status=80（Staged/暂存）。支持指定未来站点进行预扣留（extra 字段含 preHoldProcessId/preHoldProcessCode）。执行记录见 semi:HoldEventRecord。"
+      "note": "Type层定义，对应 LotOperationType operation_type=4（批次扣留）的规则/类型模板。作为 ProductionEvent 子类，通过 Named Individual semi:HoldOp 定义。【重要】批次扣留后系统中无独立的 status 字段标记扣留状态，批次是否处于扣留中须通过事件记录推导（semi:LotWIPStatus.Hold）：存在 HoldEventRecord(operation_type=4) 且无后续 ReleaseEventRecord(operation_type=5) 即为扣留状态。批次扣留场景：生产异常等待工程师判定确认后进入下一步流程。支持指定未来站点进行预扣留（extra 字段含 preHoldProcessId/preHoldProcessCode）。执行记录见 semi:HoldEventRecord。【注意】与 semi:BatchStatus.Staged（status=80，批次物理移入线边仓暂存）是完全不同的状态，不可混淆。"
     },
     {
       "logic_class": "semi:HoldEventRecord",
@@ -1045,7 +1045,7 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "批次扣留操作执行记录，filter_condition = operation_type=4。批次被扣留后 matrix_routerx_operation_lot.status 变为 80（Staged/暂存）。extra 字段可包含预扣留站点信息（preHoldProcessId/preHoldProcessCode）。本操作不产出新批次，output_lot_id 为 null。create_user_id/create_user 为提交扣留的操作员（非 operator_id）。【统一快照路径（复用父类路径）】hasWaferTransitionDetail → WaferTransitionSnapshot（_wafer_detail_log，Wafer粒度，sub_lot_code/carrier_code/slot_no）→(holdSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(holdSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）；扣留元数据：WaferTransitionSnapshot.hasDetentionCode/hasDetentionRemark/hasDetentionProcessCode（join _detail.extra via batch_resume_detail_log_id）。"
+      "note": "批次扣留操作执行记录，filter_condition = operation_type=4。【重要】批次扣留后系统中无独立 status 字段标记扣留状态，判断批次当前是否被扣留须通过事件推导（semi:LotWIPStatus.Hold 的 physical_condition）：存在本记录且无时间上晚于它的 ReleaseEventRecord(operation_type=5) 即为扣留中。extra 字段可包含预扣留站点信息（preHoldProcessId/preHoldProcessCode）。本操作不产出新批次，output_lot_id 为 null。create_user_id/create_user 为提交扣留的操作员（非 operator_id）。【统一快照路径（复用父类路径）】hasWaferTransitionDetail → WaferTransitionSnapshot（_wafer_detail_log，Wafer粒度，sub_lot_code/carrier_code/slot_no）→(holdSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(holdSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）；扣留元数据：WaferTransitionSnapshot.hasDetentionCode/hasDetentionRemark/hasDetentionProcessCode（join _detail.extra via batch_resume_detail_log_id）。"
     },
     {
       "logic_class": "semi:ReleaseEvent",
@@ -1053,7 +1053,7 @@
       "label_cn": "批次释放事件类型",
       "virtual": true,
       "virtual_kind": "action_event",
-      "note": "Type层定义，对应 LotOperationType operation_type=5（批次释放）的规则/类型模板。作为 ProductionEvent 子类，通过 Named Individual semi:ReleaseOp 定义。批次释放后状态从 status=80（Staged/暂存）恢复为正常流转状态（status=50 加工中或其他）。执行记录见 semi:ReleaseEventRecord。"
+      "note": "Type层定义，对应 LotOperationType operation_type=5（批次释放）的规则/类型模板。作为 ProductionEvent 子类，通过 Named Individual semi:ReleaseOp 定义。批次释放（operation_type=5）将解除批次的扣留状态（推导型，非 status 字段），恢复批次可进站正常加工。执行记录见 semi:ReleaseEventRecord。【注意】释放操作与 batch移出线边仓（MoveOut）是两个独立操作：释放解除扣留状态，移出线边仓解除 Staged（status=80）状态。"
     },
     {
       "logic_class": "semi:ReleaseEventRecord",
@@ -1091,7 +1091,7 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "批次释放操作执行记录，filter_condition = operation_type=5。解除批次暂存（status=80）状态，恢复批次可进站加工。本操作不产出新批次，output_lot_id 为 null。create_user_id/create_user 为提交释放的操作员。【统一快照路径（复用父类路径）】hasWaferTransitionDetail → WaferTransitionSnapshot（_wafer_detail_log，Wafer粒度，sub_lot_code/carrier_code/slot_no）→(holdSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(holdSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）；释放元数据：WaferTransitionSnapshot.hasDetentionCode（被解除扣留代码）/hasDetentionRemark/hasDetentionProcessCode（join _detail.extra via batch_resume_detail_log_id）。与 HoldEventRecord 共用 hasWaferTransitionDetail/holdSnapshotOfWafer/holdSnapshotOfSublot 路径。"
+      "note": "批次释放操作执行记录，filter_condition = operation_type=5。解除批次的扣留状态（推导型，非 status 字段），恢复批次可进站加工。本操作不产出新批次，output_lot_id 为 null。create_user_id/create_user 为提交释放的操作员。【统一快照路径（复用父类路径）】hasWaferTransitionDetail → WaferTransitionSnapshot（_wafer_detail_log，Wafer粒度，sub_lot_code/carrier_code/slot_no）→(holdSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(holdSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）；释放元数据：WaferTransitionSnapshot.hasDetentionCode（被解除扣留代码）/hasDetentionRemark/hasDetentionProcessCode（join _detail.extra via batch_resume_detail_log_id）。与 HoldEventRecord 共用 hasWaferTransitionDetail/holdSnapshotOfWafer/holdSnapshotOfSublot 路径。"
     },
     {
       "logic_class": "semi:NGRecordEvent",
@@ -3613,7 +3613,7 @@
         "note": "status=-50 已作废"
       },
       "Staged": {
-        "description": "暂存批次（一些零头批次或返工批次被移入线边仓暂存，等待工艺判定后再进行后续加工操作）",
+        "description": "暂存批次（零头批次或不良片批次被移入 bank（线边仓）实物暂存，其下一步操作已明确但无法立即执行，需执行移出 bank 操作后方可继续加工）",
         "physical_condition": "matrix_routerx_operation_lot.status = 80",
         "applies_to_table": "matrix_routerx_operation_lot",
         "applies_to_column": "status",
@@ -3623,9 +3623,11 @@
           "已暂存",
           "暂存中",
           "暂存状态",
-          "线边仓暂存"
+          "线边仓暂存",
+          "移入bank",
+          "在bank中"
         ],
-        "note": "status=80 Staged/暂存状态。批次被移入线边仓暂存，禁止做任何加工操作，必须移出线边仓后再执行后续加工"
+        "note": "status=80 Staged/暂存状态。批次被物理移入 bank（线边仓），通常为零头批次或不良片批次，下一步操作已明确但无法立即执行，需执行移出 bank 操作后方可继续加工。【核心区别】暂存（Staged，status=80）与批次扣留（Hold）是两种完全独立的状态：暂存是批次物理移入线边仓存放；扣留是生产异常等待工程师判定确认后进入下一步流程，当前系统无独立 status 字段标记扣留，由 HoldEventRecord/ReleaseEventRecord 事件记录推导（semi:LotWIPStatus.Hold）。两者不可混用。"
       }
     },
     "semi:LotProcessStatus": {
@@ -4327,7 +4329,7 @@
       "_comment": "在制状态（WIP三态），属于推导型状态：由 LotProcessStatus（process_status字段）与扣留历史（HoldEventRecord）逻辑组合计算得出，不对应批次表中的单一字段。三态优先级：Hold > Run/IDLE。",
       "Run": {
         "description": "运行（批次处于活跃进站加工流转中，无激活扣留记录）",
-        "physical_condition": "matrix_routerx_operation_lot.process_status IN (50, 100, 150) AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _h WHERE _h.lot_id = matrix_routerx_operation_lot.id AND _h.operation_type = 4 AND _h.deleted = 0 AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _r WHERE _r.lot_id = _h.lot_id AND _r.operation_type = 5 AND _r.deleted = 0 AND _r.gmt_create > _h.gmt_create))",
+        "physical_condition": "matrix_routerx_operation_lot.process_status IN (50, 100, 150) AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _h WHERE _h.lot_code = matrix_routerx_operation_lot.current_lot_code AND _h.deleted = 0 AND _h.operation_type = 4 AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _r WHERE _r.lot_code = matrix_routerx_operation_lot.current_lot_code AND _r.deleted = 0 AND _r.operation_type = 5 AND _r.gmt_create > _h.gmt_create))",
         "applies_to_table": "matrix_routerx_operation_lot",
         "nl_triggers": [
           "在制运行",
@@ -4340,7 +4342,7 @@
       },
       "IDLE": {
         "description": "闲置（批次处于待进站或已出站状态，无激活扣留记录）",
-        "physical_condition": "matrix_routerx_operation_lot.process_status IN (0, 200) AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _h WHERE _h.lot_id = matrix_routerx_operation_lot.id AND _h.operation_type = 4 AND _h.deleted = 0 AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _r WHERE _r.lot_id = _h.lot_id AND _r.operation_type = 5 AND _r.deleted = 0 AND _r.gmt_create > _h.gmt_create))",
+        "physical_condition": "matrix_routerx_operation_lot.process_status IN (0, 200) AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _h WHERE _h.lot_code = matrix_routerx_operation_lot.current_lot_code AND _h.deleted = 0 AND _h.operation_type = 4 AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _r WHERE _r.lot_code = matrix_routerx_operation_lot.current_lot_code AND _r.deleted = 0 AND _r.operation_type = 5 AND _r.gmt_create > _h.gmt_create))",
         "applies_to_table": "matrix_routerx_operation_lot",
         "nl_triggers": [
           "在制闲置",
@@ -4352,17 +4354,24 @@
         "note": "process_status IN (0=待进站/PreInStation, 200=已出站/OutStation) 且无激活扣留记录（HoldEventRecord 无对应 ReleaseEventRecord）。"
       },
       "Hold": {
-        "description": "扣留（批次存在激活扣留记录 HoldEventRecord 且尚未被 ReleaseEventRecord 释放，不管当前 process_status 值）",
-        "physical_condition": "EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _h WHERE _h.lot_id = matrix_routerx_operation_lot.id AND _h.operation_type = 4 AND _h.deleted = 0 AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _r WHERE _r.lot_id = _h.lot_id AND _r.operation_type = 5 AND _r.deleted = 0 AND _r.gmt_create > _h.gmt_create))",
+        "description": "扣留（批次存在激活扣留记录 HoldEventRecord 且尚未被 ReleaseEventRecord 释放，不管当前 process_status 值。系统中无独立 status 字段标记扣留，完全由事件记录推导）",
+        "physical_condition": "EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _h WHERE _h.lot_code = matrix_routerx_operation_lot.current_lot_code AND _h.deleted = 0 AND _h.operation_type = 4 AND NOT EXISTS (SELECT 1 FROM matrix_routerx_operation_lot_batch_resume_log _r WHERE _r.lot_code = matrix_routerx_operation_lot.current_lot_code AND _r.deleted = 0 AND _r.operation_type = 5 AND _r.gmt_create > _h.gmt_create))",
         "applies_to_table": "matrix_routerx_operation_lot",
         "nl_triggers": [
+          "扣留",
+          "被扣留",
+          "已扣留",
+          "扣留中",
+          "扣留状态",
+          "hold",
+          "hold中",
           "在制扣留",
           "wip扣留",
           "wip hold",
           "在制hold",
           "有扣留未释放"
         ],
-        "note": "激活扣留 = HoldEventRecord(operation_type=4) 且无时间上晚于它的 ReleaseEventRecord(operation_type=5)。Hold 优先级最高，覆盖 Run/IDLE。注意：status=80(BatchStatus.Staged/暂存) 是独立维度，与激活扣留不等价，不可互换。"
+        "note": "激活扣留 = HoldEventRecord(operation_type=4) 且无时间上晚于它的 ReleaseEventRecord(operation_type=5)。Hold 优先级最高，覆盖 Run/IDLE。【核心区别】status=80(BatchStatus.Staged/暂存) 是独立维度，两者不可混用：扣留是生产异常等待工程师判定（无 status 字段）；暂存是物理移入 bank（status=80）。"
       }
     }
   },

@@ -25,8 +25,8 @@ def clarification_node(state: AgentState) -> dict:
 
     question = intent_data.get("clarification_question", "")
     if not question:
-        # 兜底：LLM 没给出具体问题，询问批次号
-        question = "请问您想查询的是哪个批次号？（例如：LT-2024-001）"
+        # 兜底：LLM 没给出具体问题，给出通用提示
+        question = "请描述一下您想查询的目标和条件，例如：查询对象（批次 / 设备 / 工序）、时间范围、具体筛选条件等。"
 
     logger.info(f"[clarification_node] Asking user: {question}")
 

@@ -125,6 +125,7 @@ def response_builder_node(state: AgentState) -> dict:
             "success": True,
             "type": "clarification",
             "clarification_question": question,
+            "answer": question,
             "message": question,
             "query_time_ms": round(elapsed_ms, 1),
         }

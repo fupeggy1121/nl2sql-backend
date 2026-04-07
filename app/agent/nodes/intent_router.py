@@ -129,7 +129,7 @@ def intent_router_node(state: AgentState) -> dict:
         raw_intent = "need_clarification"
         if not intent_data.get("clarification_question"):
             intent_data["clarification_question"] = (
-                "请问您想查询的是哪个批次号？（例如：LT-2024-001）"
+                "请描述一下您想查询的目标和条件，例如：查询对象（批次 / 设备 / 工序）、时间范围、具体筛选条件等。"
             )
 
     # 被动澄清触发2：已知事件记录类，但缺少批次/标识符过滤条件

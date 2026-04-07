@@ -16,6 +16,11 @@ class AnalysisState(TypedDict, total=False):
     user_input: str          # 用户原始输入（自然语言）
     session_id: str          # 会话 ID
 
+    # ── Supervisor 预路由（可选）──
+    # 由 supervisor.route_request() 预先确定的 skill 名称；
+    # method_selector 收到后跳过自身的 LLM 路由调用，减少一次 LLM RTT。
+    pre_selected_skill: Optional[str]
+
     # ── 数据加载 ──
     data_source_config: Dict[str, Any]   # DataSourceConfig dict（由 method_selector 或前端提供）
     raw_data: List[Dict[str, Any]]       # 原始行数据

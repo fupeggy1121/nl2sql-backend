@@ -504,35 +504,37 @@ _VALUE_KEYWORDS: Dict[str, Tuple[str, str]] = {
     "暂存中": ("semi:BatchStatus", "Staged"),
     "暂存状态": ("semi:BatchStatus", "Staged"),
     "线边仓暂存": ("semi:BatchStatus", "Staged"),
-    "扣留": ("semi:BatchStatus", "Staged"),
-    "被扣留": ("semi:BatchStatus", "Staged"),
-    "已扣留": ("semi:BatchStatus", "Staged"),
-    "扣留中": ("semi:BatchStatus", "Staged"),
-    "扣留状态": ("semi:BatchStatus", "Staged"),
+    "移入bank": ("semi:BatchStatus", "Staged"),
+    "在bank中": ("semi:BatchStatus", "Staged"),
 
     # ── LotWIPStatus（在制三态，推导型：process_status + 扣留历史）──
-    # Run: process_status IN (50,100,150) AND status <> 80
+    # Run: process_status IN (50,100,150) 且无激活扣留记录
     "在制运行": ("semi:LotWIPStatus", "Run"),
     "wip运行": ("semi:LotWIPStatus", "Run"),
     "run状态": ("semi:LotWIPStatus", "Run"),
     "正常运行中": ("semi:LotWIPStatus", "Run"),
-    # IDLE: process_status IN (0,200) AND status <> 80
+    # IDLE: process_status IN (0,200) 且无激活扣留记录
     "在制闲置": ("semi:LotWIPStatus", "IDLE"),
     "wip闲置": ("semi:LotWIPStatus", "IDLE"),
     "idle状态": ("semi:LotWIPStatus", "IDLE"),
     "空闲批次": ("semi:LotWIPStatus", "IDLE"),
-    # Hold: status = 80 (存在激活扣留记录且未释放)
+    # Hold: 存在激活扣留记录（HoldEventRecord）且无对应 ReleaseEventRecord，无独立 status 字段
+    "扣留": ("semi:LotWIPStatus", "Hold"),
+    "被扣留": ("semi:LotWIPStatus", "Hold"),
+    "已扣留": ("semi:LotWIPStatus", "Hold"),
+    "扣留中": ("semi:LotWIPStatus", "Hold"),
+    "扣留状态": ("semi:LotWIPStatus", "Hold"),
+    "hold": ("semi:LotWIPStatus", "Hold"),
+    "hold中": ("semi:LotWIPStatus", "Hold"),
+    "暂停": ("semi:LotWIPStatus", "Hold"),
     "在制扣留": ("semi:LotWIPStatus", "Hold"),
     "wip扣留": ("semi:LotWIPStatus", "Hold"),
     "wip hold": ("semi:LotWIPStatus", "Hold"),
     "在制hold": ("semi:LotWIPStatus", "Hold"),
-
-    # ── HoldStatus (matrix_routerx_operation_lot_hold_action.status) ──
-    "hold": ("semi:HoldStatus", "Held"),
-    "暂停": ("semi:HoldStatus", "Held"),
-    "hold中": ("semi:HoldStatus", "Held"),
-    "已release": ("semi:HoldStatus", "Released"),
-    "已释放": ("semi:HoldStatus", "Released"),
+    "有扣留未释放": ("semi:LotWIPStatus", "Hold"),
+    # 已释放：批次最近完成了 Release 操作，扣留解除后恢复正常流转（无专属状态值，需通过 ReleaseEventRecord 查询）
+    "已release": ("semi:ReleaseEventRecord", None),
+    "已释放": ("semi:ReleaseEventRecord", None),
 
     # ── EquipmentStatus prod (equipment.status 0/1) ──
     "设备启用": ("semi:EquipmentStatus", "Active"),

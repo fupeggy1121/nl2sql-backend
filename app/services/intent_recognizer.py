@@ -505,6 +505,16 @@ A: intent=need_clarification, query_type=LIST, target_class_hints=["semi:CheckIn
    clarification_question="请问您想查询哪个批次的进站记录？请提供批次号（例如：LT-2024-001）",
    intent_slots={{"subject":"进站记录","action":"查询列表","dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"进站记录类型明确（CheckInEventRecord），但缺少批次号过滤，不宜全表扫描"}}
 
+Q: "最近有异常的批次"
+A: intent=need_clarification, query_type=LIST, target_class_hints=[], semantic_filters=[],
+   clarification_question="请问您想查询哪类异常批次？（例如：被扣留批次、有不良片批次、量测超标批次等）",
+   intent_slots={{"subject":"异常批次","action":"查询列表","dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"'异常'无明确本体映射，需澄清具体异常类型才能生成SQL"}}
+
+Q: "帮我分析一下生产情况"
+A: intent=need_clarification, query_type=AGGREGATE, target_class_hints=[], semantic_filters=[],
+   clarification_question="请问您想了解哪方面的生产情况？（例如：一次良率、在制品数量、返工率、设备稼动率等）",
+   intent_slots={{"subject":null,"action":null,"dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"查询目标过于宽泛，无法确定具体指标和时间范围"}}
+
 ## 何时使用 need_clarification
 以下任一情况使用：
 1. 查询对象完全不明确（无批次号/设备/工序）且查询类型也未知，置信度 < 0.65

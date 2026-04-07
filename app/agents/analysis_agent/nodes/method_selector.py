@@ -602,9 +602,19 @@ def method_selector_node(state: AnalysisState) -> dict:
     fast_method = _quick_analysis_classify(user_input)
 
     # ── 主路由：LLM 语义路由 ──
-    # 跳过条件：已有 data_source_config（前端显式传入），或已命中高置信度分析关键词
+    # 跳过条件：
+    #   1. 已有 data_source_config（前端显式传入）
+    #   2. 命中高置信度分析关键词
+    #   3. supervisor 已预路由到指定 skill（pre_selected_skill），跳过重复 LLM 调用
+    pre_selected_skill = state.get("pre_selected_skill")
+
     if not data_source_config and not fast_method:
-        route = _llm_route(user_input)
+        if pre_selected_skill:
+            # supervisor 已通过 route_request() 确定 skill，直接使用，无需再问 LLM
+            logger.info(f"[method_selector] pre_selected_skill={pre_selected_skill!r} → skip LLM route")
+            route = {"path": "skill", "skill_name": pre_selected_skill, "reason": "pre-selected by supervisor"}
+        else:
+            route = _llm_route(user_input)
         route_path = route.get("path", "adhoc")
         route_reason = route.get("reason", "")
         logger.info(f"[method_selector] LLM route → path={route_path}, reason={route_reason}")

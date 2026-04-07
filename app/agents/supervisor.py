@@ -10,9 +10,11 @@ Phase 0: 仅支持 query 和 analyze 路由，analyze 暂返回提示。
 现有 Query Agent 逻辑零改动，通过 import 委托调用。
 """
 
+import asyncio
+import json
 import logging
 import re
-from typing import Dict, Any, Literal
+from typing import Dict, Any, List, Literal
 
 # ── 分析意图转原始数据查询 ──
 _ANALYSIS_VERBS = re.compile(r'^(分析|统计|评估|计算|对比)\s*')
@@ -40,7 +42,16 @@ def _reformat_for_data_fetch(analysis_input: str) -> str:
 
 logger = logging.getLogger(__name__)
 
-# ── 分析意图关键词（仅用作 fallback / 快速路径辅助） ──
+# ── 基线/写操作检测（无需 LLM，直接走 adhoc）──────────────────────────────────
+_BASELINE_ACTION = re.compile(
+    r"(设定|设置|添加|新增|修改|更新|删除|移除|取消).{0,20}(基线|预警|阈值|上限|下限|警戒)"
+    r"|(基线|预警|阈值|上限|下限|警戒).{0,20}(设定|设置|添加|新增|修改|更新|删除|移除|取消)"
+    r"|为.{0,30}(添加|设置).{0,20}(基线|预警|阈值|上限|下限)"
+    r"|为.{0,30}(基线|预警|阈值|上限|下限)",
+    re.IGNORECASE,
+)
+
+# ── 统计分析关键词（高置信度快速路径，无需 LLM）──────────────────────────────
 _ANALYSIS_KEYWORDS = re.compile(
     r"SPC|控制图|Cpk|Ppk|相关性分析|回归分析|预测模型|异常检测|帕累托|"
     r"良率分析|趋势分析|方差分析|ANOVA|假设检验|t[\-\s]?test|卡方检验|"
@@ -48,118 +59,174 @@ _ANALYSIS_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
-# ── 报表类关键词（仅用作 fallback） ──
-_REPORT_KEYWORDS = re.compile(
-    r"良率报表|良率分析|yield.*report|合格率报表|不良率.*报表|工站良率|站点良率|"
-    r"一次良率|首次合格率|直通率|FPY|first.pass.yield|"
-    r"综合良率|最终良率|累计良率|final.yield|overall.yield|"
-    r"返工率|重工率|rework.rate|"
-    r"OEE|oee|综合效率|设备效率|设备综合|可用率.*性能|日报|周报|月报|"
-    r"良率.*趋势|趋势.*良率|不良.*分析|NG.*分析|ng.*分析",
-    re.IGNORECASE,
-)
+# ── 路由提示词：注入完整 skill 列表，让 LLM 做有依据的路由决策 ──────────────
+_ROUTE_PROMPT = """\
+你是一个半导体制造 MES 系统的路由决策器。根据用户问题，判断应走哪条处理路径。
 
-# ── LLM 分类提示词 ──
-_INTENT_CLASSIFY_PROMPT = """\
-你是一个工业 MES 系统的智能路由器，需要将用户输入分类到三种处理管道之一。
+## 可用指标 Skill（有预定义方法论，精确计算）
+{skills_text}
 
-## 三种管道定义
-
-**query**（普通查询管道）：
-- 普通数据查询、统计、筛选（NL2SQL）
-- 基线/预警/阈值的设定、修改、删除操作（如"为一次良率添加基线下限85%"、"设置良率预警阈值"）
-- 写操作（进站/出站/拆批等）
-- 问答、解释说明
-
-**report**（分析报表管道）：
-- 计算/展示良率指标：一次良率(FPY)、综合良率、返工率
-- 计算/展示 OEE（综合设备效率）
-- 以上指标的趋势、对比、汇总报表
-
-**analyze**（统计分析管道）：
-- SPC、控制图、Cpk/Ppk 等过程能力分析
-- 相关性分析、回归分析、异常检测、帕累托分析
-- 需要对原始数据做统计建模的场景
+## 统计分析方法（探索性数据分析）
+{analysis_methods_text}
 
 ## 判断规则
-- 如果句子中**既有良率/OEE关键词，又有 基线/预警/阈值/上限/下限/设定/添加/修改/删除 等操作动词**，归为 **query**（基线设定，不是计算报表）
-- 如果是"统计/计算/显示"某指标的数值，归为 **report** 或 **analyze**（按指标类型判断）
-- 如果是"设置/添加/修改/删除"某配置，归为 **query**
+1. 用户问题**明确提到 2 个或以上** skill 别名 → multi_skill（携带 skill_names 数组）
+2. 用户问题**明确提到 1 个** skill 别名 → skill（携带 skill_name）
+3. 需要统计分析（SPC/相关性/回归/预测/异常检测）→ analysis（携带 method）
+4. 涉及 MES 业务数据但无预定义 skill（设备数量/批次号/载具/库存等普通查询）→ adhoc
+5. 与 MES 系统无关 → out_of_scope
 
-## 用户输入
+## 注意
+- 规则1/2**优先级最高**：查询中出现 skill 别名直接走 skill 或 multi_skill，不受其他规则影响
+- "趋势"、"对比"、"统计"、"按站点统计" 等词本身不足以改变路由，最终取决于是否提到了 skill 别名
+- 普通计数句式（如"各工站有**多少个批次**在加工"、"有多少台设备"）→ adhoc（这类句式没有出现 skill 别名）
+- 基线/预警/阈值的"设置/添加/删除"操作 → adhoc（不是指标查询）
+- 英文查询适用同等规则
+
+## 用户问题
 "{user_input}"
 
 ## 返回格式（JSON，仅返回 JSON，不要其他内容）
+
+单指标：
 {{
-  "intent": "query" | "report" | "analyze",
-  "confidence": 0.0-1.0,
-  "reason": "一句话说明理由"
+  "path": "skill",
+  "skill_name": "first_pass_yield",
+  "reason": "用户查询一次良率，匹配 first_pass_yield skill"
+}}
+
+多指标对比：
+{{
+  "path": "multi_skill",
+  "skill_names": ["rework_rate", "first_pass_yield"],
+  "reason": "用户要求对比返工率和良率，匹配两个 skill"
 }}"""
 
 
-def _keyword_fallback(user_input: str) -> Literal["query", "analyze", "report"]:
-    """关键词 fallback：仅在 LLM 不可用时使用。"""
-    # 基线/预警操作词优先
-    baseline_action = re.search(
-        r"(设定|设置|添加|新增|修改|更新|删除|移除|取消).{0,20}(基线|预警|阈值|上限|下限|警戒)"
-        r"|(基线|预警|阈值|上限|下限|警戒).{0,20}(设定|设置|添加|新增|修改|更新|删除|移除|取消)"
-        r"|为.{0,30}(添加|设置).{0,20}(基线|预警|阈值|上限|下限)"
-        r"|为.{0,30}(基线|预警|阈值|上限|下限)",
-        user_input, re.IGNORECASE
-    )
-    if baseline_action:
-        return "query"
-    if _REPORT_KEYWORDS.search(user_input):
-        return "report"
+def _route_fallback(user_input: str) -> Dict[str, Any]:
+    """LLM 不可用时的关键词兼底路由，直接查 skill zh_names 列表。"""
+    if _BASELINE_ACTION.search(user_input):
+        return {"route": "adhoc", "reason": "baseline config operation"}
     if _ANALYSIS_KEYWORDS.search(user_input):
-        return "analyze"
-    return "query"
-
-
-async def classify_agent_intent(user_input: str) -> Literal["query", "analyze", "report"]:
-    """
-    顶层意图分类 — LLM 优先，关键词 fallback。
-
-    策略：
-    1. 尝试调用 LLM，让其在 query/report/analyze 三类中做判断（带 CoT reason）
-    2. LLM 置信度 >= 0.75 时采用 LLM 结果
-    3. LLM 失败或置信度不足时，退化到关键词规则 fallback
-    """
-    # ── LLM 分类 ──
+        return {"route": "analyze", "reason": "statistical analysis keywords"}
     try:
-        import json as _json
+        from app.skills.loader import get_skill_loader
+        loader = get_skill_loader()
+        matched_skills: List[str] = []
+        for skill in loader.list_skills():
+            for zh in skill.zh_names:
+                if zh and zh in user_input:
+                    if skill.skill_name not in matched_skills:
+                        matched_skills.append(skill.skill_name)
+                    break
+        if len(matched_skills) >= 2:
+            return {"route": "multi_skill", "skill_names": matched_skills, "reason": f"keyword fallback: {matched_skills}"}
+        if len(matched_skills) == 1:
+            return {"route": "skill", "skill_name": matched_skills[0], "reason": f"keyword fallback: {matched_skills[0]}"}
+    except Exception:
+        pass
+    return {"route": "adhoc", "reason": "default fallback"}
+
+
+async def route_request(user_input: str) -> Dict[str, Any]:
+    """
+    统一路由决策 — 一次 LLM 调用，注入完整 skill 列表。
+
+    返回: {"route": "skill"/"adhoc"/"analyze", "skill_name"?: str, "method"?: str, "reason": str}
+
+    设计哲学：
+    - 路由质量取决于 skill 描述写得好不好，而不是关键词词表覆盖得全不全
+    - 新增 skill 只需在 skills/metrics/ 添加 .md 文件，无需改任何路由代码
+    - 两个 if 分支守卫全部消除，无人工仲裁
+    """
+    # ── 快速路径 1：写操作/基线配置 → adhoc（无需 LLM）──
+    if _BASELINE_ACTION.search(user_input):
+        logger.info("[supervisor] baseline/write operation → adhoc (fast path)")
+        return {"route": "adhoc", "reason": "baseline/write operation detected"}
+
+    # ── 快速路径 2：统计分析关键词 → analyze（无需 LLM）──
+    if _ANALYSIS_KEYWORDS.search(user_input):
+        logger.info("[supervisor] statistical analysis keywords → analyze (fast path)")
+        return {"route": "analyze", "reason": "statistical analysis keywords detected"}
+
+    # ── LLM 路由（携带完整 skill 列表）──
+    try:
         from app.agent.llm import get_llm
+        from app.skills.loader import get_skill_loader
+        from app.analytics.registry import list_methods
+
+        loader = get_skill_loader()
+        # 注入所有 zh_names（不截断），给 LLM 完整的同义词覆盖
+        skills_text = "\n".join(
+            f"  - {s.skill_name}: {', '.join(s.zh_names)}"
+            for s in loader.list_skills()
+        )
+        analysis_methods_text = "\n".join(
+            f"  - {m['name']}: {m['description']}" for m in list_methods()
+            if m["name"] not in ("metric_compute", "yield_report", "oee_report")
+        )
+
+        prompt = _ROUTE_PROMPT.format(
+            skills_text=skills_text,
+            analysis_methods_text=analysis_methods_text,
+            user_input=user_input,
+        )
 
         llm = get_llm()
-        prompt = _INTENT_CLASSIFY_PROMPT.format(user_input=user_input)
         resp = await llm.ainvoke(prompt)
         content = resp.content if hasattr(resp, "content") else str(resp)
 
-        # 提取 JSON
-        match = re.search(r"\{[^{}]+\}", content, re.DOTALL)
+        match = re.search(r"\{.*?\}", content, re.DOTALL)
         if match:
-            data = _json.loads(match.group())
-            intent = data.get("intent", "").lower().strip()
-            confidence = float(data.get("confidence", 0))
-            reason = data.get("reason", "")
+            data = json.loads(match.group())
+            path = data.get("path", "adhoc")
 
-            if intent in ("query", "report", "analyze") and confidence >= 0.75:
-                logger.info(
-                    f"[supervisor] LLM classify → {intent} "
-                    f"(conf={confidence:.2f}) reason={reason!r}"
-                )
-                return intent  # type: ignore[return-value]
-            else:
-                logger.info(
-                    f"[supervisor] LLM low-conf ({confidence:.2f}) → fallback. "
-                    f"raw={intent!r} reason={reason!r}"
-                )
+            # ── multi_skill 路径 ──
+            if path == "multi_skill":
+                skill_names = data.get("skill_names") or []
+                # 至少需要 2 个有效 skill；否则降级为单 skill 或 adhoc
+                if len(skill_names) >= 2:
+                    result = {
+                        "route": "multi_skill",
+                        "skill_names": skill_names,
+                        "reason": data.get("reason", "LLM multi_skill route"),
+                    }
+                    logger.info(
+                        f"[supervisor] LLM route → multi_skill"
+                        f" skills={skill_names!r}  reason={result['reason']!r}"
+                    )
+                    return result
+                elif len(skill_names) == 1:
+                    path = "skill"
+                    data["skill_name"] = skill_names[0]
+                else:
+                    path = "adhoc"
+
+            if path not in ("skill", "adhoc", "analysis", "out_of_scope"):
+                path = "adhoc"
+            route = (
+                "skill"   if path == "skill"     else
+                "analyze" if path == "analysis"  else
+                "adhoc"
+            )
+            result = {
+                "route": route,
+                "skill_name": data.get("skill_name"),
+                "method": data.get("method"),
+                "reason": data.get("reason", "LLM route"),
+            }
+            logger.info(
+                f"[supervisor] LLM route → {route}"
+                + (f" skill={result['skill_name']!r}" if route == "skill" else "")
+                + f"  reason={result['reason']!r}"
+            )
+            return result
     except Exception as e:
-        logger.warning(f"[supervisor] LLM classify failed: {e}, fallback to keyword rules")
+        logger.warning(f"[supervisor] route_request LLM failed: {e}, falling back to keyword route")
 
-    # ── 关键词 fallback ──
-    result = _keyword_fallback(user_input)
-    logger.info(f"[supervisor] keyword fallback → {result}")
+    # ── 关键词兜底 ──
+    result = _route_fallback(user_input)
+    logger.info(f"[supervisor] keyword fallback → {result['route']}")
     return result
 
 
@@ -171,7 +238,7 @@ async def route_to_agent(
     **kwargs,
 ) -> Dict[str, Any]:
     """
-    Supervisor 主入口 — 分类意图并路由到子 Agent。
+    Supervisor 主入口 — 路由到子 Agent。
 
     返回格式与现有 chat 端点一致：
     {
@@ -181,25 +248,134 @@ async def route_to_agent(
         ...AgentState fields
     }
     """
-    intent = await classify_agent_intent(user_input)
-    logger.info(f"[supervisor] intent={intent}, input={user_input[:60]}...")
+    result = await route_request(user_input)
+    route = result.get("route", "adhoc")
+    skill_name = result.get("skill_name")
+    skill_names = result.get("skill_names", [])
+    logger.info(
+        f"[supervisor] route={route}"
+        + (f", skill={skill_name}" if skill_name else "")
+        + (f", skills={skill_names}" if skill_names else "")
+        + f", input={user_input[:60]}..."
+    )
 
-    if intent == "query":
-        return await _run_query_agent(
-            user_input, session_id, conversation_history, **kwargs
+    if route == "multi_skill":
+        return await _run_multi_skill_agent(
+            user_input, session_id, conversation_history,
+            skill_names=skill_names, **kwargs
         )
-    elif intent == "analyze":
+    elif route == "skill":
+        return await _run_analysis_agent(
+            user_input, session_id, conversation_history,
+            pre_selected_skill=skill_name, **kwargs
+        )
+    elif route == "analyze":
         return await _run_analysis_with_data_pipeline(
             user_input, session_id, conversation_history, **kwargs
         )
-    elif intent == "report":
-        return await _run_analysis_agent(
-            user_input, session_id, conversation_history, **kwargs
-        )
-    else:
+    else:  # "adhoc"
         return await _run_query_agent(
             user_input, session_id, conversation_history, **kwargs
         )
+
+
+async def _run_multi_skill_agent(
+    user_input: str,
+    session_id: str,
+    conversation_history: list | None = None,
+    skill_names: List[str] | None = None,
+    **kwargs,
+) -> Dict[str, Any]:
+    """
+    并行执行多个 skill，将结果合并为一个对比分析回复。
+    """
+    skill_names = skill_names or []
+    logger.info(f"[supervisor] → multi_skill_agent: {skill_names!r} for: {user_input[:60]}...")
+
+    tasks = [
+        _run_analysis_agent(
+            user_input, session_id, conversation_history,
+            pre_selected_skill=s, **kwargs
+        )
+        for s in skill_names
+    ]
+    results: List[Dict[str, Any]] = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # 过滤出成功的结果和失败结果
+    ok_results = [r for r in results if isinstance(r, dict)]
+    failed = [str(r) for r in results if isinstance(r, Exception)]
+    if failed:
+        logger.warning(f"[supervisor] multi_skill: {len(failed)} sub-skill(s) failed: {failed}")
+
+    if not ok_results:
+        return {
+            "response": {"success": False, "answer": "多指标并行执行全部失败"},
+            "is_followup": False,
+            "session_id": session_id,
+            "pipeline_trace": [],
+        }
+
+    return _merge_multi_skill_results(ok_results, skill_names, user_input, session_id)
+
+
+def _merge_multi_skill_results(
+    results: List[Dict[str, Any]],
+    skill_names: List[str],
+    user_input: str,
+    session_id: str,
+) -> Dict[str, Any]:
+    """
+    将多个 skill 的单独响应合并成一个结构化回复。
+
+    answer: 拼接每个 skill 的答复，中间用策划线分隔
+    charts: 合并删除重复（按 title 去重）
+    analysis: 将各 skill 的 analysis 字段展开至以 skill_name 为键的字典中
+    pipeline_trace: 各 skill trace 合并在一起
+    """
+    answers: List[str] = []
+    all_charts: List[Dict] = []
+    seen_chart_titles: set = set()
+    merged_analysis: Dict[str, Any] = {}
+    merged_trace: List[Dict] = []
+
+    for i, (name, r) in enumerate(zip(skill_names, results)):
+        resp = r.get("response", {})
+
+        # answer
+        answer_text = resp.get("answer", "")
+        if answer_text:
+            answers.append(f"### {name}\n{answer_text}")
+
+        # charts
+        for chart in resp.get("charts") or []:
+            title = chart.get("title", f"chart_{i}")
+            if title not in seen_chart_titles:
+                seen_chart_titles.add(title)
+                all_charts.append(chart)
+
+        # analysis
+        analysis = resp.get("analysis")
+        if analysis:
+            merged_analysis[name] = analysis
+
+        # trace
+        merged_trace.extend(r.get("pipeline_trace") or [])
+
+    combined_answer = "\n\n---\n\n".join(answers)
+
+    response: Dict[str, Any] = {
+        "success": True,
+        "answer": combined_answer,
+        "analysis": merged_analysis if merged_analysis else None,
+        "charts": all_charts,
+    }
+
+    return {
+        "response": response,
+        "is_followup": False,
+        "session_id": session_id,
+        "pipeline_trace": merged_trace,
+    }
 
 
 async def _run_query_agent(
@@ -290,21 +466,28 @@ async def _run_analysis_agent(
     user_input: str,
     session_id: str,
     conversation_history: list | None = None,
+    pre_selected_skill: str | None = None,
     **kwargs,
 ) -> Dict[str, Any]:
     """
-    良率 / OEE 报表路由：analysis_agent 直接走（method_selector 内有专属 SQL builder）。
+    良率 / OEE / WIP 报表路由：analysis_agent 直接走（method_selector 内有专属 SQL builder）。
 
-    委托给 app/agents/analysis_agent/graph.py 的独立 LangGraph。
+    pre_selected_skill: 由 supervisor route_request() 预先确定的 skill 名称；
+                        传入后 method_selector 跳过自身的 LLM 路由调用，减少一次 LLM RTT。
     """
     from app.agents.analysis_agent.graph import get_analysis_agent_app
 
-    logger.info(f"[supervisor] → analysis_agent: {user_input[:60]}...")
+    logger.info(
+        f"[supervisor] → analysis_agent: {user_input[:60]}..."
+        + (f"  pre_skill={pre_selected_skill!r}" if pre_selected_skill else "")
+    )
 
     initial_state = {
         "user_input": user_input,
         "session_id": session_id,
     }
+    if pre_selected_skill:
+        initial_state["pre_selected_skill"] = pre_selected_skill
 
     try:
         agent = get_analysis_agent_app()
