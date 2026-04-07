@@ -118,10 +118,13 @@ def intent_router_node(state: AgentState) -> dict:
     target_hints = intent_data.get("target_class_hints", [])
 
     # 被动澄清触发1：置信度低 且 未匹配到任何类（LLM 没有主动发起澄清时的兜底）
+    # 例外：聚合/统计查询（query_type=AGGREGATE/TREND）即使置信度低也不触发澄清，让 SQL 生成侧处理
+    _query_type_for_trigger1 = intent_data.get("query_type", "LIST")
     if (
         raw_intent not in ("chat", "knowledge_qa", "explain", "write_action", "need_clarification")
         and confidence < _CLARIFICATION_CONFIDENCE_THRESHOLD
         and not target_hints
+        and _query_type_for_trigger1 not in ("AGGREGATE", "TREND")
     ):
         logger.info(
             f"[intent_router] Low confidence ({confidence:.2f}) + no class hints → clarification"

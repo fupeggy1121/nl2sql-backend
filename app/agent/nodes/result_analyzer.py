@@ -29,6 +29,7 @@ _NUMERIC_TYPES = (int, float)
 
 _RATIO_KEYWORDS = re.compile(r"(率|占比|比例|比率|percent|ratio|rate)", re.IGNORECASE)
 _BAR_KEYWORDS   = re.compile(r"(数量|总数|合计|统计|count|total|sum|avg|average)", re.IGNORECASE)
+_PARETO_KEYWORDS = re.compile(r"(柏拉图|帕累托|pareto|不良|缺陷|异常|故障|返工)", re.IGNORECASE)
 
 
 def _col_types(data: List[Dict[str, Any]]) -> Dict[str, str]:
@@ -118,6 +119,9 @@ def _rule_recommend_chart(
     if len(category_cols) == 1 and len(numeric_cols) == 1:
         cat_col = category_cols[0]
         num_col = numeric_cols[0]
+        if _PARETO_KEYWORDS.search(natural_language) and rows <= 30:
+            return _make_viz("pareto", cat_col, num_col, None, 0.92,
+                             f"不良/缺陷分析 ({cat_col})，使用柏拉图")
         distinct = len({row[cat_col] for row in data if cat_col in row})
         if distinct <= 8:
             # 占比/比率类 → 饼图；数量/合计类 → 柱状图

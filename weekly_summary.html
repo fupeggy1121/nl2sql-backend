@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NL2SQL 项目周报 | 3.31 - 4.07</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Noto Sans SC', 'Inter', sans-serif;
+    background: #0a0e1a;
+    color: #e2e8f0;
+    display: flex;
+    justify-content: center;
+    padding: 40px 20px;
+  }
+
+  .poster {
+    width: 1100px;
+    background: linear-gradient(170deg, #0f1629 0%, #0a0e1a 40%, #0d1220 100%);
+    border-radius: 24px;
+    overflow: hidden;
+    border: 1px solid rgba(99, 130, 255, 0.12);
+    box-shadow: 0 0 80px rgba(66, 99, 235, 0.08);
+  }
+
+  /* ── Header ── */
+  .header {
+    padding: 48px 56px 36px;
+    background: linear-gradient(135deg, rgba(66, 99, 235, 0.12) 0%, rgba(139, 92, 246, 0.08) 50%, transparent 100%);
+    border-bottom: 1px solid rgba(99, 130, 255, 0.08);
+    position: relative;
+    overflow: hidden;
+  }
+  .header::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(66, 99, 235, 0.1) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+  .header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    position: relative;
+    z-index: 1;
+  }
+  .project-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(66, 99, 235, 0.15);
+    border: 1px solid rgba(66, 99, 235, 0.25);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #7c9aff;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .project-badge .dot {
+    width: 6px;
+    height: 6px;
+    background: #4263eb;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(66, 99, 235, 0.6);
+  }
+  .header h1 {
+    font-size: 36px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #fff 0%, #94a8ff 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+  }
+  .header .subtitle {
+    font-size: 15px;
+    color: #64748b;
+    margin-top: 8px;
+    font-weight: 400;
+  }
+  .stats-row {
+    display: flex;
+    gap: 32px;
+    margin-top: 24px;
+    position: relative;
+    z-index: 1;
+  }
+  .stat-item {
+    text-align: center;
+  }
+  .stat-num {
+    font-size: 32px;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1;
+  }
+  .stat-num span {
+    font-size: 14px;
+    font-weight: 500;
+    color: #64748b;
+    margin-left: 2px;
+  }
+  .stat-label {
+    font-size: 12px;
+    color: #475569;
+    margin-top: 4px;
+    font-weight: 500;
+  }
+
+  /* ── Main Grid ── */
+  .content {
+    padding: 40px 56px 48px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .card {
+    background: rgba(15, 22, 41, 0.6);
+    border: 1px solid rgba(99, 130, 255, 0.08);
+    border-radius: 16px;
+    padding: 28px;
+    position: relative;
+    transition: border-color 0.3s;
+  }
+  .card:hover {
+    border-color: rgba(99, 130, 255, 0.2);
+  }
+  .card.full-width {
+    grid-column: 1 / -1;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .card-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .card-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #f1f5f9;
+    line-height: 1.3;
+  }
+  .card-tag {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 6px;
+    letter-spacing: 0.5px;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  .card-body ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .card-body li {
+    font-size: 13px;
+    color: #94a3b8;
+    line-height: 1.6;
+    padding-left: 18px;
+    position: relative;
+  }
+  .card-body li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+
+  /* Card Themes */
+  .card.arch .card-icon { background: rgba(66, 99, 235, 0.15); }
+  .card.arch .card-tag { background: rgba(66, 99, 235, 0.15); color: #7c9aff; }
+  .card.arch li::before { background: #4263eb; }
+
+  .card.llm .card-icon { background: rgba(139, 92, 246, 0.15); }
+  .card.llm .card-tag { background: rgba(139, 92, 246, 0.15); color: #a78bfa; }
+  .card.llm li::before { background: #8b5cf6; }
+
+  .card.onto .card-icon { background: rgba(20, 184, 166, 0.15); }
+  .card.onto .card-tag { background: rgba(20, 184, 166, 0.15); color: #5eead4; }
+  .card.onto li::before { background: #14b8a6; }
+
+  .card.metric .card-icon { background: rgba(245, 158, 11, 0.15); }
+  .card.metric .card-tag { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+  .card.metric li::before { background: #f59e0b; }
+
+  .card.ops .card-icon { background: rgba(236, 72, 153, 0.15); }
+  .card.ops .card-tag { background: rgba(236, 72, 153, 0.15); color: #f472b6; }
+  .card.ops li::before { background: #ec4899; }
+
+  .card.fix .card-icon { background: rgba(34, 197, 94, 0.15); }
+  .card.fix .card-tag { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+  .card.fix li::before { background: #22c55e; }
+
+  /* ── Architecture Flow ── */
+  .arch-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin: 20px 0 8px;
+    padding: 20px;
+    background: rgba(66, 99, 235, 0.04);
+    border-radius: 12px;
+    border: 1px solid rgba(66, 99, 235, 0.08);
+  }
+  .flow-node {
+    text-align: center;
+    padding: 14px 20px;
+    border-radius: 10px;
+    min-width: 140px;
+  }
+  .flow-node .fn-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .flow-node .fn-desc {
+    font-size: 12px;
+    color: #94a3b8;
+  }
+  .flow-node.n1 { background: rgba(20, 184, 166, 0.1); border: 1px solid rgba(20, 184, 166, 0.2); }
+  .flow-node.n1 .fn-label { color: #5eead4; }
+  .flow-node.n2 { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); }
+  .flow-node.n2 .fn-label { color: #fbbf24; }
+  .flow-node.n3 { background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.2); }
+  .flow-node.n3 .fn-label { color: #a78bfa; }
+  .flow-arrow {
+    font-size: 20px;
+    color: #334155;
+    margin: 0 10px;
+    flex-shrink: 0;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    padding: 20px 56px;
+    border-top: 1px solid rgba(99, 130, 255, 0.06);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: #334155;
+  }
+  .footer-highlight {
+    color: #64748b;
+    font-weight: 500;
+  }
+
+  .highlight { color: #e2e8f0; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="poster">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-top">
+      <div>
+        <div class="project-badge"><span class="dot"></span>NL2SQL Project</div>
+        <h1>项目周报迭代总结</h1>
+        <div class="subtitle">2026.03.31 — 2026.04.07</div>
+      </div>
+    </div>
+    <div class="stats-row">
+      <div class="stat-item">
+        <div class="stat-num">60<span>+</span></div>
+        <div class="stat-label">COMMITS</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">6</div>
+        <div class="stat-label">核心模块</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">2063</div>
+        <div class="stat-label">本体 Triples</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num">32<span>/32</span></div>
+        <div class="stat-label">测试通过</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+
+    <!-- Architecture Card (full width) -->
+    <div class="card arch full-width">
+      <div class="card-header">
+        <div class="card-icon">🏗</div>
+        <div class="card-title">架构重构 — 三层职责分离</div>
+        <div class="card-tag">CORE</div>
+      </div>
+      <div class="arch-flow">
+        <div class="flow-node n1">
+          <div class="fn-label">Ontology / Mapping</div>
+          <div class="fn-desc">物理定位：表·字段·关系</div>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node n2">
+          <div class="fn-label">Skill</div>
+          <div class="fn-desc">方法论：SQL 模板·计算逻辑</div>
+        </div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-node n3">
+          <div class="fn-label">LLM</div>
+          <div class="fn-desc">编排：意图·参数·生成</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <ul>
+          <li>移除 MetricDefinition 中间层，Skill B-path 成为<span class="highlight">唯一执行路径</span></li>
+          <li>双路架构落地 (skill-path + adhoc)，支持多 Skill <span class="highlight">并行路由</span></li>
+          <li>新增 Skill Markdown 编辑器，前端移除旧版 JSON 标签页</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- LLM Card -->
+    <div class="card llm">
+      <div class="card-header">
+        <div class="card-icon">🧠</div>
+        <div class="card-title">LLM 智能化提升</div>
+        <div class="card-tag">AI</div>
+      </div>
+      <div class="card-body">
+        <ul>
+          <li><span class="highlight">LLM-first</span> 意图分类，关键词降为兜底</li>
+          <li>LLM 接管日期范围解析写入 SQL</li>
+          <li>LLM 驱动 compute tool dispatch</li>
+          <li>wafer_wip LLM SQL 生成灰度 + eval 评测</li>
+          <li>多 Skill 并行路由 <span class="highlight">26/26</span> 全通过</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Ontology Card -->
+    <div class="card onto">
+      <div class="card-header">
+        <div class="card-icon">🔗</div>
+        <div class="card-title">本体论扩展</div>
+        <div class="card-tag">ONTOLOGY</div>
+      </div>
+      <div class="card-body">
+        <ul>
+          <li>Rework / CancelRework 三层模型</li>
+          <li>OpenLot / CancelOpenLot 三层模型</li>
+          <li>LocalLot / 不良录入语义模型</li>
+          <li>实体级上下文路径 + A/B 测试框架</li>
+          <li>Snapshot 类重命名 & 属性丰富</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Metrics Card -->
+    <div class="card metric">
+      <div class="card-header">
+        <div class="card-icon">📊</div>
+        <div class="card-title">指标体系</div>
+        <div class="card-tag">METRICS</div>
+      </div>
+      <div class="card-body">
+        <ul>
+          <li><span class="highlight">FPY / Final Yield</span> 一次良率与综合良率指标体系上线</li>
+          <li>完整基线预警系统 + set_baseline 路由修复</li>
+          <li>WaferWipComputer 注册并接入 Skill 配置</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Ops Card -->
+    <div class="card ops">
+      <div class="card-header">
+        <div class="card-icon">⚙</div>
+        <div class="card-title">稳定性 & 工程化</div>
+        <div class="card-tag">OPS</div>
+      </div>
+      <div class="card-body">
+        <ul>
+          <li>前后端双 Watchdog 守护进程体系</li>
+          <li>HTTP 健康检查 / 端口冲突清理 / 自动自愈</li>
+          <li>DB 连接 errno 级别精准重连</li>
+          <li>Ad-hoc 查询 JSONL 日志，为 Skill 升级积累语料</li>
+          <li>Eval 延迟统计 (p50/p90/p99)</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Bug Fix Card -->
+    <div class="card fix">
+      <div class="card-header">
+        <div class="card-icon">🔧</div>
+        <div class="card-title">关键 Bug 修复</div>
+        <div class="card-tag">FIXES</div>
+      </div>
+      <div class="card-body">
+        <ul>
+          <li>过站量测数据加载失败（LLM 幻觉表名 → 直接 SQL）</li>
+          <li>中文引号工站名无法匹配 → 相同 SQL 问题</li>
+          <li>日期解析缺失"星期"模式导致参数丢失</li>
+          <li>list_skills API 字段迁移后崩溃</li>
+          <li>谱系 DAG 异步阻塞 & 列名错误</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div>NL2SQL · 自然语言到结构化查询</div>
+    <div class="footer-highlight">本周核心成果：Skill 架构从概念到生产落地，LLM 接管意图·日期·调度三大决策点</div>
+  </div>
+
+</div>
+</body>
+</html>

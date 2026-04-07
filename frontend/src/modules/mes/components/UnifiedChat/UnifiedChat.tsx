@@ -39,7 +39,7 @@ export interface Message {
   content: string;
   timestamp: Date;
   data?: any;
-  visualizationType?: 'bar' | 'line' | 'pie' | 'scatter' | 'card' | 'gauge' | 'table' | 'heatmap' | 'radar' | 'funnel' | 'treemap' | 'boxplot' | 'bar-line-combo' | 'grouped_bar' | 'traceability';
+  visualizationType?: 'bar' | 'line' | 'pie' | 'scatter' | 'card' | 'gauge' | 'table' | 'heatmap' | 'radar' | 'funnel' | 'treemap' | 'boxplot' | 'bar-line-combo' | 'grouped_bar' | 'pareto' | 'traceability';
   traceabilityData?: { lotCode?: string; waferCode?: string };
   chartConfig?: {
     title?: string;
@@ -98,6 +98,7 @@ const CHART_TYPE_MAP: Partial<Record<string, Message['visualizationType']>> = {
   '雷达图': 'radar',
   '漏斗图': 'funnel',
   '分组柱状图': 'grouped_bar', '分组图': 'grouped_bar', '多维柱状图': 'grouped_bar',
+  '柏拉图': 'pareto', '帕累托图': 'pareto', 'pareto': 'pareto',
   '表格': 'table',
 };
 
@@ -105,6 +106,7 @@ const CHART_TYPE_LABELS: Record<string, string> = {
   bar: '柱状图', line: '折线图', pie: '饼图', scatter: '散点图',
   table: '表格', heatmap: '热力图', radar: '雷达图', funnel: '漏斗图',
   grouped_bar: '分组柱状图',
+  pareto: '柏拉图',
 };
 
 // 包含这些关键字时视为「数据查询」，不拦截
@@ -123,8 +125,12 @@ function detectChartChangeIntent(text: string): {
   if (DATA_QUERY_KEYWORDS.some((k) => text.includes(k))) return null;
 
   let chartType: Message['visualizationType'] | undefined;
+  const textLower = text.toLowerCase();
   for (const [keyword, type] of Object.entries(CHART_TYPE_MAP)) {
-    if (text.includes(keyword)) { chartType = type; break; }
+    if (text.includes(keyword) || textLower.includes(keyword.toLowerCase())) {
+      chartType = type;
+      break;
+    }
   }
   if (!chartType) return null;
 
@@ -976,6 +982,14 @@ setCurrentIntent(queryPlan.query_intent || null);
                               <BarChart size={16} />
                               <span>分组图</span>
                             </button>
+                            <button
+                              className={`chart-type-btn ${currentChartType === 'pareto' ? 'active' : ''}`}
+                              onClick={() => handleChartTypeChange(message.id, 'pareto')}
+                              title="柏拉图（不良分析）"
+                            >
+                              <BarChart3 size={16} />
+                              <span>柏拉图</span>
+                            </button>
                           </div>
                         </div>
 
@@ -1044,6 +1058,7 @@ setCurrentIntent(queryPlan.query_intent || null);
                           title={message.chartConfig?.title}
                           xAxisField={message.chartConfig?.xAxisField}
                           yAxisField={message.chartConfig?.yAxisField}
+                          seriesField={message.chartConfig?.seriesField}
                           colorField={message.chartConfig?.colorField}
                           valueField={message.chartConfig?.valueField}
                           cardTheme={message.chartConfig?.cardTheme}

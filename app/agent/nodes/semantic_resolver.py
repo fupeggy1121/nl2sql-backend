@@ -114,7 +114,7 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
 
     # ── B2: 语义缓存查找（追问不使用缓存，避免上下文依赖）──
     # v4: 本体类版本前缀——当规则/模板发生重大变更时更新版本号可立即淘汰旧缓存
-    _SEMANTIC_CACHE_VERSION = "v24"  # v24: 新增 compute_mode 字段 + python_compute 路由 + skill 文件加载
+    _SEMANTIC_CACHE_VERSION = "v25"  # v25: WaferTransitionSnapshot P2 hint + 不良原因 synonym fix
     _cache_key = f"{_SEMANTIC_CACHE_VERSION}:{effective_input}"
     _cache_hit = False
     if not is_followup:
@@ -153,22 +153,36 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
         ctx = build_semantic_context(effective_input, intent_slots=slots)
 
         # P2: hint 增强路径 — 如果 build_semantic_context 没有匹配到物理表，
-        # 且 intent_router 提供了 target_class_hints，直接从映射字典补充 physical_tables。
-        # 这是纯 additive 操作：只在原有结果为空时补充，不覆盖已有匹配。
+        # 且 intent_router 提供了 target_class_hints，直接从映射字典补充。
+        # 注意：physical_tables 是 @property（只读），必须向 ctx.matched_classes 追加
+        # MatchedClass，而不是尝试直接赋值给 physical_tables。
         if not ctx.physical_tables and target_class_hints:
             try:
                 from app.ontology.mapping import get_mapping
+                from app.ontology.context_builder import MatchedClass
                 mapping = get_mapping()
-                hint_tables = []
+                seen_tables: set = set()
                 for hint_class in target_class_hints:
                     pt = mapping.get_physical_table(hint_class)
-                    if pt and pt.table_name and pt.table_name not in hint_tables:
-                        hint_tables.append(pt.table_name)
-                if hint_tables:
-                    ctx.physical_tables = hint_tables
+                    if pt and pt.table_name and pt.table_name not in seen_tables:
+                        seen_tables.add(pt.table_name)
+                        mc = MatchedClass(
+                            keyword=hint_class,
+                            logic_class=pt.logic_class,
+                            label_cn=getattr(pt, "label_cn", hint_class),
+                            physical_table=pt.table_name,
+                            primary_key=getattr(pt, "primary_key", "id"),
+                            display_column=getattr(pt, "display_column", None),
+                            key_columns=list(getattr(pt, "key_columns", []) or []),
+                            properties=dict(getattr(pt, "properties", {}) or {}),
+                            virtual=False,
+                            filter_condition=getattr(pt, "filter_condition", None),
+                        )
+                        ctx.matched_classes.append(mc)
+                if seen_tables:
                     logger.info(
-                        f"[semantic_resolver] P2 hint补充 physical_tables: "
-                        f"{hint_tables} (来自 target_class_hints {target_class_hints})"
+                        f"[semantic_resolver] P2 hint补充 matched_classes: "
+                        f"{list(seen_tables)} (来自 target_class_hints {target_class_hints})"
                     )
             except Exception as hint_err:
                 logger.warning(f"[semantic_resolver] P2 hint增强失败(非关键): {hint_err}")

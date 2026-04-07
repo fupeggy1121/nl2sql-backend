@@ -19,6 +19,7 @@ CHART_PIE = 'pie'
 CHART_SCATTER = 'scatter'
 CHART_CARD = 'card'       # 单值 KPI 卡片
 CHART_GROUPED_BAR = 'grouped_bar'
+CHART_PARETO = 'pareto'
 
 # ─── 时间类型字段关键词 ────────────────────────────────
 TIME_KEYWORDS = {
@@ -45,6 +46,12 @@ AGG_ALIAS_KEYWORDS = {
 DISTRIBUTION_KEYWORDS = {
     '分布', '占比', '比例', '构成', '组成', '分类', '份额',
     'distribution', 'ratio', 'proportion', 'share', 'composition',
+}
+
+# ─── 柏拉图类查询关键词（不良/缺陷分析） ─────────────────
+PARETO_KEYWORDS = {
+    '柏拉图', '帕累托', 'pareto',
+    '不良', '缺陷', '异常', '故障', '投诉', '返工', '原因',
 }
 
 
@@ -212,6 +219,13 @@ class ChartRecommender:
         nl = intent.get('natural_language', '')
         return any(kw in nl for kw in DISTRIBUTION_KEYWORDS)
 
+    @staticmethod
+    def _intent_wants_pareto(intent: Optional[Dict]) -> bool:
+        if not intent:
+            return False
+        nl = (intent.get('natural_language', '') or '').lower()
+        return any(kw in nl for kw in PARETO_KEYWORDS)
+
     # ─── 规则引擎（优化版） ───────────────────────────────
     def _rule_based_recommend(
         self, features: Dict[str, Any], intent: Optional[Dict] = None
@@ -223,6 +237,7 @@ class ChartRecommender:
         numeric_cols = f['numeric_cols']
         category_cols = f['category_cols']
         wants_distribution = self._intent_wants_distribution(intent)
+        wants_pareto = self._intent_wants_pareto(intent)
 
         # 默认 fallback
         result = {
@@ -302,6 +317,22 @@ class ChartRecommender:
                 yAxisField=numeric_cols[0],
                 confidence=0.90,
                 reason='小聚合两列 (≤8 组)，使用饼图展示占比'
+            )
+            return result
+
+        # ── R6b: 不良/缺陷分析 → pareto（柱 + 累计占比线）──
+        if wants_pareto and len(numeric_cols) >= 1 and (category_cols or f['string_cols']) and row_count <= 30:
+            non_num = [c for c in f['columns'] if c not in numeric_cols]
+            x_field = non_num[0] if non_num else (category_cols[0] if category_cols else f['string_cols'][0])
+            y_field = numeric_cols[0]
+            result.update(
+                type=CHART_PARETO,
+                title=self._gen_title(intent, f'按 {x_field} 的柏拉图分析'),
+                xAxisField=x_field,
+                yAxisField=y_field,
+                seriesField=None,
+                confidence=0.95,
+                reason='不良/缺陷类分析，使用柏拉图突出主要问题项'
             )
             return result
 
@@ -407,7 +438,7 @@ SQL 查询: {sql[:300]}
 是否聚合: {features['has_aggregation']}
 是否分组: {features['has_group_by']}
 
-可选图表类型: table, bar, line, pie, scatter, card, grouped_bar
+可选图表类型: table, bar, line, pie, scatter, card, grouped_bar, pareto
 
 请严格返回 JSON（不要 markdown 代码块），格式:
 {{"type": "bar", "title": "图表标题", "xAxisField": "字段名", "yAxisField": "字段名", "seriesField": null, "confidence": 0.9, "reason": "推荐理由"}}

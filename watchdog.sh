@@ -49,7 +49,14 @@ kill_port() {
   if [[ -n "$pids" ]]; then
     log "端口 $port 被 PID($pids) 占用，强制清理..."
     echo "$pids" | xargs kill -9 2>/dev/null || true
-    sleep 1
+    # 等待端口真正释放（最多 10s），避免 [Errno 48] Address already in use
+    local waited=0
+    while lsof -nP -iTCP:"$port" -sTCP:LISTEN -t &>/dev/null; do
+      sleep 1
+      waited=$((waited + 1))
+      [[ $waited -ge 10 ]] && break
+    done
+    log "端口 $port 已释放（等待 ${waited}s）"
   fi
 }
 

@@ -25,7 +25,7 @@ if __name__ == '__main__':
             port=port,
             reload=True,
             reload_dirs=["app"],
-            reload_includes=["*.py", "*.json", "*.ttl"],
+            reload_includes=["*.py", "*.ttl"],
         )
     else:
         uvicorn.run(app, host='0.0.0.0', port=port)

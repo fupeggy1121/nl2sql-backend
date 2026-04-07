@@ -410,6 +410,7 @@ class UnifiedQueryService:
                 'table': VisualizationType.TABLE,
                 'bar': VisualizationType.BAR,
                 'grouped_bar': VisualizationType.BAR,
+                'pareto': VisualizationType.BAR,
                 'line': VisualizationType.LINE,
                 'pie': VisualizationType.PIE,
                 'card': VisualizationType.GAUGE,

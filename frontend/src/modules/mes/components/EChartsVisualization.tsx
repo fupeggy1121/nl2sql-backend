@@ -5,7 +5,7 @@ import { TrendingUp, TrendingDown, Minus, Table as TableIcon } from 'lucide-reac
 
 interface EChartsVisualizationProps {
   data: any[];
-  type: 'table' | 'bar' | 'line' | 'pie' | 'scatter' | 'card' | 'gauge' | 'table' | 'heatmap' | 'radar' | 'funnel' | 'treemap' | 'boxplot' | 'bar-line-combo' | 'grouped_bar'; // 更新类型
+  type: 'table' | 'bar' | 'line' | 'pie' | 'scatter' | 'card' | 'gauge' | 'table' | 'heatmap' | 'radar' | 'funnel' | 'treemap' | 'boxplot' | 'bar-line-combo' | 'grouped_bar' | 'pareto'; // 更新类型
   title?: string;
   xAxisField?: string;
   yAxisField?: string;
@@ -114,6 +114,8 @@ export const EChartsVisualization = React.memo(
           return generateBarLineComboChartOptions(data, title, xAxisField, yAxisField, colors);
         case 'grouped_bar': // 分组柱状图（二维分组）
           return generateGroupedBarChartOptions(data, title, xAxisField, seriesField, yAxisField, colors);
+        case 'pareto': // 柏拉图（柱 + 累计占比线）
+          return generateParetoChartOptions(data, title, xAxisField, yAxisField, colors);
         default:
           return generateBarChartOptions(data, title, xAxisField, yAxisField, colors, thresholds);
       }
@@ -1216,6 +1218,108 @@ function generateBarLineComboChartOptions(
         yAxisIndex: 1,
         data: lineData,
         itemStyle: { color: colors[0] }
+      }
+    ]
+  };
+}
+
+function generateParetoChartOptions(
+  data: any[],
+  title: string | undefined,
+  xAxisField: string | undefined,
+  yAxisField: string | undefined,
+  colors: string[]
+) {
+  const xField = xAxisField || detectField(data, ['defect_type', 'reason', 'category', 'name']);
+  const yField = yAxisField || detectField(data, ['defect_count', 'count', 'quantity', 'qty', 'value']);
+
+  const rows = data
+    .map((item) => ({
+      name: String(item[xField] ?? 'N/A'),
+      value: parseFloat(item[yField]) || 0,
+    }))
+    .filter((r) => r.value >= 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 20);
+
+  const total = rows.reduce((sum, r) => sum + r.value, 0) || 1;
+  let cumulative = 0;
+  const cumulativePct = rows.map((r) => {
+    cumulative += r.value;
+    return Number(((cumulative / total) * 100).toFixed(2));
+  });
+
+  return {
+    title: {
+      text: title || '柏拉图分析',
+      textStyle: { fontSize: 14, fontWeight: 'bold' }
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' }
+    },
+    legend: {
+      data: [yField, '累计占比'],
+      top: 30
+    },
+    grid: {
+      top: 80,
+      left: 50,
+      right: 45,
+      bottom: 65,
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: rows.map((r) => r.name),
+      axisLabel: { interval: 0, rotate: rows.length > 8 ? 30 : 0 }
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: yField,
+        min: 0,
+      },
+      {
+        type: 'value',
+        name: '累计占比',
+        min: 0,
+        max: 100,
+        axisLabel: { formatter: '{value}%' }
+      }
+    ],
+    series: [
+      {
+        name: yField,
+        type: 'bar',
+        data: rows.map((r) => r.value),
+        itemStyle: { color: colors[3], borderRadius: [4, 4, 0, 0] },
+        label: { show: rows.length <= 12, position: 'top', formatter: '{c}' }
+      },
+      {
+        name: '累计占比',
+        type: 'line',
+        yAxisIndex: 1,
+        data: cumulativePct,
+        itemStyle: { color: colors[2] },
+        lineStyle: { color: colors[2], width: 2 },
+        label: {
+          show: rows.length <= 12,
+          position: 'top',
+          formatter: '{c}%'
+        },
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          lineStyle: { color: '#ff4d4f', type: 'dashed', width: 1.5 },
+          data: [{ yAxis: 80 }],
+          label: {
+            formatter: '80%',
+            position: 'insideEndTop',
+            color: '#ff4d4f',
+            fontWeight: 'bold'
+          }
+        }
       }
     ]
   };

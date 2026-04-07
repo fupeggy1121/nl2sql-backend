@@ -119,6 +119,8 @@ CLASS_SYNONYMS: dict = {
         "synonyms": [
             "原料", "原材料", "raw_material", "rawmaterial",
             "生产原料", "基材",
+            # 外延生长场景：衬底即原料
+            "衬底", "衬底片", "基板", "substrate", "衬底原料",
         ],
     },
 
@@ -267,6 +269,18 @@ CLASS_SYNONYMS: dict = {
             "不良录入", "不良记录", "NG记录", "不良标记记录",
             "不良操作记录", "报废记录", "不良晶圆记录",
             "ngrecord", "ng录入", "ngrecordeventrecord",
+        ],
+    },
+
+    "semi:WaferTransitionSnapshot": {
+        "label_cn": "晶圆迁移快照（不良明细）",
+        "synonyms": [
+            # 不良统计/分析类查询 — 该表含 ng_code / ng_reason / wafer_type 列
+            "不良原因", "不良类型", "不良原因统计", "不良类型统计",
+            "不良分析", "不良分布", "各不良原因", "各不良类型",
+            "缺陷原因", "缺陷类型", "缺陷分析", "缺陷分布",
+            "不良代码统计", "不良码统计", "ng原因", "ng类型",
+            "不良明细", "晶圆不良明细", "不良晶圆明细",
         ],
     },
 
@@ -566,10 +580,8 @@ PROPERTY_SYNONYMS: dict = {
         "domain": "semi:Wafer",
         "physical_column": "ng_code",
         "synonyms": [
-            "不良代码", "不良原因", "ng_code", "NG码", "NG代码",
-            "不良类型", "缺陷代码", "缺陷原因", "缺陷类型",
-            "不良品原因", "ng原因", "不良分类", "不良定义",
-            "报废原因", "报废代码",
+            "不良代码", "ng_code", "NG码", "NG代码",
+            "缺陷代码", "报废代码",
         ],
     },
 
@@ -617,11 +629,12 @@ PROPERTY_SYNONYMS: dict = {
 
     "semi:hasState": {
         "label_cn": "状态",
-        "domain": "semi:ProductionLot",
+        "domain": "semi:Material",
         "physical_column": "status",
         "synonyms": [
             "状态", "批次状态", "当前状态", "status",
             "生产状态", "在制状态",
+            "物料状态", "启用状态", "停用状态",
         ],
     },
 
@@ -652,6 +665,87 @@ PROPERTY_SYNONYMS: dict = {
         "synonyms": [
             "载具编号", "片篮编号", "carrier_code", "载具号",
             "石英舟编号", "载体编号",
+        ],
+    },
+
+    # ── Material 物料大类/小类数据属性 ──
+    "semi:hasMaterialCategory": {
+        "label_cn": "物料大类",
+        "domain": "semi:Material",
+        "physical_column": "type",
+        "synonyms": [
+            "物料大类", "物料类别", "物料类型", "物料分类",
+            "material_category", "material_class",
+        ],
+    },
+
+    "semi:hasMaterialType": {
+        "label_cn": "物料小类",
+        "domain": "semi:Material",
+        "physical_column": "material_type",
+        "synonyms": [
+            "物料小类", "物料子类型", "物料子类", "材料小类",
+            "material_type", "material_subtype",
+        ],
+    },
+
+    "semi:hasMaterialCode": {
+        "label_cn": "物料编码",
+        "domain": "semi:Material",
+        "physical_column": "material_no",
+        "synonyms": [
+            "物料编码", "物料编号", "物料号", "物料代码",
+            "material_no", "material_code", "物料主编号",
+        ],
+    },
+
+    "semi:hasMaterialName": {
+        "label_cn": "物料名称",
+        "domain": "semi:Material",
+        "physical_column": "material_name",
+        "synonyms": [
+            "物料名称", "物料名", "物料品名", "原料名称",
+            "material_name", "物料描述名",
+        ],
+    },
+
+    "semi:hasMaterialSpec": {
+        "label_cn": "物料规格",
+        "domain": "semi:Material",
+        "physical_column": "material_spec",
+        "synonyms": [
+            "物料规格", "规格", "规格型号", "料件规格",
+            "material_spec", "spec",
+        ],
+    },
+
+    "semi:hasUnit": {
+        "label_cn": "计量单位",
+        "domain": "semi:Material",
+        "physical_column": "unit",
+        "synonyms": [
+            "单位", "计量单位", "物料单位", "数量单位",
+            "unit", "unit_name",
+        ],
+    },
+
+    "semi:hasBatchMgmt": {
+        "label_cn": "批次管理",
+        "domain": "semi:Material",
+        "physical_column": "extra->>'$.warehouseBatch'",
+        "synonyms": [
+            "批次管理", "是否启用批次管理", "启用批次",
+            "warehouseBatch", "batch_mgmt",
+        ],
+    },
+
+    "semi:hasUniqueCodeMgmt": {
+        "label_cn": "唯一码管理",
+        "domain": "semi:Material",
+        "physical_column": "extra->>'$.warehouseUniqueCode'",
+        "synonyms": [
+            "唯一码管理", "是否启用唯一码", "启用唯一码", "逐件管理",
+            "warehouseUniqueCode", "unique_code_mgmt",
         ],
     },
 }

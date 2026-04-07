@@ -515,11 +515,22 @@ A: intent=need_clarification, query_type=AGGREGATE, target_class_hints=[], seman
    clarification_question="请问您想了解哪方面的生产情况？（例如：一次良率、在制品数量、返工率、设备稼动率等）",
    intent_slots={{"subject":null,"action":null,"dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"查询目标过于宽泛，无法确定具体指标和时间范围"}}
 
+Q: "不良原因统计"
+A: intent=query_quality, query_type=AGGREGATE, target_class_hints=["semi:WaferTransitionSnapshot"],
+   semantic_filters=[{{"attribute":"wafer_type","semantic_value":"reject"}}],
+   intent_slots={{"subject":"不良原因","action":"统计聚合","dimension_by":"不良原因","metric":"不良数量","sort_order":"DESC","limit_n":null,"filter_hints":["wafer_type=reject"],"reasoning":"ng_reason/ng_code在WaferTransitionSnapshot快照表中，按ng_reason分组计数，filter_by wafer_type=reject"}}
+
+Q: "各不良类型统计"
+A: intent=query_quality, query_type=AGGREGATE, target_class_hints=["semi:WaferTransitionSnapshot"],
+   semantic_filters=[{{"attribute":"wafer_type","semantic_value":"reject"}}],
+   intent_slots={{"subject":"不良类型","action":"统计聚合","dimension_by":"不良类型/ng_code","metric":"不良数量","sort_order":"DESC","limit_n":null,"filter_hints":["wafer_type=reject"],"reasoning":"不良类型分布统计，group by ng_code/ng_reason"}}
+
 ## 何时使用 need_clarification
 以下任一情况使用：
 1. 查询对象完全不明确（无批次号/设备/工序）且查询类型也未知，置信度 < 0.65
 2. 查询类型明确是事件记录类（CheckInEventRecord/CheckOutEventRecord/MeasurementPassRecord/WaferMeasurementSnapshot 等），但没有指定批次号/lot_code 过滤条件（全表扫描风险）
 ⚠ 不要滥用——主数据查询（Carrier/Equipment/ProcessStation/Inventory 等）即使无过滤也可直接生成 SQL。
+⚠ 聚合/统计类查询（query_type=AGGREGATE，含"统计""排名""分布""各X"等词）即使没有具体批次号或时间范围，也应直接生成 SQL，禁止触发澄清。不良分析、质量统计、设备稼动等典型聚合场景均属此类。
 
 ## 当前用户输入
 "{text}"

@@ -727,26 +727,32 @@ semi:hasManufacturer a owl:DatatypeProperty ;
 
 semi:hasMaterialCode a owl:DatatypeProperty ;
     rdfs:label "物料编码" ;
-    rdfs:comment "对应 material_no 或 code 字段。" ;
+    rdfs:comment "物料的唯一编号标识，用于识别、检索和追踪特定物料实例。" ;
     rdfs:domain [ owl:unionOf ( semi:Material semi:Product semi:RawMaterial semi:Auxiliary semi:SparePart ) ] ;
     rdfs:range xsd:string .
 
 semi:hasMaterialName a owl:DatatypeProperty ;
     rdfs:label "物料名称" ;
-    rdfs:comment "对应 material_name 或 name 字段。" ;
+    rdfs:comment "物料的名称描述，用于人工识别和信息展示。" ;
     rdfs:domain [ owl:unionOf ( semi:Material semi:Product semi:RawMaterial semi:Auxiliary semi:SparePart ) ] ;
     rdfs:range xsd:string .
 
 semi:hasMaterialSpec a owl:DatatypeProperty ;
     rdfs:label "物料规格" ;
-    rdfs:comment "对应 spec 或 material_spec 字段。" ;
-    rdfs:domain [ owl:unionOf ( semi:Material semi:Product semi:RawMaterial semi:Auxiliary ) ] ;
+    rdfs:comment "物料的规格/型号参数，描述物料的技术特征（尺寸、型号等）。" ;
+    rdfs:domain [ owl:unionOf ( semi:Material semi:Product semi:RawMaterial semi:Auxiliary semi:SparePart ) ] ;
     rdfs:range xsd:string .
 
 semi:hasMaterialType a owl:DatatypeProperty ;
-    rdfs:label "物料类型" ;
-    rdfs:comment "物料分类标识，对应 material_type 或 type 字段（字符串枚举），用于区分原料/辅料/备件/产品等子类。SparePart / Product 子类也共用此属性，值域因子类而异。" ;
-    rdfs:domain semi:Material ;
+    rdfs:label "物料小类" ;
+    rdfs:comment "物料小类/子类型标识，表示同一大类内的进一步细分，例如原料中的 GaAs衬底、GaN衬底；辅料中的药液类型；备件中的备件规格类型等。⚠ 注意：此属性标识同类内的子分类，与 semi:hasMaterialCategory（物料大类区分器）语义完全不同，不可混用。" ;
+    rdfs:domain [ owl:unionOf ( semi:Material semi:RawMaterial semi:Auxiliary semi:SparePart semi:Product ) ] ;
+    rdfs:range xsd:string .
+
+semi:hasMaterialCategory a owl:DatatypeProperty ;
+    rdfs:label "物料大类" ;
+    rdfs:comment "物料大类区分标识，用于区分存储在同一物料档案中不同类型的物料实体（原料、辅料、备件、产品）。⚠ 注意：此属性是类级区分器（Class Discriminator），与 semi:hasMaterialType（物料小类标识）语义完全不同，不可混用。" ;
+    rdfs:domain [ owl:unionOf ( semi:Material semi:RawMaterial semi:Auxiliary semi:SparePart semi:Product ) ] ;
     rdfs:range xsd:string .
 
 semi:hasMeasurementParamSpec a owl:ObjectProperty ;
@@ -1959,7 +1965,7 @@ semi:Recipe a owl:Class ;
 
 semi:SparePart a owl:Class ;
     rdfs:label "备件" ;
-    rdfs:comment "用于设备维护和状态恢复的更换件。" ;
+    rdfs:comment "用于设备维护和状态恢复的更换件。⚠ 在物料大类（semi:hasMaterialCategory）中属于备件类别；semi:hasMaterialType 表示备件的小类规格，与大类区分语义无关，不可混用。" ;
     rdfs:subClassOf semi:Material .
 
 semi:WarehouseEvent a owl:Class ;
@@ -1975,7 +1981,7 @@ semi:WarehouseEventRecord a owl:Class ;
 
 semi:Auxiliary a owl:Class ;
     rdfs:label "辅料" ;
-    rdfs:comment "加工过程中的消耗性资源（如化学药液、特气）。" ;
+    rdfs:comment "加工过程中的消耗性资源（如化学药液、特气）。⚠ 在物料大类（semi:hasMaterialCategory）中属于辅料类别；semi:hasMaterialType 表示辅料的小类，与大类区分语义无关，不可混用。" ;
     rdfs:subClassOf semi:Material .
 
 
@@ -1993,12 +1999,12 @@ semi:MaterialInboundSnapshot a owl:Class ;
 
 semi:Product a owl:Class ;
     rdfs:label "产品" ;
-    rdfs:comment "状态演化的终点产物，受产品模型定义约束。" ;
+    rdfs:comment "状态演化的终点产物，受产品模型定义约束。⚠ 在物料大类（semi:hasMaterialCategory）中属于产品类别；semi:hasMaterialType 表示产品的小类，与大类区分语义无关，不可混用。" ;
     rdfs:subClassOf semi:Material .
 
 semi:RawMaterial a owl:Class ;
     rdfs:label "原料" ;
-    rdfs:comment "生产投入的初始实物（如 Bare Wafer）。" ;
+    rdfs:comment "生产投入的初始实物（如 Bare Wafer）。⚠ 在物料大类（semi:hasMaterialCategory）中属于原料类别；semi:hasMaterialType 表示原料的子类（如 GaAs衬底、GaN衬底等），与大类区分语义无关。" ;
     rdfs:subClassOf semi:Material .
 
 semi:BOM a owl:Class ;
