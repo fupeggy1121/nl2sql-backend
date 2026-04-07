@@ -144,3 +144,12 @@ def _reset_cached_connections():
         logger.info("[db_mode] ✅ UnifiedQueryService singleton invalidated")
     except Exception as e:
         logger.warning(f"[db_mode] Could not reset UnifiedQueryService: {e}")
+
+    # 4. 查询结果缓存（切换 DB 后缓存数据无效，必须清空）
+    try:
+        import app.services.query_cache as _qc
+        if _qc._query_cache is not None:
+            _qc._query_cache.clear()
+        logger.info("[db_mode] ✅ QueryCache cleared")
+    except Exception as e:
+        logger.warning(f"[db_mode] Could not clear QueryCache: {e}")

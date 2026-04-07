@@ -5,10 +5,11 @@ import { TrendingUp, TrendingDown, Minus, Table as TableIcon } from 'lucide-reac
 
 interface EChartsVisualizationProps {
   data: any[];
-  type: 'table' | 'bar' | 'line' | 'pie' | 'scatter' | 'card' | 'gauge' | 'table' | 'heatmap' | 'radar' | 'funnel' | 'treemap' | 'boxplot' | 'bar-line-combo'; // 更新类型
+  type: 'table' | 'bar' | 'line' | 'pie' | 'scatter' | 'card' | 'gauge' | 'table' | 'heatmap' | 'radar' | 'funnel' | 'treemap' | 'boxplot' | 'bar-line-combo' | 'grouped_bar'; // 更新类型
   title?: string;
   xAxisField?: string;
   yAxisField?: string;
+  seriesField?: string;  // 分组系列字段（用于 grouped_bar）
   colorField?: string;
 
   // Card specific
@@ -39,6 +40,7 @@ export const EChartsVisualization = React.memo(
     title,
     xAxisField,
     yAxisField,
+    seriesField,
     colorField,
     cardTheme = 'info',
     trend,
@@ -110,10 +112,12 @@ export const EChartsVisualization = React.memo(
           return generateBoxplotChartOptions(data, title, xAxisField, yAxisField, colors);
         case 'bar-line-combo': // 新增柱状折线组合图
           return generateBarLineComboChartOptions(data, title, xAxisField, yAxisField, colors);
+        case 'grouped_bar': // 分组柱状图（二维分组）
+          return generateGroupedBarChartOptions(data, title, xAxisField, seriesField, yAxisField, colors);
         default:
           return generateBarChartOptions(data, title, xAxisField, yAxisField, colors, thresholds);
       }
-    }, [data, type, title, xAxisField, yAxisField, colorField, valueField, gaugeMin, gaugeMax, gaugeThresholds, thresholds, thresholdDirection]);
+    }, [data, type, title, xAxisField, yAxisField, seriesField, colorField, valueField, gaugeMin, gaugeMax, gaugeThresholds, thresholds, thresholdDirection]);
 
     // --- 条件渲染在所有 Hooks 调用之后 ---
 
@@ -226,6 +230,60 @@ function generateBarChartOptions(
         markLine: markLineData.length > 0 ? { silent: false, data: markLineData } : undefined,
       }
     ]
+  };
+}
+
+// 分组柱状图：X轴=第一分类维度，系列=第二分类维度，Y轴=数值
+function generateGroupedBarChartOptions(
+  data: any[],
+  title: string | undefined,
+  xAxisField: string | undefined,
+  seriesField: string | undefined,
+  yAxisField: string | undefined,
+  colors: string[]
+) {
+  const xField = xAxisField || detectField(data, ['warehouse_name', 'location_name', 'warehouse', 'name']);
+  const sField = seriesField || detectField(data, ['material_model_name', 'material_name', 'product_name', 'name']);
+  const yField = yAxisField || detectField(data, ['quantity', 'total_qty', 'count', 'value']);
+
+  // 获取 X 轴唯一值（如各仓库）
+  const xValues = [...new Set(data.map((d) => String(d[xField] ?? 'N/A')))];
+  // 获取 series 唯一值（如各物料）
+  const seriesValues = [...new Set(data.map((d) => String(d[sField] ?? 'N/A')))];
+
+  // 建立 (x, series) → value 的查找表
+  const lookup: Record<string, Record<string, number>> = {};
+  for (const row of data) {
+    const x = String(row[xField] ?? 'N/A');
+    const s = String(row[sField] ?? 'N/A');
+    if (!lookup[x]) lookup[x] = {};
+    lookup[x][s] = parseFloat(row[yField]) || 0;
+  }
+
+  const series = seriesValues.map((sv, idx) => ({
+    name: sv,
+    type: 'bar',
+    data: xValues.map((xv) => lookup[xv]?.[sv] ?? 0),
+    itemStyle: { borderRadius: [4, 4, 0, 0], color: colors[idx % colors.length] },
+    label: { show: seriesValues.length <= 5, position: 'top', fontSize: 11, formatter: '{c}' },
+  }));
+
+  return {
+    title: { text: title || '分组柱状图', textStyle: { fontSize: 14, fontWeight: 'bold' } },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    legend: { data: seriesValues, top: 30 },
+    grid: { top: 80, left: 50, right: 30, bottom: 60, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: xValues,
+      axisLabel: { interval: 0, rotate: xValues.length > 6 ? 30 : 0 },
+    },
+    yAxis: {
+      type: 'value',
+      name: yField,
+      splitLine: { lineStyle: { color: '#f0f0f0' } },
+    },
+    series,
   };
 }
 

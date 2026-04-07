@@ -125,6 +125,14 @@ def _rule_recommend_chart(
                 return _make_viz("pie", cat_col, num_col, None, 0.85, f"占比分布 ({cat_col})，使用饼图")
             return _make_viz("bar", cat_col, num_col, None, 0.82, f"分类对比 ({cat_col} vs {num_col})，使用柱状图")
 
+    # ── 规则 3b: 2 个分类列 + 1 个数值列 → 分组柱状图（二维分组）
+    if len(category_cols) >= 2 and len(numeric_cols) == 1:
+        x_col = category_cols[0]
+        series_col = category_cols[1]
+        num_col = numeric_cols[0]
+        return _make_viz("grouped_bar", x_col, num_col, series_col, 0.88,
+                         f"两个分类维度 ({x_col} & {series_col})，使用分组柱状图")
+
     # ── 规则 4: 行数 > 20 且无时间列 → 先检查是否为明细数据
     if rows > 20 and not time_cols:
         # 如果分类列的唯一值 ≈ 行数（每行是独立记录），认为是明细数据 → 表格

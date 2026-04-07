@@ -24,12 +24,13 @@ class QueryExecutor:
         self.supabase_client = supabase_client
         self.pg_executor = None  # 延迟初始化PostgreSQL执行器
         self._cache = None       # 延迟初始化查询缓存
-        # 记录初始化时的 db 模式，用于检测切换
+        # 记录初始化时的 db 模式，用于检测切换（同时跟踪 mysql_source）
         try:
             from app.services.db_mode import get_current_db_mode
-            self._db_mode_at_init = get_current_db_mode()["mode"]
+            _info = get_current_db_mode()
+            self._db_mode_at_init = f"{_info['mode']}|{_info.get('mysql_source', '')}"
         except Exception:
-            self._db_mode_at_init = "auto"
+            self._db_mode_at_init = "auto|"
     
     @property
     def cache(self):
@@ -94,7 +95,8 @@ class QueryExecutor:
             # ── 0. 检测 db 模式是否已切换，若切换则重置直连执行器 ──
             try:
                 from app.services.db_mode import get_current_db_mode
-                current_mode = get_current_db_mode()["mode"]
+                _info = get_current_db_mode()
+                current_mode = f"{_info['mode']}|{_info.get('mysql_source', '')}"
                 if current_mode != self._db_mode_at_init:
                     logger.info(
                         f"[QueryExecutor] DB mode changed "

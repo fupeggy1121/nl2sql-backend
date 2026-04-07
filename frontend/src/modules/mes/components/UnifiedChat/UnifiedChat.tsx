@@ -39,7 +39,7 @@ export interface Message {
   content: string;
   timestamp: Date;
   data?: any;
-  visualizationType?: 'bar' | 'line' | 'pie' | 'scatter' | 'card' | 'gauge' | 'table' | 'heatmap' | 'radar' | 'funnel' | 'treemap' | 'boxplot' | 'bar-line-combo' | 'traceability';
+  visualizationType?: 'bar' | 'line' | 'pie' | 'scatter' | 'card' | 'gauge' | 'table' | 'heatmap' | 'radar' | 'funnel' | 'treemap' | 'boxplot' | 'bar-line-combo' | 'grouped_bar' | 'traceability';
   traceabilityData?: { lotCode?: string; waferCode?: string };
   chartConfig?: {
     title?: string;
@@ -47,6 +47,7 @@ export interface Message {
     yAxisField?: string;
     colorField?: string;
     valueField?: string;
+    seriesField?: string;    // 分组系列字段（用于 grouped_bar）
     cardTheme?: 'success' | 'warning' | 'danger' | 'info';
     trend?: { direction: 'up' | 'down' | 'stable'; value: number };
     comparisonValue?: { label: string; value: number };
@@ -96,12 +97,14 @@ const CHART_TYPE_MAP: Partial<Record<string, Message['visualizationType']>> = {
   '热力图': 'heatmap',
   '雷达图': 'radar',
   '漏斗图': 'funnel',
+  '分组柱状图': 'grouped_bar', '分组图': 'grouped_bar', '多维柱状图': 'grouped_bar',
   '表格': 'table',
 };
 
 const CHART_TYPE_LABELS: Record<string, string> = {
   bar: '柱状图', line: '折线图', pie: '饼图', scatter: '散点图',
   table: '表格', heatmap: '热力图', radar: '雷达图', funnel: '漏斗图',
+  grouped_bar: '分组柱状图',
 };
 
 // 包含这些关键字时视为「数据查询」，不拦截
@@ -437,10 +440,11 @@ if (response.query_result?.success && Array.isArray(response.query_result.data))
       rowCount: qr.rows_count ?? qr.data.length,
     },
     data: qr.data,
-    visualizationType: qr.visualization_type || 'table',
+    visualizationType: (response.visualization?.type || qr.visualization_type || 'table') as Message['visualizationType'],
     chartConfig: {
       xAxisField: response.visualization?.xAxisField,
       yAxisField: response.visualization?.yAxisField,
+      seriesField: response.visualization?.seriesField,
       colorField: response.visualization?.colorField,
       thresholds: response.visualization?.thresholds,
       thresholdDirection: response.visualization?.thresholdDirection,
@@ -587,11 +591,12 @@ setCurrentIntent(queryPlan.query_intent || null);
             rowCount: response.query_result?.rows_count,
           },
           data: response.query_result?.data,
-          visualizationType: response.query_result?.visualization_type || 'table',
+          visualizationType: (response.visualization?.type || response.query_result?.visualization_type || 'table') as Message['visualizationType'],
           chartConfig: {
             title: response.chartTitle,
             xAxisField: response.visualization?.xAxisField,
             yAxisField: response.visualization?.yAxisField,
+            seriesField: response.visualization?.seriesField,
             colorField: response.visualization?.colorField,
             thresholds: response.visualization?.thresholds,
             thresholdDirection: response.visualization?.thresholdDirection,
@@ -963,6 +968,14 @@ setCurrentIntent(queryPlan.query_intent || null);
                               <LineChart size={16} />
                               <span>组合图</span>
                             </button>
+                            <button
+                              className={`chart-type-btn ${currentChartType === 'grouped_bar' ? 'active' : ''}`}
+                              onClick={() => handleChartTypeChange(message.id, 'grouped_bar')}
+                              title="分组柱状图（二维）"
+                            >
+                              <BarChart size={16} />
+                              <span>分组图</span>
+                            </button>
                           </div>
                         </div>
 
@@ -999,6 +1012,7 @@ setCurrentIntent(queryPlan.query_intent || null);
                               title={message.chartConfig?.title}
                               xAxisField={message.chartConfig?.xAxisField}
                               yAxisField={message.chartConfig?.yAxisField}
+                              seriesField={message.chartConfig?.seriesField}
                               colorField={message.chartConfig?.colorField}
                               valueField={message.chartConfig?.valueField}
                               cardTheme={message.chartConfig?.cardTheme}

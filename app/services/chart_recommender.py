@@ -305,7 +305,23 @@ class ChartRecommender:
             )
             return result
 
-        # ── R7: 分类 + 1 数值 + 少量行 → bar ──
+        # ── R7: 2 分类列 + 1 数值列 → grouped_bar（二维分组柱状图）──
+        all_cat_cols = list(dict.fromkeys(category_cols + [c for c in f['string_cols'] if c not in category_cols]))
+        if len(all_cat_cols) >= 2 and len(numeric_cols) == 1 and row_count <= 50:
+            x_field = all_cat_cols[0]
+            series_field = all_cat_cols[1]
+            result.update(
+                type=CHART_GROUPED_BAR,
+                title=self._gen_title(intent, f'按 {x_field} & {series_field} 分组统计'),
+                xAxisField=x_field,
+                yAxisField=numeric_cols[0],
+                seriesField=series_field,
+                confidence=0.88,
+                reason='两个分类列 + 一个数值列，使用分组柱状图（二维分组）'
+            )
+            return result
+
+        # ── R7b: 分类 + 1 数值 + 少量行 → bar ──
         if (category_cols or f['string_cols']) and len(numeric_cols) == 1 and row_count <= 30:
             x_field = category_cols[0] if category_cols else f['string_cols'][0]
             result.update(
