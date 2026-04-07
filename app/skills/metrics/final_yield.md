@@ -44,7 +44,7 @@ required_entities:
 ## 计算逻辑
 
 1. **数据范围**: 取 CheckOut (operation_type=9) 的晶圆出站记录
-2. **末次判定**: 按 `(wafer_id, process_code)` 分组，按 `gmt_create DESC` 排序，取 `ROW_NUMBER = 1` 的记录（即末次出站）
+2. **末次判定**: 按 `(wafer_id, process_code)` 分组，按 **`l.gmt_create DESC`** 排序（`l` 为批次主表 `matrix_routerx_operation_lot_batch_resume_log`），取 `ROW_NUMBER = 1` 的记录（即末次出站）
 3. **合格判定**: `wafer_type = 'good'`（或 NULL 视为 good）且 `ng_code IS NULL 或为空`
 4. **公式**: `Final Yield = 末次出站合格晶圆数 / 末次出站总晶圆数 × 100%`
 
@@ -60,13 +60,15 @@ required_entities:
 
 - **按工站**: GROUP BY process_code
 - **按产品**: GROUP BY product_code
-- **按日期**: GROUP BY DATE(gmt_create)
+- **按日期**: GROUP BY DATE(**l.gmt_create**)  ← 必须用批次主表时间戳
 
 ## 注意事项
 
 - 综合良率 >= 一次良率（因为返工恢复的晶圆会提升综合良率）
-- `wafer_type` 为 NULL 时默认按 good 处理
-- 需排除已逻辑删除的记录（`deleted = 0 OR deleted IS NULL`）
+- `wafer_type` 为 NULL 时 Python 层自动处理，SQL 无需 COALESCE
+- 需排除已逻辑删除的记录（`l.deleted = 0 OR l.deleted IS NULL`）
+- **时间过滤必须用 `l.gmt_create`**（批次主表时间戳），不能用 `w.gmt_create`（明细表），以保证与一次良率使用同一时间基准，确保两者可对比
+- **ROW_NUMBER 排序必须用 `l.gmt_create DESC`**，不能用 `w.gmt_create`
 - **适用站点**：良率计算仅针对量测类型站点（Measurement Station）的 CheckOut 记录；工艺站点出站时无 `wafer_type` 判定，其良率定义另行维护
 - **返工场景**：返工子路径的量测站点与主路径为同一 `process_code`，`waferID` 不变。综合良率取末次出站（`rn=1 DESC`），返工救回的片末次为 good，自然计入分子，无需针对返工场景做额外过滤
 - **全流程串联良率**：用户未指定站点时，SQL 应返回全量站点数据（不加 process_code 过滤），Python 层会按 process_code 分组各自计算站点综合良率，再对所有站点良率连乘得到全流程综合良率；用户指定了站点（提到 process_code 或站点名），SQL 加 `WHERE process_code = '...'` 精确过滤
