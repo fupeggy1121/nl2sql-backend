@@ -55,3 +55,5 @@ required_entities:
 - `wafer_type` 为 NULL 时默认按 good 处理（`COALESCE(wafer_type, 'good')`）
 - 同一晶圆在同一工站可能出站多次（返工场景），仅取首次
 - 需排除已逻辑删除的记录（`deleted = 0 OR deleted IS NULL`）
+- **适用站点**：良率计算仅针对量测类型站点（Measurement Station）的 CheckOut 记录；工艺站点出站时无 `wafer_type` 判定，其良率定义另行维护
+- **返工场景**：返工子路径的量测站点与主路径为同一 `process_code`，`waferID` 不变。一次良率取首次出站（`rn=1 ASC`），返工后再经过该量测站点的记录 `rn > 1`，不会混入计算，无需额外过滤
