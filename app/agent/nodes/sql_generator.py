@@ -317,8 +317,12 @@ def _extract_mandatory_table_constraint(semantic_ctx: dict) -> str:
             continue
         keyword = c.get("keyword") or c.get("label_cn", "")
         physical = c.get("physical_table", "")
+        view_query = c.get("view_query")
         if physical and keyword:
-            lines.append(f"  - 「{keyword}」→ 物理表: {physical}")
+            if view_query:
+                lines.append(f"  - 「{keyword}」→ 物理表: {physical}（须用子查询: FROM ({view_query}) AS t）")
+            else:
+                lines.append(f"  - 「{keyword}」→ 物理表: {physical}")
     if not lines:
         return ""
     return (

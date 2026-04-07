@@ -58,6 +58,7 @@ class MatchedClass:
     properties: Dict[str, Optional[str]] = field(default_factory=dict)  # 语义属性 → 物理字段
     virtual: bool = False
     filter_condition: Optional[str] = None  # 同表多类区分条件，e.g. "parent_id != 0"
+    view_query: Optional[str] = None        # 事件级聚合子查询，存在时须替换直接表引用
 
 
 @dataclass
@@ -156,6 +157,10 @@ class SemanticContext:
                     lines.append(f"  -- 其余列: {', '.join(remaining)}")
                 if mc.filter_condition:
                     lines.append(f"  -- ⚠ 必须应用行过滤: WHERE {mc.filter_condition}")
+                if mc.view_query:
+                    lines.append(f"  -- ⚠ 事件级查询须替换直接表引用，用子查询: FROM ({mc.view_query}) AS t")
+            elif mc.view_query:
+                lines.append(f"  -- ⚠ 事件级查询须替换直接表引用，用子查询: FROM ({mc.view_query}) AS t")
         if self.joins:
             lines.append("")
             lines.append("-- JOIN conditions")
@@ -219,6 +224,7 @@ class SemanticContext:
                     "properties": {k: v for k, v in mc.properties.items() if v is not None},
                     "virtual": mc.virtual,
                     **({"filter_condition": mc.filter_condition} if mc.filter_condition else {}),
+                    **({"view_query": mc.view_query} if mc.view_query else {}),
                 }
                 for mc in self.matched_classes
             ],
@@ -1018,6 +1024,7 @@ class SemanticContextBuilder:
             properties=pt.properties,
             virtual=pt.virtual,
             filter_condition=pt.filter_condition,
+            view_query=pt.view_query,
         )
 
     # ----------------------------------------------------------------- #
@@ -1048,6 +1055,9 @@ class SemanticContextBuilder:
                 if pair in seen_pairs:
                     continue
                 if not vm.nl_triggers:
+                    continue
+                # 跳过 pending 条目（物理值 TBD，不可生成 SQL WHERE 片段）
+                if vm.pending:
                     continue
                 for trigger in vm.nl_triggers:
                     if trigger.lower() in q_lower:

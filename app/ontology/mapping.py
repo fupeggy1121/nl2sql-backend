@@ -36,6 +36,7 @@ class PhysicalTable:
     virtual_kind: Optional[str] = None
     embedded_in: Optional[str] = None
     filter_condition: Optional[str] = None  # 同表多类区分条件，e.g. "parent_id != 0"
+    view_query: Optional[str] = None         # 事件级聚合子查询（如 GROUP BY trace_code），存在时须替换直接表引用
     time_column: Optional[str] = None        # 时间锚点列，有此字段的实体为时间过滤主表
     subclass_of: Optional[str] = None        # 父类 logic_class，用于关系匹配时的父类权限上卷
     note: Optional[str] = None
@@ -103,6 +104,7 @@ class ValueMapping:
     join_path: Optional[str] = None            # JOIN 路径描述
     is_terminal: bool = False                  # Phase 1: 是否为终态（完结/作废等）
     nl_triggers: List[str] = field(default_factory=list)  # Phase 1: 自然语言触发词
+    pending: bool = False                      # 物理值尚未分配（如 operation_type=TBD），不可用于 SQL 生成
     note: Optional[str] = None
 
 
@@ -301,6 +303,7 @@ class MappingDictionary:
                 virtual_kind=item.get("virtual_kind"),
                 embedded_in=item.get("embedded_in"),
                 filter_condition=item.get("filter_condition"),
+                view_query=item.get("view_query"),
                 time_column=item.get("time_column"),
                 subclass_of=item.get("subclass_of"),
                 note=item.get("note"),
@@ -475,6 +478,7 @@ class MappingDictionary:
                     join_path=val_data.get("join_path"),
                     is_terminal=val_data.get("is_terminal", False),
                     nl_triggers=val_data.get("nl_triggers", []),
+                    pending=val_data.get("pending", False),
                     note=val_data.get("note"),
                 )
                 self._value_map[domain][val_key] = vm

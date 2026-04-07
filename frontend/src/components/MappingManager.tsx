@@ -35,6 +35,7 @@ interface ObjectMapping {
   label_cn: string;
   display_column: string | null;
   filter_condition?: string | null;  // 同表多类区分条件，e.g. "parent_id != 0"
+  view_query?: string | null;         // 事件级聚合子查询，存在时须替换直接表引用
   key_columns: string[];
   properties: Record<string, string | null>;
   virtual?: boolean;
@@ -67,6 +68,7 @@ interface ValueEntry {
   physical_condition?: string;
   applies_to_table?: string;
   applies_to_column?: string;
+  pending?: boolean;  // 物理值尚未分配，不可用于 SQL 生成
   note?: string;
   [key: string]: any;
 }
@@ -477,7 +479,7 @@ function ObjectMappingsTab() {
   const openAdd = () => {
     setEditItem({
       logic_class: '', physical_table: '', primary_key: 'id',
-      label_cn: '', display_column: '', filter_condition: '',
+      label_cn: '', display_column: '', filter_condition: '', view_query: '',
       key_columns: [], properties: {},
       virtual: false, virtual_kind: '', embedded_in: '', source_json_column: '', source_json_path: '',
       note: '',
@@ -595,6 +597,11 @@ function ObjectMappingsTab() {
                       {item.filter_condition && (
                         <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 rounded">
                           WHERE {item.filter_condition}
+                        </span>
+                      )}
+                      {item.view_query && (
+                        <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700 rounded">
+                          view_query
                         </span>
                       )}
                     </>
@@ -746,6 +753,19 @@ function ObjectMappingsTab() {
               onChange={e => setEditItem({ ...editItem, filter_condition: e.target.value || null })}
               className={inputCls}
               placeholder="parent_id != 0"
+            />
+          </Field>
+
+          <Field
+            label="View Query（事件级聚合子查询）"
+            hint="可选。当实体无独立记录行而需要将明细表聚合为事件视图时（不替换物理表名声明），SQL 生成时将用此子查询替换直接表引用。登记后可随时删除该字段实现直表迁移。"
+          >
+            <textarea
+              value={editItem.view_query || ''}
+              onChange={e => setEditItem({ ...editItem, view_query: e.target.value || null })}
+              className={`${inputCls} font-mono text-xs`}
+              rows={3}
+              placeholder="SELECT trace_code, lot_id, MIN(gmt_create) AS gmt_create FROM process_measure_data WHERE deleted = 0 GROUP BY trace_code, lot_id"
             />
           </Field>
 
@@ -1870,12 +1890,20 @@ function ValueMappingsTab() {
                   <tbody className="divide-y divide-gray-100">
                     {values.map(entry => {
                       const todo = isTodo(entry.physical_condition);
+                      const pending = !!entry.pending;
                       return (
-                        <tr key={entry.semantic_value} className={`hover:bg-gray-50 ${todo ? 'bg-yellow-50/40' : ''}`}>
-                          <td className="px-4 py-2.5 font-mono text-xs font-medium text-purple-700">{entry.semantic_value}</td>
+                        <tr key={entry.semantic_value} className={`hover:bg-gray-50 ${todo ? 'bg-yellow-50/40' : ''} ${pending ? 'bg-orange-50/40' : ''}`}>
+                          <td className="px-4 py-2.5 font-mono text-xs font-medium text-purple-700">
+                            {entry.semantic_value}
+                            {pending && (
+                              <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium bg-orange-100 text-orange-700 rounded">pending</span>
+                            )}
+                          </td>
                           <td className="px-4 py-2.5 text-gray-600 text-xs">{entry.description || '—'}</td>
                           <td className="px-4 py-2.5 font-mono text-xs max-w-[200px] truncate" title={entry.physical_condition}>
-                            {todo
+                            {pending
+                              ? <span className="text-orange-600 flex items-center gap-1"><AlertCircle size={12} /> TBD（未分配）</span>
+                              : todo
                               ? <span className="text-yellow-600 flex items-center gap-1"><AlertCircle size={12} /> TODO</span>
                               : <span className="text-gray-600">{entry.physical_condition || '—'}</span>
                             }

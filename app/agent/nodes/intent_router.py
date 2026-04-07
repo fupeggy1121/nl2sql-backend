@@ -133,7 +133,9 @@ def intent_router_node(state: AgentState) -> dict:
             )
 
     # 被动澄清触发2：已知事件记录类，但缺少批次/标识符过滤条件
-    # 没有批次号的事件记录查询会扫全表（可能数百万行），必须先问清楚
+    # 没有批次号的事件记录查询会扫全表（可能数百万行），必须先问清楚    # 例外：聚合/统计查询（AGGREGATE/TREND/GROUP）不需要单一批次号，允许直接生成全表聚合 SQL
+    _AGGREGATE_QUERY_TYPES = {"AGGREGATE", "TREND", "GROUP"}
+    _query_type_early = intent_data.get("query_type", "LIST")
     _EVENT_RECORD_CLASSES = {
         "semi:ProductionEventRecord",
         "semi:CheckInEventRecord",
@@ -159,7 +161,7 @@ def intent_router_node(state: AgentState) -> dict:
         _hint_str = " ".join(str(h) for h in _filter_hints_list)
         _lot_keywords = ("lot", "batch", "批次", "lot_code", "sublot", "sub_lot", "工单")
         _has_lot_filter = any(kw in (_sem_filters_str + _hint_str).lower() for kw in _lot_keywords)
-        if not _has_lot_filter:
+        if not _has_lot_filter and _query_type_early not in _AGGREGATE_QUERY_TYPES:
             logger.info(
                 f"[intent_router] Event-record class(es) {target_hints} "
                 "without lot/batch filter → clarification"
