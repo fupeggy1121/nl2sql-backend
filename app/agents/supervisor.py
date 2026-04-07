@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from typing import Dict, Any, List, Literal
 
 # ── 分析意图转原始数据查询 ──
@@ -330,8 +331,11 @@ def _merge_multi_skill_results(
     answer: 拼接每个 skill 的答复，中间用策划线分隔
     charts: 合并删除重复（按 title 去重）
     analysis: 将各 skill 的 analysis 字段展开至以 skill_name 为键的字典中
-    pipeline_trace: 各 skill trace 合并在一起
+    pipeline_trace: 各 skill trace 合并在一起，末尾追加 multi_skill_merge step
     """
+    from app.agent.trace import trace_step
+
+    _t0 = time.perf_counter()
     answers: List[str] = []
     all_charts: List[Dict] = []
     seen_chart_titles: set = set()
@@ -362,6 +366,18 @@ def _merge_multi_skill_results(
         merged_trace.extend(r.get("pipeline_trace") or [])
 
     combined_answer = "\n\n---\n\n".join(answers)
+
+    # 写入 multi_skill_merge trace step（供测试脚本检测路由类型）
+    trace_step(
+        merged_trace, "multi_skill_merge", _t0,
+        summary=f"合并 {len(skill_names)} 个 skill 结果：{skill_names}",
+        detail={
+            "skill_names": skill_names,
+            "skills_success": len(results),
+            "total_charts": len(all_charts),
+            "answer_len": len(combined_answer),
+        },
+    )
 
     response: Dict[str, Any] = {
         "success": True,
