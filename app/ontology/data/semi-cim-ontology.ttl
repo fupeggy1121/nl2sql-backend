@@ -1463,8 +1463,8 @@ semi:reworkedAs a owl:ObjectProperty ;
     rdfs:range semi:ProductionLot .
 
 semi:reworkSnapshotOfSublot a owl:ObjectProperty ;
-    rdfs:label "返工/取消返工快照对应子批次实体" ;
-    rdfs:comment "返工/取消返工事件的 WaferTransitionSnapshot 快照行所对应的子批次实体（Sublot）。【返工/取消返工事件专用，仅 op=12/13 有效】物理路径：_wafer_detail_log.sub_lot_code = matrix_routerx_operation_lot.current_lot_code（WHERE parent_id != 0 即子批次）。sub_lot_code 记录操作时刻 wafer 所属子批次编码，通过编码匹配定位子批次实体。每片 wafer 写一行快照，无 isSource 侧别区分（子批次导航不依赖 isSource）。与 openLotSnapshotOfSublot/holdSnapshotOfSublot 同构，区别在于适用事件类型为 ReworkEventRecord/CancelReworkEventRecord。" ;
+    rdfs:label "返工/取消返工快照对应目标子批次" ;
+    rdfs:comment "返工/取消返工事件的 WaferTransitionSnapshot 快照行所对应的子批次实体（Sublot）。【返工/取消返工事件专用，仅 op=12/13 有效】⚠ 指向目标侧新返工子批次（非源侧原子批次）：实测数据确认 _wafer_detail_log.sub_lot_code 前缀与 _log_detail.extra.targetLotCode 一致，而非 sourceLotCode。源侧原始子批次编码未写入任何列，通过 op=12/13 数据无法直接导航至源子批次。物理路径：_wafer_detail_log.sub_lot_code = matrix_routerx_operation_lot.current_lot_code（WHERE parent_id != 0 即子批次）。与 openLotSnapshotOfSublot/holdSnapshotOfSublot 同构，区别在于适用事件类型为 ReworkEventRecord/CancelReworkEventRecord。" ;
     rdfs:domain semi:WaferTransitionSnapshot ;
     rdfs:range semi:Sublot .
 

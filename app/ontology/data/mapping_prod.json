@@ -3638,7 +3638,7 @@
     },
     {
       "logic_relation": "semi:reworkSnapshotOfSublot",
-      "description": "返工/取消返工事件快照对应子批次实体（返工操作专用，仅 op=12/13）",
+      "description": "返工/取消返工事件快照对应目标子批次实体（op=12 新创建的返工子批次，仅 op=12/13）",
       "strategy": "ForeignKey",
       "applicable_record_types": [
         "semi:ReworkEventRecord",
@@ -3650,7 +3650,7 @@
         "target_table": "matrix_routerx_operation_lot",
         "target_key": "current_lot_code",
         "filter_condition": "parent_id != 0",
-        "note": "路径：_wafer_detail_log.sub_lot_code = matrix_routerx_operation_lot.current_lot_code（WHERE parent_id != 0 即子批次）。无 isSource 侧别区分（子批次导航不依赖 isSource）。与 openLotSnapshotOfSublot/holdSnapshotOfSublot 同构。"
+        "note": "路径：_wafer_detail_log.sub_lot_code = matrix_routerx_operation_lot.current_lot_code（WHERE parent_id != 0 即子批次）。⚠ 实测确认 sub_lot_code 前缀与 _log_detail.extra.targetLotCode 一致（即目标侧新返工子批次），而非 sourceLotCode 对应的源子批次。源侧原始子批次编码未写入任何列，无法通过本关系导航至源子批次。与 openLotSnapshotOfSublot/holdSnapshotOfSublot 同构。"
       },
       "domain_class": "semi:WaferTransitionSnapshot",
       "range_class": "semi:Sublot"
