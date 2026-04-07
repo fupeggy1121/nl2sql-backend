@@ -259,16 +259,16 @@ async def switch_mode(body: SwitchModeIn):
     """同时切换映射模式和查询数据库目标。
 
     mode:
-      - "test" | "dev"    → 仅切换 MySQL 源，不改变映射文件
-      - "prod" | "demo"   → 切换映射文件 + 数据库目标
-      - "auto"            → 清除 override，回归 env/auto-detect
-      - "mysql"           → 等同 "test"（向后兼容）
+      - "test" | "dev" | "epi" → 仅切换 MySQL 源，不改变映射文件
+      - "prod" | "demo"        → 切换映射文件 + 数据库目标
+      - "auto"                 → 清除 override，回归 env/auto-detect
+      - "mysql"                → 等同 "test"（向后兼容）
     """
     from app.ontology.mapping import set_mapping_mode, get_current_mode
     from app.services.db_mode import set_db_mode, get_current_db_mode
     try:
-        # "test"/"dev"/"mysql" 只切换数据库，不切换映射文件
-        if body.mode in ("test", "dev", "mysql"):
+        # "test"/"dev"/"epi"/"mysql" 只切换数据库，不切换映射文件
+        if body.mode in ("test", "dev", "epi", "mysql"):
             db_info = set_db_mode(body.mode)
         else:
             set_mapping_mode(body.mode)
