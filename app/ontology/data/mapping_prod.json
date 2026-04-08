@@ -4195,70 +4195,87 @@
       }
     },
     "semi:WaferLevel": {
-      "OK": {
-        "description": "晶圆合格（正常品）",
+      "_comment": "semi:Wafer.level 字段整数枚举（matrix_routerx_operation_lot_wafer.level），与 semi:WaferType 语义类别完全对齐",
+      "Good": {
+        "description": "良品（正常片）",
         "physical_condition": "matrix_routerx_operation_lot_wafer.level = 1",
         "applies_to_table": "matrix_routerx_operation_lot_wafer",
         "applies_to_column": "level",
-        "is_terminal": false,
+        "sql_filter": "level = 1",
         "nl_triggers": [
-          "OK片",
-          "合格片",
           "良品",
+          "合格片",
           "正常片",
+          "OK片",
+          "good片",
           "OK晶圆",
           "合格晶圆"
         ],
-        "note": "level=1 OK 良品"
+        "note": "level=1 良品"
       },
-      "NG": {
-        "description": "晶圆不合格（不良品）",
+      "Reject": {
+        "description": "不良品（NG片）",
         "physical_condition": "matrix_routerx_operation_lot_wafer.level = 2",
         "applies_to_table": "matrix_routerx_operation_lot_wafer",
         "applies_to_column": "level",
-        "is_terminal": false,
+        "sql_filter": "level = 2",
         "nl_triggers": [
-          "NG片",
           "不良片",
-          "不合格片",
-          "NG晶圆",
+          "NG片",
+          "reject片",
           "不良晶圆",
-          "报废片"
+          "NG晶圆",
+          "不合格片"
         ],
-        "note": "level=2 NG 不良品"
+        "note": "level=2 不良品"
       },
-      "GOODSAMPLE": {
-        "description": "晶圆良品抽检样本",
+      "LabSample": {
+        "description": "实验室送样（良品抽检样）",
         "physical_condition": "matrix_routerx_operation_lot_wafer.level = 3",
         "applies_to_table": "matrix_routerx_operation_lot_wafer",
         "applies_to_column": "level",
-        "is_terminal": false,
+        "sql_filter": "level = 3",
         "nl_triggers": [
+          "实验室样品",
+          "送样片",
+          "lab样",
+          "实验室送样",
           "抽检片",
-          "样品片",
-          "良品样本",
-          "goodsample",
-          "抽检晶圆",
-          "样本晶圆"
+          "良品样本"
         ],
-        "note": "level=3 GOODSAMPLE"
+        "note": "level=3 实验室送样，良品抽检样，不计入NG"
       },
-      "LOSS": {
-        "description": "晶圆损耗/报废",
+      "Loss": {
+        "description": "损耗/碎片/报销",
         "physical_condition": "matrix_routerx_operation_lot_wafer.level = 9",
         "applies_to_table": "matrix_routerx_operation_lot_wafer",
         "applies_to_column": "level",
-        "is_terminal": true,
+        "sql_filter": "level = 9",
         "nl_triggers": [
-          "损耗片",
-          "报废片",
-          "loss片",
-          "损耗晶圆",
-          "报废晶圆",
           "碎片",
-          "虚耗"
+          "损耗片",
+          "报销片",
+          "loss片",
+          "虚耗",
+          "损耗晶圆"
         ],
-        "note": "level=9 LOSS"
+        "note": "level=9 损耗/碎片/报销"
+      },
+      "NG_all": {
+        "description": "所有不良品（不良+碎片/损耗，统称NG）",
+        "physical_condition": "matrix_routerx_operation_lot_wafer.level IN (2, 9)",
+        "applies_to_table": "matrix_routerx_operation_lot_wafer",
+        "applies_to_column": "level",
+        "sql_filter": "level IN (2, 9)",
+        "nl_triggers": [
+          "非良品",
+          "所有NG",
+          "不合格晶圆",
+          "所有不良",
+          "不良晶圆",
+          "NG片数"
+        ],
+        "note": "仅含 level=2（不良）和 level=9（碎片/损耗）。level=3（实验室送样）是良品抽检样不计入NG。"
       }
     },
     "semi:LotOperationType": {

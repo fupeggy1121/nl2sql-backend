@@ -1637,7 +1637,7 @@ semi:usesUnloadCarrierGroup a owl:ObjectProperty ;
 
 semi:waferLevel a owl:DatatypeProperty ;
     rdfs:label "晶圆质量等级" ;
-    rdfs:comment "晶圆质量状态等级，对应 matrix_routerx_operation_lot_wafer.level 字段。枚举值见 semi:WaferLevel：1=OK、2=NG、3=GOODSAMPLE、9=LOSS。" ;
+    rdfs:comment "晶圆当前质量状态等级，整数枚举列（物理列 matrix_routerx_operation_lot_wafer.level）。语义类别与 semi:hasWaferType 完全对齐：1=Good/良品；2=Reject/不良；3=LabSample/实验室送样；9=Loss/碎片/损耗。枚举映射及SQL规则见 mapping_prod.json value_mappings.semi:WaferLevel。" ;
     rdfs:domain semi:Wafer ;
     rdfs:range xsd:integer .
 
