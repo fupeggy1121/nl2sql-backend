@@ -12,16 +12,6 @@ from app.services.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
-# 延迟初始化
-_executor = None
-
-
-def _get_executor() -> QueryExecutor:
-    global _executor
-    if _executor is None:
-        _executor = QueryExecutor(supabase_client=get_supabase_client())
-    return _executor
-
 
 def _make_json_safe(value: Any) -> Any:
     """将 MySQL 返回的非 JSON 原生类型转换为可序列化类型。"""
@@ -54,8 +44,8 @@ def _sanitize_rows(rows: list) -> list:
 def execute_query(sql: str) -> dict:
     """Execute a SQL query against the database.
     Returns dict with keys: success, data, rows_count, error."""
+    executor = QueryExecutor(supabase_client=get_supabase_client())
     try:
-        executor = _get_executor()
         result = executor.execute_query(sql)
 
         if result and result.get("success"):
@@ -83,3 +73,6 @@ def execute_query(sql: str) -> dict:
             "rows_count": 0,
             "error": str(e),
         }
+    finally:
+        if executor.pg_executor:
+            executor.pg_executor.close()
