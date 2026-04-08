@@ -411,7 +411,7 @@ async def _run_query_agent(
         "sql_retry_count": 0,
         **kwargs,
     }
-    return await agent.ainvoke(initial_state)
+    return await asyncio.to_thread(agent.invoke, initial_state)
 
 
 async def _run_analysis_with_data_pipeline(
@@ -456,7 +456,7 @@ async def _run_analysis_with_data_pipeline(
     final_state: Dict[str, Any] = {}
     try:
         agent = get_analysis_agent_app()
-        final_state = await agent.ainvoke(initial_state)
+        final_state = await asyncio.to_thread(agent.invoke, initial_state)
         response = final_state.get("response") or {
             "success": False,
             "answer": "分析 Agent 未返回结果",
@@ -507,7 +507,7 @@ async def _run_analysis_agent(
 
     try:
         agent = get_analysis_agent_app()
-        final_state = await agent.ainvoke(initial_state)
+        final_state = await asyncio.to_thread(agent.invoke, initial_state)
         response = final_state.get("response") or {
             "success": False,
             "answer": "分析 Agent 未返回结果",
