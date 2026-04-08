@@ -172,13 +172,31 @@ class FinalYieldComputer(MetricComputer):
 
         detail_rows.sort(key=lambda r: r["final_yield"], reverse=True)
 
-        # 全流程串联良率：当分组含 process_code 且该站点有多个不同值时
-        # = 各站点良率的乘积（工序串联良率）
-        # 若只有单个站点（按日期趋势），不做乘积，用全量 good/total 计算汇总
-        if "process_code" in group_by and df["process_code"].nunique() > 1:
+        multi_station = "process_code" in group_by and df["process_code"].nunique() > 1
+        has_date_dim  = "report_date" in group_by
+
+        if multi_station and has_date_dim:
+            # 多站点 + 日期趋势：对每个日期内的多个站点做乘积，得到"该日合并良率"
+            # 不跨日期做乘积，只在同一日期内乘
+            date_combined: Dict[Any, float] = {}
+            for row in detail_rows:
+                d = row.get("report_date")
+                if row["total_wafers"] > 0:
+                    date_combined[d] = date_combined.get(d, 1.0) * (row["final_yield"] / 100.0)
+            combined_rows = [
+                {"report_date": str(d), "final_yield": round(v * 100, 2)}
+                for d, v in sorted(date_combined.items(), key=lambda x: str(x[0]))
+            ]
+            overall_yield = (
+                round(sum(r["final_yield"] for r in combined_rows) / len(combined_rows), 2)
+                if combined_rows else 0.0
+            )
+            return combined_rows, overall_yield
+
+        elif multi_station:
+            # 多站点无日期维度：各站点良率乘积（全流程串联良率）
             product = 1.0
-            # 按站点聚合后再乘积，避免把日期维度也参与乘积
-            process_yields = {}
+            process_yields: Dict[Any, Dict[str, int]] = {}
             for row in detail_rows:
                 pc = row.get("process_code")
                 if pc not in process_yields:
@@ -189,7 +207,9 @@ class FinalYieldComputer(MetricComputer):
                 if pc_stat["total"] > 0:
                     product *= pc_stat["good"] / pc_stat["total"]
             overall_yield = round(product * 100, 2)
+
         else:
+            # 单站点（按日期/产品趋势）：直接用全量 good/total
             total = df["wafer_id"].nunique()
             good = df[df["is_good"]]["wafer_id"].nunique()
             overall_yield = (good / total * 100) if total > 0 else 0.0
