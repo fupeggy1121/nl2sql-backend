@@ -170,12 +170,21 @@ class FirstPassYieldComputer(MetricComputer):
         # 按良率排序
         detail_rows.sort(key=lambda r: r["first_pass_yield"], reverse=True)
 
-        # 全流程串联良率：当分组含 process_code 时 = 各站点良率的乘积
-        # 当不含 process_code 时（仅按日期/产品分组）= 全量 good/total
-        if "process_code" in group_by:
+        # 全流程串联良率：当分组含 process_code 且有多个不同站点时 = 各站点良率的乘积
+        # 若只有单个站点（按日期趋势），不做乘积，用全量 good/total 计算汇总
+        if "process_code" in group_by and df["process_code"].nunique() > 1:
             product = 1.0
+            # 按站点聚合后再乘积，避免把日期维度也参与乘积
+            process_yields = {}
             for row in detail_rows:
-                product *= row["first_pass_yield"] / 100.0
+                pc = row.get("process_code")
+                if pc not in process_yields:
+                    process_yields[pc] = {"good": 0, "total": 0}
+                process_yields[pc]["good"] += row["good_wafers"]
+                process_yields[pc]["total"] += row["total_wafers"]
+            for pc_stat in process_yields.values():
+                if pc_stat["total"] > 0:
+                    product *= pc_stat["good"] / pc_stat["total"]
             overall_yield = round(product * 100, 2)
         else:
             total = df["wafer_id"].nunique()
