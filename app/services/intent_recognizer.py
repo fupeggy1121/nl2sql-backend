@@ -517,13 +517,26 @@ A: intent=need_clarification, query_type=AGGREGATE, target_class_hints=[], seman
 
 Q: "不良原因统计"
 A: intent=query_quality, query_type=AGGREGATE, target_class_hints=["semi:WaferTransitionSnapshot"],
-   semantic_filters=[{{"attribute":"wafer_type","semantic_value":"reject"}}],
-   intent_slots={{"subject":"不良原因","action":"统计聚合","dimension_by":"不良原因","metric":"不良数量","sort_order":"DESC","limit_n":null,"filter_hints":["wafer_type=reject"],"reasoning":"ng_reason/ng_code在WaferTransitionSnapshot快照表中，按ng_reason分组计数，filter_by wafer_type=reject"}}
+   semantic_filters=[{{"attribute":"wafer_type","semantic_value":"NG_all"}}],
+   intent_slots={{"subject":"不良原因","action":"统计聚合","dimension_by":"不良原因","metric":"不良数量","sort_order":"DESC","limit_n":null,"filter_hints":["wafer_type=NG_all"],"reasoning":"ng_reason/ng_code在WaferTransitionSnapshot快照表中，按ng_reason分组计数，filter_by wafer_type IN (2,9)——包含普通NG片(2)和碎片/损耗(9)，两者均有ng_reason编码"}}
 
 Q: "各不良类型统计"
 A: intent=query_quality, query_type=AGGREGATE, target_class_hints=["semi:WaferTransitionSnapshot"],
-   semantic_filters=[{{"attribute":"wafer_type","semantic_value":"reject"}}],
-   intent_slots={{"subject":"不良类型","action":"统计聚合","dimension_by":"不良类型/ng_code","metric":"不良数量","sort_order":"DESC","limit_n":null,"filter_hints":["wafer_type=reject"],"reasoning":"不良类型分布统计，group by ng_code/ng_reason"}}
+   semantic_filters=[{{"attribute":"wafer_type","semantic_value":"NG_all"}}],
+   intent_slots={{"subject":"不良类型","action":"统计聚合","dimension_by":"不良类型/ng_code","metric":"不良数量","sort_order":"DESC","limit_n":null,"filter_hints":["wafer_type=NG_all"],"reasoning":"不良类型分布统计，group by ng_code/ng_reason，wafer_type IN (2,9)含碎片"}}
+
+Q: "查询所有原料入库明细"
+A: intent=direct_query, query_type=LIST, target_class_hints=["semi:MaterialInboundSnapshot","semi:RawMaterial"],
+   semantic_filters=[],
+   intent_slots={{"subject":"原料入库明细","action":"查询列表","dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"'原料'对应 semi:RawMaterial 类（filter_condition已有 type='material'，无需额外 semantic_filter），'入库明细'对应 semi:MaterialInboundSnapshot，两者直接关联"}}
+
+Q: "查询辅料入库记录"
+A: intent=direct_query, query_type=LIST, target_class_hints=["semi:MaterialInboundSnapshot","semi:Auxiliary"],
+   semantic_filters=[],
+   intent_slots={{"subject":"辅料入库记录","action":"查询列表","dimension_by":null,"metric":null,"sort_order":null,"limit_n":null,"filter_hints":[],"reasoning":"'辅料'对应 semi:Auxiliary 类（filter_condition已有 type='auxiliary'），直接通过类定义过滤，不需要 semantic_filter"}}
+
+⚠ 规则：当用户指定物料子类（原料/辅料/备件/产品）时，必须将对应的语义类（semi:RawMaterial/semi:Auxiliary/semi:SparePart/semi:Product）放入 target_class_hints，semantic_filters 中不要添加 material_type 过滤条件——类定义已通过 filter_condition 自动处理该过滤。
+⚠ 规则：material_type 列表示物料大类内的具体小类型（如"GaAs衬底"/"GaN衬底"/"切割片"等具体值），区别于 type 列（大类区分器）。使用时：① 用户说"原料/辅料/备件/产品"→ 不加 material_type 过滤，改用对应语义类的 filter_condition；② 用户指定具体小类值（如"查GaAs衬底的入库"）→ 应在 semantic_filters 中加 {{"attribute":"material_type","semantic_value":"GaAs衬底"}}。
 
 ## 何时使用 need_clarification
 以下任一情况使用：

@@ -10,6 +10,7 @@ from app.analytics.metrics.first_pass_yield import FirstPassYieldComputer
 from app.analytics.metrics.final_yield import FinalYieldComputer
 from app.analytics.metrics.rework_rate import ReworkRateComputer
 from app.analytics.metrics.wafer_wip import WaferWipComputer
+from app.analytics.metrics.oee import OEEComputer
 
 __all__ = [
     "MetricComputer",
@@ -18,4 +19,5 @@ __all__ = [
     "FinalYieldComputer",
     "ReworkRateComputer",
     "WaferWipComputer",
+    "OEEComputer",
 ]

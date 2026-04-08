@@ -12,10 +12,15 @@ body {
 }
 
 /* Session sidebar hover: show delete button on hover */
-.session-item:hover .session-delete-btn {
+.session-item:hover .session-delete-btn,
+.session-item:hover .session-rename-btn {
   opacity: 1 !important;
 }
 .session-delete-btn:hover {
   background: #fee2e2 !important;
   color: #dc2626 !important;
+}
+.session-rename-btn:hover {
+  background: rgba(99,102,241,0.2) !important;
+  color: #a5b4fc !important;
 }

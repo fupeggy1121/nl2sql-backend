@@ -114,7 +114,7 @@ def semantic_resolver_node(state: AgentState) -> Dict[str, Any]:
 
     # ── B2: 语义缓存查找（追问不使用缓存，避免上下文依赖）──
     # v4: 本体类版本前缀——当规则/模板发生重大变更时更新版本号可立即淘汰旧缓存
-    _SEMANTIC_CACHE_VERSION = "v25"  # v25: WaferTransitionSnapshot P2 hint + 不良原因 synonym fix
+    _SEMANTIC_CACHE_VERSION = "v30"  # v30: 不良原因统计默认改用NG_all(IN 2,9)，碎片也有ng_reason
     _cache_key = f"{_SEMANTIC_CACHE_VERSION}:{effective_input}"
     _cache_hit = False
     if not is_followup:

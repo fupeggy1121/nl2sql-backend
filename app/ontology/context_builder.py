@@ -1388,6 +1388,8 @@ class SemanticContextBuilder:
 
                     if jg_edges is not None:
                         for edge in jg_edges:
+                            if edge.identity:
+                                continue  # 子类继承穿越边，无实际 SQL JOIN
                             actual_rel = edge.logic_relation.lstrip("^")
                             if actual_rel in seen_relations:
                                 continue

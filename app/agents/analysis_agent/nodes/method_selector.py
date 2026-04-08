@@ -118,9 +118,10 @@ def _llm_route(user_input: str) -> Dict[str, Any]:
 
 判断规则：
 1. 如果问题明确提到 skill 列表中的指标名称或同义词 → skill
-2. 如果问题是查询统计分析（SPC/相关性/回归等）→ analysis
-3. 如果问题涉及 MES 业务数据查询但没有预定义 skill → adhoc
-4. 如果完全与 MES 无关 → out_of_scope
+2. 如果问题提到"设备"或"机台"，并伴随以下任一模糊运行状态词：跑得怎么样/稼动率/利用率/运行效率/设备效率/运行状态/产能利用 → skill, skill_name=oee，时间范围默认取近7天
+3. 如果问题是查询统计分析（SPC/相关性/回归等）→ analysis
+4. 如果问题涉及 MES 业务数据查询但没有预定义 skill → adhoc
+5. 如果完全与 MES 无关 → out_of_scope
 
 只返回 JSON，不要其他内容。"""
 

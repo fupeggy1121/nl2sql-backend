@@ -34,6 +34,27 @@ class JoinEdge:
     to_class: str                # e.g. "semi:ProductionLot"
     reversed: bool               # True = 沿反向边走（range→domain）
     relation_mapping: "RelationMapping"  # 携带完整物理 join 信息
+    identity: bool = False       # True = 子类继承穿越边，无实际 SQL JOIN
+
+
+@dataclass
+class _IdentityRelationMapping:
+    """子类继承边的哑元 RelationMapping，不产生任何 SQL JOIN 条件。"""
+    logic_relation: str
+    domain_class: str
+    range_class: str
+    domain_table: str
+    range_table: str
+    description: str = ""
+    strategy: str = "Identity"
+    join_conditions: list = None  # type: ignore[assignment]
+    bridge_table: None = None
+    order_by: None = None
+    note: str = ""
+
+    def __post_init__(self) -> None:
+        if self.join_conditions is None:
+            self.join_conditions = []
 
 
 class JoinGraph:
@@ -99,11 +120,52 @@ class JoinGraph:
 
         self._g = g
         self._built = True
+
+        # ----------------------------------------------------------------- #
+        # 子类继承边：若 ClassA subclass_of ClassB 且共享同一物理表，
+        # 则自动添加 A↔B 的双向零跳边，使所有定义在 B 上的关系
+        # 对 A 同样可路径化（如 semi:Material 的关系自动覆盖
+        # semi:RawMaterial / semi:Auxiliary / semi:SparePart / semi:Product）
+        # ----------------------------------------------------------------- #
+        subclass_edge_count = 0
+        for cls_uri, pt in mapping._table_by_class.items():
+            parent = getattr(pt, "subclass_of", None)
+            if not parent:
+                continue
+            parent_pt = mapping.get_physical_table(parent)
+            if not parent_pt or parent_pt.table_name != pt.table_name:
+                continue  # 仅对共享同一物理表的父子类添加继承边
+            _identity_rm = _IdentityRelationMapping(
+                logic_relation=f"subClassOf:{cls_uri}",
+                domain_class=cls_uri,
+                range_class=parent,
+                domain_table=pt.table_name,
+                range_table=parent_pt.table_name,
+            )
+            g.add_edge(
+                cls_uri, parent,
+                logic_relation=f"subClassOf:{cls_uri}",
+                reversed=False,
+                rm=_identity_rm,
+                identity=True,
+            )
+            g.add_edge(
+                parent, cls_uri,
+                logic_relation=f"^subClassOf:{cls_uri}",
+                reversed=True,
+                rm=_identity_rm,
+                identity=True,
+            )
+            subclass_edge_count += 1
+            logger.debug("JoinGraph 继承边: %s ↔ %s（表 %s）", cls_uri, parent, pt.table_name)
+
+        self._built = True
         logger.info(
-            "JoinGraph built: %d nodes, %d logical edges (%d directed)",
+            "JoinGraph built: %d nodes, %d logical edges (%d directed, %d subclass inheritance)",
             g.number_of_nodes(),
             edge_count,
             g.number_of_edges(),
+            subclass_edge_count,
         )
         return self
 
@@ -156,6 +218,7 @@ class JoinGraph:
                 to_class=v,
                 reversed=edge_data["reversed"],
                 relation_mapping=edge_data["rm"],
+                identity=edge_data.get("identity", False),
             ))
         return edges
 
@@ -190,6 +253,7 @@ class JoinGraph:
                     to_class=v,
                     reversed=edge_data["reversed"],
                     relation_mapping=edge_data["rm"],
+                    identity=edge_data.get("identity", False),
                 ))
             result.append(edges)
         return result
@@ -237,6 +301,7 @@ class JoinGraph:
                 to_class=v,
                 reversed=edge_data["reversed"],
                 relation_mapping=edge_data["rm"],
+                identity=edge_data.get("identity", False),
             ))
         return edges
 

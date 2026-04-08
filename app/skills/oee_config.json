@@ -1,0 +1,69 @@
+{
+  "_description": "OEE 计算固定参数配置文件。计划停机和理论节拍时间当前手动维护，待接入 PM 保养计划系统和积累足够历史数据后逐步替换为动态获取。",
+  "_last_updated": "2026-04-08",
+  "_note": "设备 ID/编码、recipe 编码、状态值请根据实际 MES 数据调整。",
+
+  "planned_downtime": {
+    "_unit": "hours_per_month",
+    "_source": "手动维护固定值，待接入 PM 保养计划系统后改为动态获取（查询 maintenance_plan 表）",
+    "default": 24,
+    "by_equipment": {
+      "MOCVD-01": 36,
+      "MOCVD-02": 36,
+      "MBE-01": 24,
+      "XRD-01": 12,
+      "SPC-INLINE-01": 8
+    }
+  },
+
+  "theoretical_cycle_time": {
+    "_unit": "minutes_per_wafer",
+    "_source": "手动维护固定值，待积累足够历史数据后改为动态计算（取历史最优节拍 P10 分位）",
+    "_note": "key 为 equipment_code（equipment.code 字段），recipe_code 从出站记录 extra 字段或工艺配置获取",
+    "by_equipment_recipe": {
+      "MOCVD-01": {
+        "GaN_HEMT_std": 120,
+        "GaN_LED_std": 90,
+        "AlGaN_barrier": 150
+      },
+      "MOCVD-02": {
+        "GaN_HEMT_std": 120,
+        "GaN_LED_std": 90
+      },
+      "MBE-01": {
+        "InP_base": 180,
+        "GaAs_std": 95
+      }
+    },
+    "default": 120
+  },
+
+  "unplanned_downtime_states": {
+    "_note": "与 equipment_oee_status.status_code 字段对齐，对应 SEMI E10 非计划停机类别",
+    "values": [
+      "breakdown",
+      "waiting_material",
+      "waiting_instruction",
+      "setup_changeover",
+      "unscheduled_maintenance"
+    ]
+  },
+
+  "excluded_states": {
+    "_note": "以下状态不计入非计划停机（对齐 SEMI E10）",
+    "values": [
+      "engineering",
+      "scheduled_maintenance",
+      "standby_no_product",
+      "facility_related"
+    ]
+  },
+
+  "output_data_source": {
+    "_note": "实际产出数量数据源配置",
+    "table": "matrix_routerx_operation_lot_batch_resume_log",
+    "operation_type_checkout": 9,
+    "wafer_detail_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
+    "equipment_join": "通过 process_code 关联 matrix_routerx_config_process，再通过 equipment_group_list JSON 关联 equipment.code"
+  }
+}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   BotMessageSquare, Book, Tag, Network, Sparkles, BarChart,
-  Plus, MessageSquare, FlaskConical, LayoutDashboard, Trash2, Pencil, GitBranch, TrendingUp
+  Plus, MessageSquare, FlaskConical, LayoutDashboard, Trash2, Pencil, GitBranch, TrendingUp, AlertCircle
 } from 'lucide-react'
 import { DbModeBadge } from './components/DbModeBadge'
 import MappingManager from './components/MappingManager'
@@ -10,6 +10,7 @@ import SynonymManager from './components/SynonymManager'
 import { MESPage } from './modules/mes'
 import { ReportsModule } from './components/Reports/ReportsModule'
 import NLTestManager from './components/NLTestManager'
+import BaselinesManager from './components/BaselinesManager'
 import { DashboardModule } from './components/Dashboard/DashboardModule'
 import { DashboardEditor } from './components/Dashboard/DashboardEditor'
 import { TraceabilityView } from './components/Traceability/TraceabilityView'
@@ -31,6 +32,7 @@ const ontologySubItems = [
   { id: 'ontology-viewer',             label: '本体可视化',   icon: Network },
   { id: 'synonym-management',          label: '同义词管理',   icon: Tag },
   { id: 'nl-testing',                  label: '语义测试',     icon: FlaskConical },
+  { id: 'data-source-management',       label: '数据源管理',   icon: AlertCircle },
 ]
 
 // ── Main App ──────────────────────────────────────────────────────
@@ -308,6 +310,7 @@ export default function App() {
         case 'ontology-viewer':             return <OntologyViewer />
         case 'synonym-management':          return <SynonymManager />
         case 'nl-testing':                  return <NLTestManager />
+        case 'data-source-management':       return <BaselinesManager />
         default:                            return <MappingManager />
       }
     }

@@ -372,27 +372,25 @@ def run_l3() -> None:
     print("\n  [L3-A] first_pass_yield_computer — numeric correctness")
     N, GOOD = 20, 16
     df = make_fpy_df(n_wafers=N, n_good=GOOD)
-    expected_overall = round(GOOD / N * 100, 2)
+    # make_fpy_df creates 2 stations (POL/CMP), 10 wafers each, 8 good each → 80% per station.
+    # With group_by=None, _detect_group_by sees 2 process_codes → multi-station serial-product logic:
+    # overall = 80% × 80% = 64.0%  (correct full-flow yield, not naive good/total=80%)
+    expected_pol_yield = round(8 / 10 * 100, 2)   # 80.0
+    expected_cmp_yield = round(8 / 10 * 100, 2)   # 80.0
+    expected_overall   = round(expected_pol_yield * expected_cmp_yield / 100, 2)  # 64.0
 
     spec = get_compute_tool("first_pass_yield_computer")
     result = spec.call(df, group_by=None)
 
     if result.success and abs((result.value or 0) - expected_overall) < 0.01:
-        ok(f"FPY overall = {result.value}  (expected {expected_overall})")
+        ok(f"FPY overall (multi-station product) = {result.value}  (expected {expected_overall})")
     else:
-        fail(f"FPY overall = {expected_overall}",
+        fail(f"FPY overall (multi-station product) = {expected_overall}",
              f"got {result.value}")
 
-    # per-group: 10 wafers per process_code, 8 good for POL (indices 0,2,4..16 → 0,2,4,6,8,10,12,14 odd→ng)
-    # POL: wafers 0,2,4,6,8,10,12,14,16,18 → good = 0,2,4,6,8,10,12,14 = 8 good / 10 total
-    # CMP: wafers 1,3,5,7,9,11,13,15,17,19 → good = 1,3,5,7,9,11,13,15 = 8 good / 10 total
-    # Actually: n_good=16 means indices 0..15 are good regardless of pc
-    # POL gets indices 0,2,4,6,8,10,12,14,16,18 → indices < 16 means 0..14 = 8 good (0,2,4,6,8,10,12,14)
-    # wait: process_codes[i % 2]: i=0→POL,1→CMP,2→POL,...
-    # POL indices: 0,2,4,6,8,10,12,14,16,18  → good if <16: 0,2,4,6,8,10,12,14 = 8 good /10
-    # CMP indices: 1,3,5,7,9,11,13,15,17,19  → good if <16: 1,3,5,7,9,11,13,15 = 8 good /10
-    expected_pol = round(8 / 10 * 100, 2)
-    expected_cmp = round(8 / 10 * 100, 2)
+    # per-group: 10 wafers per process_code, 8 good per station → 80% each
+    expected_pol = expected_pol_yield
+    expected_cmp = expected_cmp_yield
 
     df_group = make_fpy_df(n_wafers=N, n_good=GOOD)
     r_group = spec.call(df_group, group_by=["process_code"])

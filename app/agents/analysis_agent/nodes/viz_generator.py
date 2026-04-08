@@ -102,16 +102,23 @@ def _build_pipeline_trace(state: AnalysisState) -> list:
         if method == "metric_compute":
             python_script = analysis_data.get("python_script")
 
+        _exec_error = state.get("analysis_error")
+        _exec_skipped = bool(state.get("data_load_error")) and not state.get("analysis_success") and not _exec_error
         trace.append({
             "step": "analysis_executor",
-            "status": "error" if state.get("analysis_error") else "ok",
+            "status": "skip" if _exec_skipped else ("error" if _exec_error else "ok"),
             "elapsed_ms": 0,
-            "summary": state.get("analysis_error") or f"{method} 分析完成",
+            "summary": (
+                f"已跳过（数据加载失败：{state.get('data_load_error')}）"
+                if _exec_skipped
+                else (_exec_error or f"{method} 分析完成")
+            ),
             "detail": {
                 "method": method,
                 "logic": method_desc,
                 "python_script": python_script,
-                "error": state.get("analysis_error"),
+                "error": _exec_error,
+                "skipped_reason": state.get("data_load_error") if _exec_skipped else None,
             },
         })
 
@@ -145,9 +152,32 @@ def viz_generator_node(state: AnalysisState) -> dict:
     method = state.get("suggested_method", "")
     reason = state.get("method_reason", "")
     error = state.get("analysis_error")
+    data_load_error = state.get("data_load_error")
 
     if not success:
-        answer = f"分析执行失败：{error or '未知错误'}"
+        # data_load_error 优先于 analysis_error（data 为空时 executor 被跳过，analysis_error=None）
+        effective_error = error or data_load_error or "未知错误"
+
+        # 当数据为空但已识别出 skill，在答复中带上指标名称，使响应更有意义
+        skill_ctx = state.get("skill_context") or {}
+        skill_name = skill_ctx.get("skill_name") or skill_ctx.get("standard_definition") or ""
+        if data_load_error and "为空" in data_load_error and skill_name:
+            # 例：OEE（设备综合效率）分析：查询时间段内未找到相关数据
+            metric_label = {
+                "oee": "OEE（设备综合效率/利用率）",
+                "first_pass_yield": "一次良率 (FPY)",
+                "final_yield": "综合良率",
+                "rework_rate": "返工率",
+                "wafer_wip": "在制品（WIP）",
+            }.get(skill_name, skill_name)
+            answer = (
+                f"{metric_label} 分析：{data_load_error}。\n"
+                "可能原因：① 设备编码在 MES 中与出站记录未关联（extra 字段为空）"
+                " ② 时间范围内无出站记录 ③ 数据尚未同步。"
+                "建议先检查设备编码映射或缩短/扩大查询时间范围。"
+            )
+        else:
+            answer = f"分析执行失败：{effective_error}"
         response: Dict[str, Any] = {
             "success": False,
             "answer": answer,

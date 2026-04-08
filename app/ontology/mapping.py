@@ -638,7 +638,16 @@ class MappingDictionary:
             domain_map = self._value_map.get(prefixed)
         if domain_map is None:
             return None
-        return domain_map.get(semantic_value)
+        # 精确匹配
+        vm = domain_map.get(semantic_value)
+        if vm is not None:
+            return vm
+        # 大小写不敏感 fallback（如 "reject" → "Reject"）
+        sv_lower = semantic_value.lower()
+        for key, val in domain_map.items():
+            if key.lower() == sv_lower:
+                return val
+        return None
 
     def get_wip_condition(self) -> Optional[ValueMapping]:
         """快捷方法：获取 WIP（在制品）的物理过滤条件"""
