@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   BotMessageSquare, Book, Tag, Network, Sparkles, BarChart,
-  Plus, MessageSquare, FlaskConical, LayoutDashboard, Trash2, GitBranch, TrendingUp
+  Plus, MessageSquare, FlaskConical, LayoutDashboard, Trash2, Pencil, GitBranch, TrendingUp
 } from 'lucide-react'
 import { DbModeBadge } from './components/DbModeBadge'
 import MappingManager from './components/MappingManager'
@@ -43,6 +43,8 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [showNewDashboard, setShowNewDashboard] = useState(false)
   const [traceabilityItems, setTraceabilityItems] = useState<{ id: string; label: string }[]>([])
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
 
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(new Date()), 1000)
@@ -230,13 +232,48 @@ export default function App() {
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {chatSessions.map(session => {
               const active = activeSubModule === session.id
+              const isEditing = editingSessionId === session.id
+              const confirmRename = () => {
+                const trimmed = editingName.trim()
+                if (trimmed && trimmed !== session.name) {
+                  renameChatSession(session.id, trimmed)
+                  setChatSessions(prev => prev.map(s => s.id === session.id ? { ...s, name: trimmed } : s))
+                }
+                setEditingSessionId(null)
+              }
               return (
                 <div key={session.id}
-                  onClick={() => { setActiveTopModule('ai-chat'); setActiveSubModule(session.id) }}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px 9px 14px', background: active ? 'rgba(99,102,241,0.2)' : 'transparent', color: active ? '#a5b4fc' : '#9da5b8', cursor: 'pointer', fontSize: 13, borderLeft: active ? '2px solid #6366f1' : '2px solid transparent', overflow: 'hidden', boxSizing: 'border-box' }}
+                  onClick={() => { if (!isEditing) { setActiveTopModule('ai-chat'); setActiveSubModule(session.id) } }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px 9px 14px', background: active ? 'rgba(99,102,241,0.2)' : 'transparent', color: active ? '#a5b4fc' : '#9da5b8', cursor: isEditing ? 'default' : 'pointer', fontSize: 13, borderLeft: active ? '2px solid #6366f1' : '2px solid transparent', overflow: 'hidden', boxSizing: 'border-box' }}
                   className="session-item">
                   <MessageSquare size={13} style={{ flexShrink: 0 }} />
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.name}</span>
+                  {isEditing ? (
+                    <input
+                      autoFocus
+                      value={editingName}
+                      onChange={e => setEditingName(e.target.value)}
+                      onBlur={confirmRename}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { e.preventDefault(); confirmRename() }
+                        if (e.key === 'Escape') { e.preventDefault(); setEditingSessionId(null) }
+                      }}
+                      onClick={e => e.stopPropagation()}
+                      style={{ flex: 1, background: 'rgba(255,255,255,0.08)', border: '1px solid #6366f1', borderRadius: 4, color: '#e2e8f0', fontSize: 13, padding: '1px 6px', outline: 'none', minWidth: 0 }}
+                    />
+                  ) : (
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session.name}</span>
+                  )}
+                  <button
+                    title="重命名"
+                    onClick={e => {
+                      e.stopPropagation()
+                      setEditingSessionId(session.id)
+                      setEditingName(session.name)
+                    }}
+                    style={{ flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 4, color: '#c4c9d6', display: 'flex', alignItems: 'center', opacity: 0 }}
+                    className="session-rename-btn">
+                    <Pencil size={11} />
+                  </button>
                   <button
                     title="删除对话"
                     onClick={e => {
@@ -289,7 +326,7 @@ export default function App() {
       return <TraceabilityView params={params} />
     }
     const sessionId = activeSubModule || chatSessions[0]?.id || 'default'
-    return <MESPage sessionId={sessionId} skipDataGeneration={true} onNavigateToTraceability={handleNavigateToTraceability}
+    return <MESPage key={sessionId} sessionId={sessionId} skipDataGeneration={true} onNavigateToTraceability={handleNavigateToTraceability}
       onRenameSession={(name) => {
         renameChatSession(sessionId, name)
         setChatSessions(prev => prev.map(s => s.id === sessionId ? { ...s, name } : s))
