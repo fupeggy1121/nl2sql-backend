@@ -4115,7 +4115,6 @@
       }
     },
     "semi:WaferType": {
-      "_comment": "WaferTransitionSnapshot.wafer_type 字段整数枚举（_wafer_detail_log.wafer_type），禁止字符串比较",
       "Good": {
         "description": "良品（正常片）",
         "physical_condition": "_wafer_detail_log.wafer_type IS NULL",
@@ -4195,7 +4194,6 @@
       }
     },
     "semi:WaferLevel": {
-      "_comment": "semi:Wafer.level 字段整数枚举（matrix_routerx_operation_lot_wafer.level），与 semi:WaferType 语义类别完全对齐",
       "Good": {
         "description": "良品（正常片）",
         "physical_condition": "matrix_routerx_operation_lot_wafer.level = 1",
