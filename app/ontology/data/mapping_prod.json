@@ -4178,18 +4178,20 @@
         "note": "wafer_type = 3（整数）"
       },
       "NG_all": {
-        "description": "所有非良品（不良+碎片，统称NG）",
-        "physical_condition": "_wafer_detail_log.wafer_type IS NOT NULL",
+        "description": "所有不良品（不良+碎片/损耗，统称NG）",
+        "physical_condition": "_wafer_detail_log.wafer_type IN (2, 9)",
         "applies_to_table": "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
         "applies_to_column": "wafer_type",
-        "sql_filter": "wafer_type IS NOT NULL",
+        "sql_filter": "wafer_type IN (2, 9)",
         "nl_triggers": [
           "非良品",
           "所有NG",
           "不合格晶圆",
-          "所有不良"
+          "所有不良",
+          "不良晶圆",
+          "NG片数"
         ],
-        "note": "包含所有非NULL值（2/9/3等），即 wafer_type IS NOT NULL"
+        "note": "仅含 wafer_type=2（不良）和 wafer_type=9（碎片/损耗）。wafer_type=3（实验室送样）是良品抽检样不计入NG；wafer_type IS NOT NULL 包含3，不应作为NG过滤条件。"
       }
     },
     "semi:WaferLevel": {

@@ -793,7 +793,7 @@ semi:hasNextProcessCode a owl:DatatypeProperty ;
 
 semi:hasWaferType a owl:DatatypeProperty ;
     rdfs:label "Wafer类型" ;
-    rdfs:comment "快照时刻 Wafer 的类型，对应 _wafer_detail_log.wafer_type。【整数枚举，禁止字符串比较】NULL=good/良品；2=reject/不良；9=loss/碎片/报销；3=实验室送样。枚举完整定义见 value_mappings.semi:WaferType。SQL查询NG片：wafer_type IS NOT NULL 或 wafer_type IN (2, 9)，禁止 wafer_type='reject'。SQL查询良品：wafer_type IS NULL，禁止 wafer_type='good'。禁止 COALESCE(wafer_type,'good')（整数与字符串类型不兼容）。" ;
+    rdfs:comment "快照时刻 Wafer 的质量类型，整数枚举列（物理列 _wafer_detail_log.wafer_type）。枚举语义定义见 semi:WaferQualityType；物理枚举映射及SQL生成规则见 mapping_prod.json value_mappings.semi:WaferType。" ;
     rdfs:domain semi:WaferTransitionSnapshot ;
     rdfs:range xsd:integer .
 
