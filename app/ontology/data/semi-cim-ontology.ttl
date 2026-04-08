@@ -33,7 +33,7 @@ semi:CancelLocalLotEventRecord a owl:Class ;
 semi:CancelNGEventRecord a owl:Class ;
     rdfs:label "取消不良记录" ;
     semi:tableFilter "operation_type = 7" ;
-    rdfs:comment "取消不良操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 7。【关联语义】被取消不良的批次由 lot_id/lot_code 确定；操作员对已标记为不良的晶圆执行取消操作，将其 wafer_type 由 reject 恢复为 null/good 类型，同时清除 ng_code/ng_reason 标记。不改变批次整体 status，不产出新批次（producesLot 不适用）。【三层快照路径】CancelNGEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot（Wafer粒度，_wafer_detail_log，含 sub_lot_code/carrier_code/slot_no/wafer_type/ng_code/ng_reason）→(ngSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(ngSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）。取消不良后快照中 wafer_type=null/good，ng_code/ng_reason 字段被清空。每片 wafer 写一行快照，无 isSource 侧别区分。与 NGRecordEventRecord（op=6）互为逆操作，共用 ngSnapshotOfWafer/ngSnapshotOfSublot 快照路径。" ;
+    rdfs:comment "取消不良操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 7。【关联语义】被取消不良的批次由 lot_id/lot_code 确定；操作员对已标记为不良的晶圆执行取消操作，将其 wafer_type 由 2 恢复为 NULL（整数，NULL=良品），同时清除 ng_code/ng_reason 标记。不改变批次整体 status，不产出新批次（producesLot 不适用）。【三层快照路径】CancelNGEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot（Wafer粒度，_wafer_detail_log，含 sub_lot_code/carrier_code/slot_no/wafer_type/ng_code/ng_reason）→(ngSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(ngSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）。取消不良后快照中 wafer_type=NULL，ng_code/ng_reason 字段被清空。每片 wafer 写一行快照，无 isSource 侧别区分。与 NGRecordEventRecord（op=6）互为逆操作，共用 ngSnapshotOfWafer/ngSnapshotOfSublot 快照路径。" ;
     rdfs:subClassOf [ a owl:Restriction ;
             owl:allValuesFrom semi:CancelNGEvent ;
             owl:onProperty semi:isInstanceOfEvent ],
@@ -144,7 +144,7 @@ semi:MergeLotsOp a owl:NamedIndividual ;
 semi:NGRecordEventRecord a owl:Class ;
     rdfs:label "不良录入记录" ;
     semi:tableFilter "operation_type = 6" ;
-    rdfs:comment "不良录入操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 6。【关联语义】被标记不良的批次由 lot_id/lot_code 确定；操作员对批次中的不良晶圆录入 ng_code（不良代码）及不良类型，将 wafer_type 标记为 reject。不改变批次整体 status，不产出新批次（producesLot 不适用）。【三层快照路径】NGRecordEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot（Wafer粒度，_wafer_detail_log，含 sub_lot_code/carrier_code/slot_no/wafer_type/ng_code/ng_reason）→(ngSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(ngSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）。不良录入后快照中 wafer_type=reject，ng_code/ng_reason 记录不良类型和原因。每片 wafer 写一行快照，无 isSource 侧别区分。取消不良操作对应 semi:CancelNGEventRecord（op=7），为逆操作。" ;
+    rdfs:comment "不良录入操作的具体执行记录实例。物理映射：matrix_routerx_operation_lot_batch_resume_log WHERE operation_type = 6。【关联语义】被标记不良的批次由 lot_id/lot_code 确定；操作员对批次中的不良晶圆录入 ng_code（不良代码）及不良类型，将 wafer_type 标记为 2（整数枚举：2=不良/reject）。不改变批次整体 status，不产出新批次（producesLot 不适用）。【三层快照路径】NGRecordEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot（Wafer粒度，_wafer_detail_log，含 sub_lot_code/carrier_code/slot_no/wafer_type/ng_code/ng_reason）→(ngSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(ngSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）。不良录入后快照中 wafer_type=2（整数枚举，2=不良），ng_code/ng_reason 记录不良类型和原因。每片 wafer 写一行快照，无 isSource 侧别区分。取消不良操作对应 semi:CancelNGEventRecord（op=7），为逆操作。" ;
     rdfs:subClassOf [ a owl:Restriction ;
             owl:allValuesFrom semi:NGRecordEvent ;
             owl:onProperty semi:isInstanceOfEvent ],
@@ -793,9 +793,9 @@ semi:hasNextProcessCode a owl:DatatypeProperty ;
 
 semi:hasWaferType a owl:DatatypeProperty ;
     rdfs:label "Wafer类型" ;
-    rdfs:comment "快照时刻 Wafer 的类型，对应 _wafer_detail_log.wafer_type。取值：null（等价 good，良品）/ reject（不良）/ loss（报销）。进/出站、拆批、攻批等事件快照均可携带此信息；null 表示良品， SQL 查询时需 COALESCE(wafer_type,'good') 处理。" ;
+    rdfs:comment "快照时刻 Wafer 的类型，对应 _wafer_detail_log.wafer_type。【整数枚举，禁止字符串比较】NULL=good/良品；2=reject/不良；9=loss/碎片/报销；3=实验室送样。枚举完整定义见 value_mappings.semi:WaferType。SQL查询NG片：wafer_type IS NOT NULL 或 wafer_type IN (2, 9)，禁止 wafer_type='reject'。SQL查询良品：wafer_type IS NULL，禁止 wafer_type='good'。禁止 COALESCE(wafer_type,'good')（整数与字符串类型不兼容）。" ;
     rdfs:domain semi:WaferTransitionSnapshot ;
-    rdfs:range xsd:string .
+    rdfs:range xsd:integer .
 
 semi:hasOperationType a owl:DatatypeProperty ;
     rdfs:label "操作类型" ;
@@ -1745,7 +1745,7 @@ semi:CancelNGEvent a owl:Class ;
     rdfs:label "取消不良事件类型" ;
     semi:apiBinding "MES_CORE_SERVICE.executeCancelNG" ;
     semi:inputSchema "{ lotId: string, waferList: [{waferId: string}] }" ;
-    rdfs:comment "定义 Wafer 取消不良（Cancel NG）操作的规则/类型模板。对应 operation_type=7。操作员对批次中已被标记为不良的晶圆执行取消操作，将其 wafer_type 由 reject 恢复为 null/good 类型，同时清除 ng_code/ng_reason 标记。取消不良不改变批次整体 status，仅在 wafer 维度（_wafer_detail_log）写入 wafer_type=null/good 快照行。执行记录见 semi:CancelNGEventRecord。与 NGRecordEvent（op=6）互为逆操作。" ;
+    rdfs:comment "定义 Wafer 取消不良（Cancel NG）操作的规则/类型模板。对应 operation_type=7。操作员对批次中已被标记为不良的晶圆执行取消操作，将其 wafer_type 由 2 恢复为 NULL（整数，NULL=良品），同时清除 ng_code/ng_reason 标记。取消不良不改变批次整体 status，仅在 wafer 维度（_wafer_detail_log）写入 wafer_type=NULL（整数NULL=良品）快照行。执行记录见 semi:CancelNGEventRecord。与 NGRecordEvent（op=6）互为逆操作。" ;
     rdfs:subClassOf semi:ProductionEvent .
 
 semi:OpenLotEvent a owl:Class ;
