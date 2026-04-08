@@ -139,7 +139,12 @@ class FirstPassYieldComputer(MetricComputer):
     def _detect_group_by(self, df: pd.DataFrame) -> List[str]:
         """根据 DataFrame 列自动选择分组维度"""
         candidates = ["process_code", "report_date", "product_code"]
-        return [c for c in candidates if c in df.columns and df[c].nunique() > 1]
+        result = [c for c in candidates if c in df.columns and df[c].nunique() > 1]
+        # 单站点查询（process_code 只有 1 个值）时，不自动按 report_date 分组
+        # 用户问的是"该站点X时间段的汇总良率"，不是趋势
+        if "process_code" in df.columns and df["process_code"].nunique() == 1:
+            result = [c for c in result if c != "report_date"]
+        return result
 
     def _compute_grouped(
         self, df: pd.DataFrame, group_by: List[str]

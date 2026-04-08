@@ -39,7 +39,12 @@ _TOOL_SELECTION_SYSTEM = (
     "只返回 JSON，不要解释。格式:\n"
     '{"tool": "<tool_name>", "group_by": ["col1", "col2"], "reason": "<一句话理由>"}\n'
     "group_by 应来自 DataFrame 列中有业务意义的维度列（如 process_code / report_date / product_code）。"
-    "如果不需要分组或无法确定，group_by 传 null。"
+    "如果不需要分组或无法确定，group_by 传 null。\n"
+    "【重要】report_date 加入 group_by 的判断规则：\n"
+    "  - 仅当用户明确要求趋势/按日/按月/逐日/time series/变化时才加入 report_date\n"
+    "  - 用户问'某站点最近X个月的良率'/'统计X时间段的良率'等汇总类问题，不加 report_date，"
+    "    应返回该时间段内的单一汇总值\n"
+    "  - process_code 同理：用户明确指定了单个站点（WHERE过滤），不需要再按 process_code 分组"
 )
 
 
