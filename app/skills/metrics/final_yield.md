@@ -13,6 +13,7 @@ zh_names:
   - 出站良率
   - 工序良率
   - 批次良率
+  - 成品率
 compute_mode: python_compute
 compute_tool: final_yield_computer
 standard_definition: "综合良率 = 最终检验合格晶圆数 / 最终检验总晶圆数 × 100%"
