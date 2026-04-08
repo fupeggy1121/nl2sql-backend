@@ -179,7 +179,7 @@
         "unload_carrier_group_id",
         "gmt_create"
       ],
-      "note": "【站点可用载具查询路径】统计每个站点当前可调度的空闲载具数量，正确路径：matrix_routerx_config_process.load_carrier_group_id → carrier_group_info.id → carrier_info.bind_carrier_group（过滤 carrier_info.status=可用 AND sub_status=空载）。【严禁走 lot 表路径】matrix_routerx_operation_lot.carrier_code 关联的是当前正在承载 WIP 在制品的载具（非空闲），与站点通过 process_id 关联对应的是'此批次正在此站点加工'，而非'此站点有哪些空载具可用'——两者语义完全不同，混用会导致统计错误。【版本去重规则】matrix_routerx_config_process 同一 code 会存在多条不同 version 记录（版本历史），查询'站点列表'/'最新站点'时必须只保留每个 code 的最新版本（MAX(version)），否则会出现重复站点。正确写法：WHERE (code, version) IN (SELECT code, MAX(version) FROM matrix_routerx_config_process GROUP BY code)；或使用子查询/ROW_NUMBER() OVER (PARTITION BY code ORDER BY version DESC)=1 去重。"
+      "note": "【站点可用载具查询路径】统计每个站点当前可调度的空闲载具数量，正确路径：matrix_routerx_config_process.load_carrier_group_id → carrier_group_info.id → carrier_info.bind_carrier_group（过滤 carrier_info.status=可用 AND sub_status=空载）。【严禁走 lot 表路径】matrix_routerx_operation_lot.carrier_code 关联的是当前正在承载 WIP 在制品的载具（非空闲），与站点通过 process_id 关联对应的是'此批次正在此站点加工'，而非'此站点有哪些空载具可用'——两者语义完全不同，混用会导致统计错误。【版本去重规则】matrix_routerx_config_process 同一 code 会存在多条不同 version 记录（版本历史），查询'站点列表'/'最新站点'时必须只保留每个 code 的最新版本（MAX(version)），否则会出现重复站点。正确写法：WHERE (code, version) IN (SELECT code, MAX(version) FROM matrix_routerx_config_process GROUP BY code)；或使用子查询/ROW_NUMBER() OVER (PARTITION BY code ORDER BY version DESC)=1 去重。【版本历史查询例外】若用户明确查询版本历史/版本数量（如'某站点更新了几个版本'），则不做去重，直接 COUNT(DISTINCT version) 或 SELECT * WHERE code=? ORDER BY version DESC 返回所有版本行。"
     },
     {
       "logic_class": "semi:Equipment",
