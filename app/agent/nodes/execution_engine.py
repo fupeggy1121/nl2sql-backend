@@ -32,6 +32,8 @@ class SqlStep:
     sql: str
     purpose: str
     depends_on: List[str] = field(default_factory=list)
+    table: str = ""      # 路径B decomposed 计划：子查询目标表名
+    hint: str = ""       # 路径B decomposed 计划：字段/过滤提示
 
 
 @dataclass
@@ -147,7 +149,11 @@ class ExecutionEngine:
         # 按顺序执行所有 SQL 步骤（依赖关系目前为顺序保证，无并行）
         for step in plan.sqls:
             t0 = time.time()
-            df = self._db.execute(step.sql)
+            try:
+                df = self._db.execute(step.sql)
+            except Exception as exc:
+                # 带步骤 ID 标记，便于 sql_generator retry 识别出错的子查询
+                raise RuntimeError(f"[{step.id}] {exc}") from exc
             elapsed = time.time() - t0
             results[step.id] = df
             trace.append({

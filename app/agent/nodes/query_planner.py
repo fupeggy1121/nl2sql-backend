@@ -217,9 +217,14 @@ def _detect_forced_execution_plan(user_input: str) -> "dict | None":
     LARGE_TABLE_A = "matrix_routerx_operation_lot_batch_resume_log_detail"
     LARGE_TABLE_B = "matrix_routerx_operation_lot_batch_resume_wafer_detail_log"
     if LARGE_TABLE_A.lower() in text and LARGE_TABLE_B.lower() in text:
+        matched_tables = [LARGE_TABLE_A, LARGE_TABLE_B]
+        decomposed = _decompose_query_for_multi_sql(user_input, matched_tables)
+        if decomposed:
+            return decomposed
+        # LLM 拆解失败时降级到空骨架（sql_generator 兜底）
         return {
             "mode": "multi_sql_merge",
-            "sqls": [],   # sql_generator 负责填充
+            "sqls": [],
             "merges": [],
             "postprocess": [],
             "primary_result": "m1",
@@ -256,6 +261,97 @@ def _extract_table_from_sql(sql: str) -> str:
     import re
     m = re.search(r'FROM\s+([a-zA-Z_][a-zA-Z0-9_]*)', sql, re.IGNORECASE)
     return m.group(1) if m else ""
+
+
+def _decompose_query_for_multi_sql(
+    user_input: str,
+    large_tables: "list[str]",
+) -> "dict | None":
+    """
+    额外一次轻量 LLM 调用，把涉及多张大表的查询拆解为子查询描述列表。
+    返回带 _decomposed=True 标记的骨架 ExecutionPlan（sql 字段为空，sql_generator 填充）。
+    拆解失败（LLM 错误/JSON 解析失败）时返回 None，外层降级到空骨架。
+    """
+    import re as _re
+    import json as _json
+    from app.agent.tools.schema_tools import _get_schema_metadata
+
+    # 查询两张大表的真实列名，注入 prompt 防止幻觉
+    _meta = {}
+    try:
+        _meta = _get_schema_metadata().get("tables", {})
+    except Exception:
+        pass
+
+    def _table_cols_text(table_name: str) -> str:
+        cols = [c["name"] for c in _meta.get(table_name, {}).get("columns", [])]
+        if cols:
+            return f"    真实字段: {', '.join(cols[:20])}"
+        return ""
+
+    tables_text = "\n".join(
+        f"  - {t}\n{_table_cols_text(t)}" for t in large_tables
+    )
+    prompt = f"""你是 SQL 查询拆解器。用户查询涉及以下大表，生产环境查询超时限制 30s，直接 JOIN 大表会触发全表扫描导致超时，必须拆分为独立子查询后在 Python 层合并：
+{tables_text}
+
+用户查询：{user_input}
+
+⚠️ 重要约束：hint 字段里的字段名必须来自上方"真实字段"列表，严禁使用 lot_batch_id/product_code/process_time 等虚构列名。
+将查询拆解为 2-3 个独立子查询，每个子查询只查一张大表（可关联其他小维度表）。
+返回 JSON（仅 JSON，无其他内容）：
+{{
+  "sqls": [
+    {{"id": "s1", "table": "表名", "purpose": "这步查什么", "hint": "需要哪些真实字段，过滤条件"}},
+    {{"id": "s2", "table": "表名", "purpose": "这步查什么", "hint": "需要哪些真实字段，过滤条件"}}
+  ],
+  "merges": [
+    {{"id": "m1", "left": "s1", "right": "s2", "on": ["关联键字段名（必须是真实存在的字段）"], "how": "inner"}}
+  ],
+  "primary_result": "m1"
+}}"""
+
+    try:
+        from app.agent.llm import get_llm
+        llm = get_llm()
+        resp = llm.invoke(prompt)
+        content = resp.content if hasattr(resp, "content") else str(resp)
+        m = _re.search(r"\{.*\}", content, _re.DOTALL)
+        if not m:
+            logger.warning(f"[query_planner] _decompose_query_for_multi_sql: no JSON in response: {content[:120]!r}")
+            return None
+        decomposed = _json.loads(m.group())
+        sqls = decomposed.get("sqls", [])
+        if not sqls:
+            logger.warning("[query_planner] _decompose_query_for_multi_sql: empty sqls list")
+            return None
+        plan = {
+            "mode": "multi_sql_merge",
+            "sqls": [
+                {
+                    "id": s["id"],
+                    "sql": "",          # sql_generator 填充
+                    "purpose": s.get("purpose", ""),
+                    "hint": s.get("hint", ""),
+                    "table": s.get("table", ""),
+                    "depends_on": [],
+                }
+                for s in sqls
+            ],
+            "merges": decomposed.get("merges", []),
+            "primary_result": decomposed.get("primary_result", "m1"),
+            "_forced": True,
+            "_trigger": "large_table_pair",
+            "_decomposed": True,
+        }
+        logger.info(
+            f"[query_planner] _decompose_query_for_multi_sql success: "
+            f"{len(sqls)} sub-queries, merges={len(plan['merges'])}"
+        )
+        return plan
+    except Exception as e:
+        logger.warning(f"[query_planner] _decompose_query_for_multi_sql failed: {e}")
+        return None
 
 
 def _retrieve_rag_context(user_input: str) -> str:

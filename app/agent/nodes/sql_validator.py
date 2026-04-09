@@ -47,6 +47,37 @@ def sql_validator_node(state: AgentState) -> dict:
         logger.warning("[sql_validator] No SQL to validate")
         return {}
 
+    # ── 路径B: decomposed multi_sql — 对每条子查询独立验证 ──
+    execution_plan = state.get("execution_plan") or {}
+    if execution_plan.get("_decomposed"):
+        sub_sqls = [
+            (s["id"], s["sql"])
+            for s in execution_plan.get("sqls", [])
+            if s.get("sql")
+        ]
+        errors = []
+        for sid, sub_sql in sub_sqls:
+            clean = sub_sql.strip()
+            if clean.startswith("```"):
+                first_nl = clean.find("\n")
+                clean = clean[first_nl + 1:].rstrip().rstrip("```").strip()
+            v = validate_sql.invoke({"sql": clean})
+            if not v["valid"]:
+                errors.append(f"[{sid}] {'; '.join(v['errors'])}")
+        trace = list(state.get("pipeline_trace", []))
+        if errors:
+            error_msg = " | ".join(errors)
+            logger.warning(f"[sql_validator] decomposed multi_sql validation errors: {error_msg}")
+            trace_step(trace, "sql_validator", _t0,
+                       summary=f"multi_sql 验证失败 ({len(errors)}个子查询)",
+                       status="error", detail={"errors": errors})
+            return {"sql_error": f"[VALIDATION] {error_msg}", "pipeline_trace": trace}
+        logger.info(f"[sql_validator] decomposed multi_sql: {len(sub_sqls)} sub-queries all valid")
+        trace_step(trace, "sql_validator", _t0,
+                   summary=f"multi_sql 验证通过 ({len(sub_sqls)} 个子查询)",
+                   detail={"valid": True, "sub_queries": len(sub_sqls)})
+        return {"pipeline_trace": trace}
+
     # Safety net: strip markdown code fences if present
     clean_sql = sql.strip()
     if clean_sql.startswith("```"):

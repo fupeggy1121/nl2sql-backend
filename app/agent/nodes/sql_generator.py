@@ -103,7 +103,11 @@ def sql_generator_node(state: AgentState) -> dict:
     )
     # 首次生成（非重试）时，追加 ExecutionPlan 输出指令
     # 若 query_planner 已预判 forced mode，使用强制指令；否则使用泛用规则
-    _forced_plan_hint: dict | None = state.get("execution_plan") if not sql_error else None
+    # 路径B: decomposed 计划在重试时仍应保留（表名修正后重新生成子 SQL）
+    _prior_ep = state.get("execution_plan") or {}
+    _forced_plan_hint: dict | None = (
+        _prior_ep if (_prior_ep.get("_decomposed") or not sql_error) else None
+    )
     _forced_mode: str | None = (
         _forced_plan_hint.get("mode") if _forced_plan_hint and _forced_plan_hint.get("_forced") else None
     )
@@ -125,33 +129,40 @@ def sql_generator_node(state: AgentState) -> dict:
     # ── 4. 多步查询处理 ──
     if query_plan.get("is_multi_step") and not sql_error:
         sql = _generate_multi_step_sql(user_input, query_plan, schema_ctx, semantic_ctx)
+        execution_plan_dict = None
+
+    # ── 4.1 路径B: decomposed multi_sql 并行生成各子查询 SQL（含重试修正）──
+    elif _forced_plan_hint and _forced_plan_hint.get("_decomposed"):
+        sql, execution_plan_dict = _generate_multi_sql_from_decomposed(
+            _forced_plan_hint, schema_ctx, semantic_ctx, user_input, sql_error=sql_error
+        )
+
     else:
         sql = generate_sql.invoke({
             "natural_language": nl_query,
             "error_context": error_context,
         })
 
-    # ── 4.45 提取 ExecutionPlan（首次生成，非重试/非多步模式）──
-    # 优先从 LLM 输出里解析；若解析不到（LLM 未输出 EXEC_PLAN），
-    # 且 query_planner 已预判了 forced mode，则用 forced 骨架兜底。
-    execution_plan_dict = None
-    if sql and not sql_error and not query_plan.get("is_multi_step"):
-        llm_plan, sql = _extract_execution_plan_from_raw(sql)
-        if llm_plan:
-            execution_plan_dict = llm_plan
-        elif _forced_mode:
-            # LLM 未输出 EXEC_PLAN，但 query_planner 已强制锁定 mode
-            # → 用 forced 骨架 + LLM 生成的 SQL 组装最小可执行 plan
-            execution_plan_dict = _build_forced_fallback_plan(_forced_plan_hint, sql)
-            logger.info(
-                f"[sql_generator] forced_mode={_forced_mode} 兜底: "
-                f"LLM未输出EXEC_PLAN，使用确定性骨架"
-            )
+        # ── 4.45 提取 ExecutionPlan（单条 SQL 路径，首次生成，非重试）──
+        # 优先从 LLM 输出里解析；若解析不到，且 query_planner 已预判了 forced mode，则用 forced 骨架兜底。
+        execution_plan_dict = None
+        if sql and not sql_error:
+            llm_plan, sql = _extract_execution_plan_from_raw(sql)
+            if llm_plan:
+                execution_plan_dict = llm_plan
+            elif _forced_mode:
+                execution_plan_dict = _build_forced_fallback_plan(_forced_plan_hint, sql)
+                logger.info(
+                    f"[sql_generator] forced_mode={_forced_mode} 兜底: "
+                    f"LLM未输出EXEC_PLAN，使用确定性骨架"
+                )
 
     # ── 4.5 确定性表名修正（语义引擎物理表名强制替换）──
     # LLM 可能幻觉出英文翻译表名（如 stations / wafers / batches），
     # 但 semantic_ctx 已精确知道真实物理表名，故在此做确定性后处理。
-    if sql and semantic_ctx:
+    # 路径B: 子查询表名已由 generate_one 强制保证，跳过此步避免截短表名
+    _is_decomposed_path = bool(_forced_plan_hint and _forced_plan_hint.get("_decomposed"))
+    if sql and semantic_ctx and not _is_decomposed_path:
         sql = _enforce_physical_table_names(sql, semantic_ctx)
     # ── 4.6 确定性 EmbeddedJSON 语法修正──
     # 如果 LLM 仍然生成了 CROSS JOIN <表名>(...) 而不是 CROSS JOIN JSON_TABLE(...)，在此修正
@@ -1126,7 +1137,10 @@ def _build_execution_plan_instruction(forced_mode: "str | None" = None) -> str:
         return """
 
 [执行模式已强制锁定: multi_sql_merge]
-本查询涉及多张大表，数据库不允许直接 JOIN，必须拆分为独立 SQL 后在 Python 层合并。
+生产环境 MySQL 查询超时上限 30s。以下大表单行扫描代价极高，直接 JOIN 会触发全表扫描导致超时：
+  - matrix_routerx_operation_lot_batch_resume_log_detail（预估行数 >50万）
+  - matrix_routerx_operation_lot_batch_resume_wafer_detail_log（预估行数 >100万）
+即使 JOIN 语法合法、语义正确，也必须拆分为独立 SQL 分别执行后由 Python 合并，不允许单条 SQL 跨这些大表 JOIN。
 必须输出 <EXEC_PLAN> 块，mode="multi_sql_merge"。每张大表生成独立 SQL，禁止跨大表 JOIN。
 <EXEC_PLAN> 格式（JSON 单行，禁止换行缩进）：
 <EXEC_PLAN>
@@ -1254,3 +1268,155 @@ def _build_forced_fallback_plan(forced_plan_hint: dict, sql: str) -> "dict | Non
         f"[sql_generator] forced_mode={mode} 兜底失败: LLM 未拆分 SQL，降级 sql_only"
     )
     return None
+
+
+def _generate_multi_sql_from_decomposed(
+    forced_plan: dict,
+    schema_ctx: str,
+    semantic_ctx: dict,
+    user_input: str,
+    sql_error: str = "",
+) -> "tuple[str, dict]":
+    """
+    路径B：针对 decomposed plan 里每个 SqlStep 并行生成 SQL（ThreadPoolExecutor）。
+    返回 (primary_sql, complete_execution_plan_dict)。
+    primary_sql 是 sqls[0].sql，供 sql_validator 验证。
+
+    支持重试：当 sql_error 非空（validator 报错）时，仅重新生成出错的子查询，
+    保留已验证通过的子查询 SQL。
+    """
+    import re as _re2
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    steps = forced_plan.get("sqls", [])
+    if not steps:
+        logger.warning("[sql_generator] _generate_multi_sql_from_decomposed: empty sqls list")
+        return "", None
+
+    # 解析 sql_error 中各子查询的错误信息，如 "[s2] Table 'sub_batches' not found"
+    error_map: dict[str, str] = {}
+    if sql_error:
+        for _m in _re2.finditer(r'\[(s\d+)\]\s+(.+?)(?:\s*\|\s*(?=\[)|\s*$)', sql_error):
+            error_map[_m.group(1)] = _m.group(2).strip()
+
+    def generate_one(step: dict) -> dict:
+        step_id = step.get("id", "")
+        step_error = error_map.get(step_id, "")
+        # 重试时：若该子查询上次已生成有效 SQL 且无报错，直接复用
+        if step.get("sql") and not step_error:
+            return step
+
+        hint = step.get("hint", "")
+        table = step.get("table", "")
+        purpose = step.get("purpose", "")
+        # 从 mapping 取大表的真实列名（可用于 hint 补充）
+        _table_columns_hint = ""
+        try:
+            from app.ontology.mapping import get_mapping
+            mapping = get_mapping()
+            for pt in mapping.list_physical_tables():
+                if pt.table_name == table:
+                    cols = (getattr(pt, "key_columns", None) or getattr(pt, "columns", None) or [])[:20]
+                    cols = [c if isinstance(c, str) else getattr(c, "name", str(c)) for c in cols]
+                    if cols:
+                        _table_columns_hint = f"\n主表真实字段（必须使用这些字段名）: {', '.join(cols)}"
+                    break
+        except Exception:
+            pass
+        # 若 mapping 中没有该表，从 DB schema 元数据补充列名
+        if not _table_columns_hint and table:
+            try:
+                from app.agent.tools.schema_tools import _get_schema_metadata
+                _meta = _get_schema_metadata()
+                _cols_from_db = [
+                    c["name"] for c in
+                    _meta.get("tables", {}).get(table, {}).get("columns", [])
+                ][:20]
+                if _cols_from_db:
+                    _table_columns_hint = f"\n主表真实字段（必须使用这些字段名）: {', '.join(_cols_from_db)}"
+                    logger.info(f"[sql_generator] sub-query {step_id}: DB schema column hint for '{table}': {_cols_from_db[:8]}")
+            except Exception:
+                pass
+
+        # 重试时附加前次错误上下文，引导 LLM 修正
+        _error_correction = ""
+        if step_error:
+            prev_sql = step.get("sql", "")
+            _error_correction = (
+                f"\n\n[前次SQL错误]\n"
+                f"错误信息: {step_error}\n"
+                f"前次SQL: {prev_sql}\n"
+                f"[修正要求] 表名必须与上方约束一致，禁止使用翻译或虚构表名\n"
+            )
+
+        # 禁止 JOIN 的其他大表列表（路径B其他子查询的目标表）
+        _other_large_tables = [
+            s["table"] for s in forced_plan.get("sqls", [])
+            if s.get("table") and s.get("table") != table
+        ]
+        _forbidden_joins = (
+            f"\n  - 禁止 JOIN 以下大表（由其他子查询独立查询）: {', '.join(_other_large_tables)}"
+            if _other_large_tables else ""
+        )
+        sub_query = (
+            f"{user_input}\n\n"
+            f"[子查询约束]\n"
+            f"目标: {purpose}\n"
+            f"主表（必须使用此精确表名）: {table}{_table_columns_hint}\n"
+            f"⚠️ 警告：只能使用上方列出的真实字段名，严禁虚构 lot_batch_id/product_code/batch_code 等不存在的列\n"
+            f"字段/过滤提示: {hint}\n"
+            f"规则:\n"
+            f"  - FROM 子句必须使用主表名 {table!r}，禁止替换为任何英文翻译名称\n"
+            f"  - 只查本表（可 JOIN 小维度配置表），禁止 JOIN 其他大表{_forbidden_joins}\n"
+            f"  - 返回含关联键的明细行供后续 Python merge\n\n"
+            f"Schema 上下文:\n{schema_ctx[:1500]}"
+            f"{_error_correction}"
+        )
+        sql_result = generate_sql.invoke({
+            "natural_language": sub_query,
+            "error_context": "",
+        })
+        raw_sql = sql_result.strip().rstrip(";")
+        # 强制修正：若 LLM 仍然用了非 table 的表名，找出幻觉表名并全量替换
+        import re as _re
+        if table and table.lower() not in raw_sql.lower():
+            # 找出 LLM 在第一个 FROM 后使用的表名（即幻觉表名）
+            _halluc_match = _re.search(r'(?i)FROM\s+`?(\w+)`?', raw_sql)
+            if _halluc_match:
+                hallucinated = _halluc_match.group(1)
+                # 全量替换：SQL 中所有出现的幻觉表名 → 正确表名
+                raw_sql = _re.sub(
+                    r'(?i)\b' + _re.escape(hallucinated) + r'\b',
+                    table,
+                    raw_sql,
+                )
+                logger.warning(
+                    f"[sql_generator] sub-query {step_id}: hallucinated table '{hallucinated}'"
+                    f" forced to '{table}'"
+                )
+        return {**step, "sql": raw_sql}
+
+    results: dict = {}
+    with ThreadPoolExecutor(max_workers=min(len(steps), 4)) as executor:
+        futures = {executor.submit(generate_one, s): s["id"] for s in steps}
+        for future in as_completed(futures):
+            step_id = futures[future]
+            try:
+                results[step_id] = future.result()
+            except Exception as exc:
+                logger.warning(f"[sql_generator] sub-query {step_id} generation failed: {exc}")
+                results[step_id] = {
+                    **next(s for s in steps if s["id"] == step_id),
+                    "sql": "",
+                }
+
+    completed_sqls = [results.get(s["id"], s) for s in steps]
+    primary_sql = next((s["sql"] for s in completed_sqls if s.get("sql")), "")
+
+    complete_plan = {**forced_plan, "sqls": completed_sqls}
+
+    logger.info(
+        f"[sql_generator] _generate_multi_sql_from_decomposed: "
+        f"{len(completed_sqls)} sub-SQLs, primary_sql={primary_sql[:80]!r}"
+    )
+    return primary_sql, complete_plan
