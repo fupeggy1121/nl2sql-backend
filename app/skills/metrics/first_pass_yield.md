@@ -12,14 +12,9 @@ compute_mode: python_compute
 compute_tool: first_pass_yield_computer
 standard_definition: "一次良率 = 首次检验合格晶圆数 / 首次检验总晶圆数 × 100%"
 formula: "good_count(rn=1 ASC, wafer_type='good', ng_code IS NULL) / total_count(rn=1) * 100"
-required_columns:
-  - wafer_id
-  - process_code
-  - wafer_type
-  - ng_code
-  - rn
-  - product_code
-  - report_date
+computed_columns:
+  - "rn | ROW_NUMBER() OVER (PARTITION BY w.wafer_id, l.process_code ORDER BY l.gmt_create {rn_order}) | 取首次出站记录，rn=1 即首次经过该站点"
+  - "report_date | DATE(l.gmt_create) | 按日聚合键"
 rn_order: ASC
 granularity:
   - daily

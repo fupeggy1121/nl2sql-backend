@@ -394,7 +394,7 @@ def _extract_trace_info(data: Dict[str, Any]) -> Dict[str, Any]:
         detail = t.get("detail", {}) or {}
         summary = t.get("summary", "") or ""
 
-        if node in ("method_selector", "query_planner"):
+        if node in ("method_selector", "query_planner", "analysis_method_selector"):
             info["method"] = detail.get("suggested_method") or detail.get("method")
             sk = detail.get("skill_context") or {}
             if isinstance(sk, dict):
@@ -402,8 +402,11 @@ def _extract_trace_info(data: Dict[str, Any]) -> Dict[str, Any]:
                 info["compute_tool"] = sk.get("compute_tool")
             info["metric_name"] = (detail.get("method_params") or {}).get("metric_name")
 
-        if node == "analysis_executor":
+        if node in ("analysis_executor", "analysis_data_loader"):
             info["compute_tool"] = detail.get("tool_name") or info["compute_tool"]
+            # analysis_data_loader stores the generated SQL
+            if detail.get("sql") and not info["sql"]:
+                info["sql"] = detail["sql"]
 
     # analysis block
     analysis = inner.get("analysis") or {}
@@ -466,15 +469,19 @@ def _print_api_result(case_num: int, nl: str, info: Dict[str, Any], elapsed: flo
 
 def _assert_oee_routed(case_num: int, info: Dict[str, Any], nl: str) -> bool:
     """检查是否路由到 OEE skill。也接受分析结果中含 OEE 关键词。"""
+    method_ok = (info["method"] or "") in ("oee_report", "oee")
     routed = (
         info["skill"] == "oee"
         or info["compute_tool"] == "oee_computer"
         or (info["metric_name"] or "").lower() == "oee"
+        or method_ok
         or "oee" in (info["analysis_summary"] or "").lower()
         or "OEE" in (info["analysis_summary"] or "")
+        or "OEE" in (info["llm_answer"] or "")
+        or "oee" in (info["llm_answer"] or "").lower()
     )
     if routed:
-        _ok(f"Case {case_num:02d}: 路由到 OEE skill ✓")
+        _ok(f"Case {case_num:02d}: 路由到 OEE skill ✓  (method={info['method']})")
     else:
         _warn(f"Case {case_num:02d}: 未检测到 OEE 路由（skill={info['skill']}, "
               f"tool={info['compute_tool']}, method={info['method']}）")

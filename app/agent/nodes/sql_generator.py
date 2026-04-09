@@ -101,6 +101,14 @@ def sql_generator_node(state: AgentState) -> dict:
     nl_query = _build_optimized_query(
         user_input, query_plan, schema_ctx, few_shot_context, semantic_ctx
     )
+    # 首次生成（非重试）时，追加 ExecutionPlan 输出指令
+    # 若 query_planner 已预判 forced mode，使用强制指令；否则使用泛用规则
+    _forced_plan_hint: dict | None = state.get("execution_plan") if not sql_error else None
+    _forced_mode: str | None = (
+        _forced_plan_hint.get("mode") if _forced_plan_hint and _forced_plan_hint.get("_forced") else None
+    )
+    if not sql_error:
+        nl_query += _build_execution_plan_instruction(_forced_mode)
 
     # ── 3. 自我修正模式 ──
     error_context = ""
@@ -122,6 +130,23 @@ def sql_generator_node(state: AgentState) -> dict:
             "natural_language": nl_query,
             "error_context": error_context,
         })
+
+    # ── 4.45 提取 ExecutionPlan（首次生成，非重试/非多步模式）──
+    # 优先从 LLM 输出里解析；若解析不到（LLM 未输出 EXEC_PLAN），
+    # 且 query_planner 已预判了 forced mode，则用 forced 骨架兜底。
+    execution_plan_dict = None
+    if sql and not sql_error and not query_plan.get("is_multi_step"):
+        llm_plan, sql = _extract_execution_plan_from_raw(sql)
+        if llm_plan:
+            execution_plan_dict = llm_plan
+        elif _forced_mode:
+            # LLM 未输出 EXEC_PLAN，但 query_planner 已强制锁定 mode
+            # → 用 forced 骨架 + LLM 生成的 SQL 组装最小可执行 plan
+            execution_plan_dict = _build_forced_fallback_plan(_forced_plan_hint, sql)
+            logger.info(
+                f"[sql_generator] forced_mode={_forced_mode} 兜底: "
+                f"LLM未输出EXEC_PLAN，使用确定性骨架"
+            )
 
     # ── 4.5 确定性表名修正（语义引擎物理表名强制替换）──
     # LLM 可能幻觉出英文翻译表名（如 stations / wafers / batches），
@@ -178,6 +203,7 @@ def sql_generator_node(state: AgentState) -> dict:
             "sql_retry_count": new_retry_count,
             "sql_error": "",  # 清除上一次的错误
             "rag_context": schema_ctx,
+            "execution_plan": execution_plan_dict,
             "pipeline_trace": trace,
         }
     else:
@@ -1077,3 +1103,154 @@ def _format_semantic_context(semantic_ctx: dict) -> str:
                 lines.append(f"    {r['sql_example']}")
 
     return "\n".join(lines) if len(lines) > 1 else ""
+
+
+# ── ExecutionPlan 支持 (execution_engine 接入层) ─────────────────────────────
+
+# 超出数据库 JOIN 性能阈值的大表：命中两张或以上时建议 multi_sql_merge
+_LARGE_TABLES_FOR_SPLIT = frozenset([
+    "matrix_routerx_operation_lot_batch_resume_log_detail",
+    "matrix_routerx_operation_lot_batch_resume_wafer_detail_log",
+])
+
+
+def _build_execution_plan_instruction(forced_mode: "str | None" = None) -> str:
+    """
+    构建 ExecutionPlan 输出指令，追加到 nl_query 末尾。
+    仅在首次生成（非重试）时注入，告知 LLM 何时以及如何输出 <EXEC_PLAN> 块。
+
+    forced_mode: query_planner 已确定性预判的 mode（"multi_sql_merge" / "sql_then_python"），
+                 若不为 None 则使用强制指令；否则使用通用建议指令。
+    """
+    if forced_mode == "multi_sql_merge":
+        return """
+
+[执行模式已强制锁定: multi_sql_merge]
+本查询涉及多张大表，数据库不允许直接 JOIN，必须拆分为独立 SQL 后在 Python 层合并。
+必须输出 <EXEC_PLAN> 块，mode="multi_sql_merge"。每张大表生成独立 SQL，禁止跨大表 JOIN。
+<EXEC_PLAN> 格式（JSON 单行，禁止换行缩进）：
+<EXEC_PLAN>
+{"mode":"multi_sql_merge","sqls":[{"id":"s1","sql":"SELECT ...","purpose":"大表A数据"},{"id":"s2","sql":"SELECT ...","purpose":"大表B数据"}],"merges":[{"id":"m1","left":"s1","right":"s2","on":["lot_id"],"how":"inner"}],"primary_result":"m1"}
+</EXEC_PLAN>
+SQL（下方）：sqls[0].sql 的完整副本（供 sql_validator 验证）"""
+
+    elif forced_mode == "sql_then_python":
+        return """
+
+[执行模式已强制锁定: sql_then_python]
+最终结果需要透视表（pivot/行列转置），必须输出 <EXEC_PLAN> 块，mode="sql_then_python"。
+SQL 只需取原始明细数据，postprocess 填写 pivot 操作的 index/columns/values/aggfunc。
+<EXEC_PLAN> 格式（JSON 单行，禁止换行缩进）：
+<EXEC_PLAN>
+{"mode":"sql_then_python","sqls":[{"id":"s1","sql":"SELECT ...","purpose":"取原始数据"}],"postprocess":[{"operation":"pivot","params":{"index":"<行字段>","columns":"<列字段>","values":"<值字段>","aggfunc":"first"}}],"primary_result":"s1"}
+</EXEC_PLAN>
+SQL（下方）：sqls[0].sql 的完整副本（供 sql_validator 验证）"""
+
+    else:
+        large_tables = "\n     ".join(sorted(_LARGE_TABLES_FOR_SPLIT))
+        return f"""
+
+[即席查询 ExecutionPlan 规则 — 覆盖"仅输出SQL"约定]
+仅当满足以下条件之一，在 SQL 前输出 <EXEC_PLAN> 块，否则直接输出 SQL：
+  ① mode="multi_sql_merge"：需要 JOIN 下列两张或以上大表
+     {large_tables}
+     → 每张大表单独一条可执行 SQL（sqls[].sql），Python pandas merge 代替数据库 JOIN
+  ② mode="sql_then_python"：最终结果需要行列转置（pivot / 透视表）
+     → SQL 取数后 postprocess 填 pivot 操作
+
+<EXEC_PLAN> 格式（JSON 单行，禁止换行缩进）：
+<EXEC_PLAN>
+{{"mode":"multi_sql_merge","sqls":[{{"id":"s1","sql":"SELECT ...","purpose":"..."}},{{"id":"s2","sql":"SELECT ...","purpose":"..."}}],"merges":[{{"id":"m1","left":"s1","right":"s2","on":["lot_id"],"how":"inner"}}],"primary_result":"m1"}}
+</EXEC_PLAN>
+SQL（下方）：sqls[0].sql 的完整副本（供 sql_validator 验证）
+
+不满足条件 → 直接输出 SQL，无需 <EXEC_PLAN>。"""
+
+
+def _extract_execution_plan_from_raw(raw: str):
+    """
+    从 LLM 原始输出中提取可选的 ExecutionPlan JSON 和纯 SQL。
+
+    支持格式：
+      <EXEC_PLAN>
+      {...json...}
+      </EXEC_PLAN>
+      SELECT ...
+
+      或纯 SQL（向后兼容，返回 (None, raw)）。
+
+    返回: (plan_dict_or_None, clean_sql_str)
+    """
+    import re
+    import json as _json
+
+    pattern = re.compile(r'<EXEC_PLAN>\s*(.*?)\s*</EXEC_PLAN>', re.DOTALL)
+    match = pattern.search(raw)
+    if not match:
+        return None, raw
+
+    plan_json_str = match.group(1).strip()
+    clean_sql = raw[match.end():].strip()
+
+    try:
+        plan_dict = _json.loads(plan_json_str)
+    except Exception as exc:
+        logger.warning(
+            f"[sql_generator] ExecutionPlan JSON 解析失败 ({exc}): "
+            f"{plan_json_str[:120]!r}"
+        )
+        return None, clean_sql or raw
+
+    # 基础字段校验
+    valid_modes = {"sql_only", "sql_then_python", "multi_sql_merge", "python_orchestrated"}
+    mode = plan_dict.get("mode", "")
+    if not isinstance(plan_dict, dict) or mode not in valid_modes:
+        logger.warning(f"[sql_generator] ExecutionPlan mode 无效 ({mode!r})，降级 sql_only")
+        return None, clean_sql or raw
+
+    sqls = plan_dict.get("sqls", [])
+    if not sqls:
+        logger.warning("[sql_generator] ExecutionPlan.sqls 为空，降级 sql_only")
+        return None, clean_sql or raw
+
+    # sqls[0].sql 作为 state["sql"]，供 sql_validator + retry loop 使用
+    primary_sql = (sqls[0].get("sql", "") if isinstance(sqls[0], dict) else "").strip()
+    effective_sql = primary_sql or clean_sql or raw
+
+    logger.info(
+        f"[sql_generator] ExecutionPlan 提取成功: mode={mode}, "
+        f"sqls={len(sqls)}, merges={len(plan_dict.get('merges', []))}"
+    )
+    return plan_dict, effective_sql
+
+
+def _build_forced_fallback_plan(forced_plan_hint: dict, sql: str) -> "dict | None":
+    """
+    当 query_planner 已强制锁定 mode 但 LLM 未输出 <EXEC_PLAN> 时，
+    用 forced_plan_hint 骨架 + LLM 生成的 SQL 组装最小可执行 plan。
+
+    对于 multi_sql_merge：生成的 SQL 仅作为 s1，无法自动拆分 → 返回 None
+      让 execution_engine_node 降级到 sql_only（兜底安全）。
+    对于 sql_then_python：SQL 作为 s1 取数，pivot 参数留空待运行时推断 → 返回骨架。
+    """
+    mode = forced_plan_hint.get("mode", "sql_only")
+    trigger = forced_plan_hint.get("_trigger", "")
+
+    if mode == "sql_then_python" and sql:
+        # 组装最小 sql_then_python plan
+        postprocess = forced_plan_hint.get("postprocess") or [{"operation": "pivot", "params": {}}]
+        return {
+            "mode": "sql_then_python",
+            "sqls": [{"id": "s1", "sql": sql, "purpose": "原始数据"}],
+            "postprocess": postprocess,
+            "primary_result": "s1",
+            "_forced": True,
+            "_trigger": trigger,
+            "_fallback": True,
+        }
+
+    # multi_sql_merge 没有完整 sqls 列表，无法安全执行 → 返回 None 降级 sql_only
+    logger.warning(
+        f"[sql_generator] forced_mode={mode} 兜底失败: LLM 未拆分 SQL，降级 sql_only"
+    )
+    return None

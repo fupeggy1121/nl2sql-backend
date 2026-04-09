@@ -76,7 +76,9 @@ def _append_changelog(action: str, entry_type: str, key: str,
 def _reload_cache() -> None:
     try:
         from app.ontology.mapping import load_mapping
-        load_mapping(force_reload=True)
+        m = load_mapping(force_reload=True)
+        from app.ontology.join_graph import init_join_graph
+        init_join_graph(m)
     except Exception as exc:
         logger.warning("Cache reload failed: %s", exc)
 

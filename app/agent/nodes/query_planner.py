@@ -178,11 +178,77 @@ def query_planner_node(state: AgentState) -> dict:
         "rag_context_length": len(rag_context) if rag_context else 0,
     })
 
-    return {
+    # ── 第一层: 确定性执行模式预判 ──────────────────────────────────────────
+    # 在 SQL 生成前锁定 mode，避免 LLM 在已知复杂场景下仍生成单条 JOIN SQL。
+    # 只有当前不处于重试循环（即 sql_error 为空）且无 approved_sql 时才预判。
+    forced_plan = None
+    if not state.get("sql_error") and not state.get("approved_sql"):
+        forced_plan = _detect_forced_execution_plan(effective_input)
+        if forced_plan:
+            logger.info(
+                f"[query_planner] 强制执行模式: mode={forced_plan['mode']} "
+                f"(trigger={forced_plan.get('_trigger', '?')})"
+            )
+
+    out: dict = {
         "query_plan": query_plan,
         "rag_context": rag_context,
         "pipeline_trace": trace,
     }
+    if forced_plan is not None:
+        out["execution_plan"] = forced_plan
+    return out
+
+
+def _detect_forced_execution_plan(user_input: str) -> "dict | None":
+    """
+    第一层决策：确定性关键词扫描，预判执行模式。
+    命中则返回骨架 ExecutionPlan dict（含 _forced=True 标记）；未命中返回 None。
+
+    触发规则：
+      multi_sql_merge : 同时提及两张已知大表
+      sql_then_python  : 明确要求行列转置/透视表
+    """
+    import re
+
+    text = user_input.lower()
+
+    # ── 规则 1: 两张 resume 大表同时出现 → multi_sql_merge ──
+    LARGE_TABLE_A = "matrix_routerx_operation_lot_batch_resume_log_detail"
+    LARGE_TABLE_B = "matrix_routerx_operation_lot_batch_resume_wafer_detail_log"
+    if LARGE_TABLE_A.lower() in text and LARGE_TABLE_B.lower() in text:
+        return {
+            "mode": "multi_sql_merge",
+            "sqls": [],   # sql_generator 负责填充
+            "merges": [],
+            "postprocess": [],
+            "primary_result": "m1",
+            "_forced": True,
+            "_trigger": "large_table_pair",
+        }
+
+    # ── 规则 2: 透视表 / pivot 明确需求 → sql_then_python ──
+    PIVOT_PATTERNS = [
+        r"透视表",
+        r"行\s*[=＝=]\s*\S+.*?列\s*[=＝=]",  # 行=工站，列=日期
+        r"pivot",
+        r"行列转[置换]",
+        r"转[置换]为.{0,10}表",
+        r"列[为是]\S+.{0,6}行[为是]\S+",
+    ]
+    for pat in PIVOT_PATTERNS:
+        if re.search(pat, user_input, re.IGNORECASE):
+            return {
+                "mode": "sql_then_python",
+                "sqls": [],
+                "merges": [],
+                "postprocess": [{"operation": "pivot", "params": {}}],
+                "primary_result": "s1",
+                "_forced": True,
+                "_trigger": f"pivot_keyword:{pat[:20]}",
+            }
+
+    return None
 
 
 def _extract_table_from_sql(sql: str) -> str:

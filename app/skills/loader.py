@@ -24,6 +24,30 @@ _FM_DELIMITER = "---"
 
 
 @dataclass
+class ComputedColumn:
+    """派生列定义 — SQL SELECT 中需要通过表达式生成的列，是 Python Computer 的输入合约。
+
+    与物理表字段无关，表达式由 skill 层定义，method_selector 将其注入 SQL prompt。
+    格式（.md 中）：'name | expr | purpose'，例如：
+      - "report_date | DATE(l.gmt_create) | 按日聚合键"
+      - "rn | ROW_NUMBER() OVER (...) | 去重保留首次过站"
+    """
+    name: str
+    expr: str
+    purpose: str = ""
+
+    @classmethod
+    def from_str(cls, s: str) -> "ComputedColumn":
+        """从 'name | expr | purpose' 格式字符串解析。"""
+        parts = [p.strip() for p in s.split("|")]
+        return cls(
+            name=parts[0] if len(parts) > 0 else s,
+            expr=parts[1] if len(parts) > 1 else "",
+            purpose=parts[2] if len(parts) > 2 else "",
+        )
+
+
+@dataclass
 class SkillDefinition:
     """解析后的 Skill 定义 — 仅包含计算方法论，不含物理数据源信息。
 
@@ -37,7 +61,7 @@ class SkillDefinition:
     standard_definition: str = ""
     formula: str = ""
     granularity: List[str] = field(default_factory=list)
-    required_columns: List[str] = field(default_factory=list)  # Python Computer 必需列
+    computed_columns: List[ComputedColumn] = field(default_factory=list)  # 派生列（name|expr|purpose）
     rn_order: str = ""                                          # ROW_NUMBER 排序方向（ASC/DESC）
     required_entities: List[str] = field(default_factory=list)  # 依赖的 ontology 实体（logic_class）
     body: str = ""          # Markdown body（供 LLM 阅读）
@@ -262,7 +286,7 @@ class SkillLoader:
         known_keys = {
             "skill_name", "zh_names", "compute_mode", "compute_tool",
             "standard_definition", "formula", "granularity",
-            "required_columns", "rn_order", "required_entities",
+            "computed_columns", "rn_order", "required_entities",
         }
         extra = {k: v for k, v in meta.items() if k not in known_keys}
 
@@ -274,7 +298,7 @@ class SkillLoader:
             standard_definition=meta.get("standard_definition", ""),
             formula=meta.get("formula", ""),
             granularity=meta.get("granularity", []),
-            required_columns=meta.get("required_columns", []),
+            computed_columns=[ComputedColumn.from_str(s) for s in meta.get("computed_columns", [])],
             rn_order=meta.get("rn_order", ""),
             required_entities=meta.get("required_entities", []),
             body=body,

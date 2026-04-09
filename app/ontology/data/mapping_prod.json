@@ -1016,7 +1016,8 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "拆批操作执行记录，filter_condition = operation_type=1。拆批专用子属性：splitsFromLot(源主批次)/splitsFromSublot(源子批次)/producesLot(目标主批次)/producesSublot(目标子批次)。谱系操作，通过 hasWaferTransitionDetail 经 _detail(isSource=false 过滤) 到 _wafer_detail_log，extra JSON 含四维批次谱系：sourceLotCode/sourceSubLotCode/targetLotCode/targetSubLotCode。"
+      "note": "拆批操作执行记录，filter_condition = operation_type=1。拆批专用子属性：splitsFromLot(源主批次)/splitsFromSublot(源子批次)/producesLot(目标主批次)/producesSublot(目标子批次)。谱系操作，通过 hasWaferTransitionDetail 经 _detail(isSource=false 过滤) 到 _wafer_detail_log，extra JSON 含四维批次谱系：sourceLotCode/sourceSubLotCode/targetLotCode/targetSubLotCode。",
+      "subclass_of": "semi:ProductionEventRecord"
     },
     {
       "logic_class": "semi:HoldEvent",
@@ -1062,7 +1063,8 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "批次扣留操作执行记录，filter_condition = operation_type=4。【重要】批次扣留后系统中无独立 status 字段标记扣留状态，判断批次当前是否被扣留须通过事件推导（semi:LotWIPStatus.Hold 的 physical_condition）：存在本记录且无时间上晚于它的 ReleaseEventRecord(operation_type=5) 即为扣留中。extra 字段可包含预扣留站点信息（preHoldProcessId/preHoldProcessCode）。本操作不产出新批次，output_lot_id 为 null。create_user_id/create_user 为提交扣留的操作员（非 operator_id）。【统一快照路径（复用父类路径）】hasWaferTransitionDetail → WaferTransitionSnapshot（_wafer_detail_log，Wafer粒度，sub_lot_code/carrier_code/slot_no）→(holdSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(holdSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）；扣留元数据：WaferTransitionSnapshot.hasDetentionCode/hasDetentionRemark/hasDetentionProcessCode（join _detail.extra via batch_resume_detail_log_id）。"
+      "note": "批次扣留操作执行记录，filter_condition = operation_type=4。【重要】批次扣留后系统中无独立 status 字段标记扣留状态，判断批次当前是否被扣留须通过事件推导（semi:LotWIPStatus.Hold 的 physical_condition）：存在本记录且无时间上晚于它的 ReleaseEventRecord(operation_type=5) 即为扣留中。extra 字段可包含预扣留站点信息（preHoldProcessId/preHoldProcessCode）。本操作不产出新批次，output_lot_id 为 null。create_user_id/create_user 为提交扣留的操作员（非 operator_id）。【统一快照路径（复用父类路径）】hasWaferTransitionDetail → WaferTransitionSnapshot（_wafer_detail_log，Wafer粒度，sub_lot_code/carrier_code/slot_no）→(holdSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(holdSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）；扣留元数据：WaferTransitionSnapshot.hasDetentionCode/hasDetentionRemark/hasDetentionProcessCode（join _detail.extra via batch_resume_detail_log_id）。",
+      "subclass_of": "semi:ProductionEventRecord"
     },
     {
       "logic_class": "semi:ReleaseEvent",
@@ -1108,7 +1110,8 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "批次释放操作执行记录，filter_condition = operation_type=5。解除批次的扣留状态（推导型，非 status 字段），恢复批次可进站加工。本操作不产出新批次，output_lot_id 为 null。create_user_id/create_user 为提交释放的操作员。【统一快照路径（复用父类路径）】hasWaferTransitionDetail → WaferTransitionSnapshot（_wafer_detail_log，Wafer粒度，sub_lot_code/carrier_code/slot_no）→(holdSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(holdSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）；释放元数据：WaferTransitionSnapshot.hasDetentionCode（被解除扣留代码）/hasDetentionRemark/hasDetentionProcessCode（join _detail.extra via batch_resume_detail_log_id）。与 HoldEventRecord 共用 hasWaferTransitionDetail/holdSnapshotOfWafer/holdSnapshotOfSublot 路径。"
+      "note": "批次释放操作执行记录，filter_condition = operation_type=5。解除批次的扣留状态（推导型，非 status 字段），恢复批次可进站加工。本操作不产出新批次，output_lot_id 为 null。create_user_id/create_user 为提交释放的操作员。【统一快照路径（复用父类路径）】hasWaferTransitionDetail → WaferTransitionSnapshot（_wafer_detail_log，Wafer粒度，sub_lot_code/carrier_code/slot_no）→(holdSnapshotOfWafer)→ Wafer；子批次导航：WaferTransitionSnapshot →(holdSnapshotOfSublot)→ Sublot（sub_lot_code=current_lot_code，parent_id!=0）；释放元数据：WaferTransitionSnapshot.hasDetentionCode（被解除扣留代码）/hasDetentionRemark/hasDetentionProcessCode（join _detail.extra via batch_resume_detail_log_id）。与 HoldEventRecord 共用 hasWaferTransitionDetail/holdSnapshotOfWafer/holdSnapshotOfSublot 路径。",
+      "subclass_of": "semi:ProductionEventRecord"
     },
     {
       "logic_class": "semi:NGRecordEvent",
@@ -1153,7 +1156,8 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "不良录入操作执行记录，filter_condition = operation_type=6。被标记不良的批次由 lot_id/lot_code 确定；操作员录入不良晶圆的 ng_code（不良代码）及 wafer_type=2（整数枚举：2=不良/reject）。不改变批次 status，不产出新批次，output_lot_id 为 null。【三层快照路径】NGRecordEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(ngSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(ngSnapshotOfSublot)→ Sublot；快照含 wafer_type=2（整数枚举，2=不良）/ng_code/ng_reason/slot_no/carrier_code。每片 wafer 写一行快照，无 isSource 侧别。取消不良操作见 semi:CancelNGEventRecord（op=7）。"
+      "note": "不良录入操作执行记录，filter_condition = operation_type=6。被标记不良的批次由 lot_id/lot_code 确定；操作员录入不良晶圆的 ng_code（不良代码）及 wafer_type=2（整数枚举：2=不良/reject）。不改变批次 status，不产出新批次，output_lot_id 为 null。【三层快照路径】NGRecordEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(ngSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(ngSnapshotOfSublot)→ Sublot；快照含 wafer_type=2（整数枚举，2=不良）/ng_code/ng_reason/slot_no/carrier_code。每片 wafer 写一行快照，无 isSource 侧别。取消不良操作见 semi:CancelNGEventRecord（op=7）。",
+      "subclass_of": "semi:ProductionEventRecord"
     },
     {
       "logic_class": "semi:CancelNGEvent",
@@ -1198,7 +1202,8 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "取消不良操作执行记录，filter_condition = operation_type=7。对已标记不良的晶圆执行取消操作，恢复 wafer_type 为 NULL（整数NULL=良品）并清除 ng_code/ng_reason。不改变批次 status，不产出新批次，output_lot_id 为 null。【三层快照路径】CancelNGEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(ngSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(ngSnapshotOfSublot)→ Sublot；快照中 wafer_type=NULL（整数NULL=良品），ng_code/ng_reason 字段被清空。每片 wafer 写一行快照，无 isSource 侧别。与 NGRecordEventRecord（op=6）互为逆操作，共用 ngSnapshotOfWafer/ngSnapshotOfSublot 快照路径。"
+      "note": "取消不良操作执行记录，filter_condition = operation_type=7。对已标记不良的晶圆执行取消操作，恢复 wafer_type 为 NULL（整数NULL=良品）并清除 ng_code/ng_reason。不改变批次 status，不产出新批次，output_lot_id 为 null。【三层快照路径】CancelNGEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(ngSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(ngSnapshotOfSublot)→ Sublot；快照中 wafer_type=NULL（整数NULL=良品），ng_code/ng_reason 字段被清空。每片 wafer 写一行快照，无 isSource 侧别。与 NGRecordEventRecord（op=6）互为逆操作，共用 ngSnapshotOfWafer/ngSnapshotOfSublot 快照路径。",
+      "subclass_of": "semi:ProductionEventRecord"
     },
     {
       "logic_class": "semi:OpenLotEvent",
@@ -1243,7 +1248,8 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "开批操作执行记录，filter_condition = operation_type=19。开批为本次投料生成新的 ProductionLot 及 Sublot，同时为每片晶圆赋予全局唯一 wafer_id。_detail.extra 无特殊信息，_wafer_detail_log.extra 为空 {}。【三层快照路径】OpenLotEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(openLotSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(openLotSnapshotOfSublot)→ Sublot；快照层含 sub_lot_code/carrier_code/slot_no/wafer_type。每片 wafer 写一行快照，无 isSource 侧别。取消开批操作见 semi:CancelOpenLotEventRecord（op=22）。"
+      "note": "开批操作执行记录，filter_condition = operation_type=19。开批为本次投料生成新的 ProductionLot 及 Sublot，同时为每片晶圆赋予全局唯一 wafer_id。_detail.extra 无特殊信息，_wafer_detail_log.extra 为空 {}。【三层快照路径】OpenLotEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(openLotSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(openLotSnapshotOfSublot)→ Sublot；快照层含 sub_lot_code/carrier_code/slot_no/wafer_type。每片 wafer 写一行快照，无 isSource 侧别。取消开批操作见 semi:CancelOpenLotEventRecord（op=22）。",
+      "subclass_of": "semi:ProductionEventRecord"
     },
     {
       "logic_class": "semi:CancelOpenLotEvent",
@@ -1288,7 +1294,8 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "取消开批操作执行记录，filter_condition = operation_type=22。仅针对未做任何进站加工（无 CheckInEventRecord）的批次可执行此操作，撤销投料，批次状态转为结批（status=90/Closed），生产流转终止。不产出新批次，output_lot_id 为 null。【三层快照路径】CancelOpenLotEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(openLotSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(openLotSnapshotOfSublot)→ Sublot；每片 wafer 写一行快照，无 isSource 侧别。与 OpenLotEventRecord（op=19）互为逆操作，共用 openLotSnapshotOfWafer/openLotSnapshotOfSublot 快照路径。"
+      "note": "取消开批操作执行记录，filter_condition = operation_type=22。仅针对未做任何进站加工（无 CheckInEventRecord）的批次可执行此操作，撤销投料，批次状态转为结批（status=90/Closed），生产流转终止。不产出新批次，output_lot_id 为 null。【三层快照路径】CancelOpenLotEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(openLotSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(openLotSnapshotOfSublot)→ Sublot；每片 wafer 写一行快照，无 isSource 侧别。与 OpenLotEventRecord（op=19）互为逆操作，共用 openLotSnapshotOfWafer/openLotSnapshotOfSublot 快照路径。",
+      "subclass_of": "semi:ProductionEventRecord"
     },
     {
       "logic_class": "semi:CreateLocalLotEvent",
@@ -1333,7 +1340,8 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "本地批次创建操作执行记录，filter_condition = operation_type=18。将半成品代工物料或 monitor 物料投入生产线，生成新的 ProductionLot 及 Sublot，同时为每片晶圆赋予全局唯一 wafer_id。_detail.extra 无特殊信息，_wafer_detail_log.extra 为空 {}。【三层快照路径】CreateLocalLotEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(localLotSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(localLotSnapshotOfSublot)→ Sublot；快照层含 sub_lot_code/carrier_code/slot_no/wafer_type。每片 wafer 写一行快照，无 isSource 侧别。取消本地批次创建操作见 semi:CancelLocalLotEventRecord（op=21）。"
+      "note": "本地批次创建操作执行记录，filter_condition = operation_type=18。将半成品代工物料或 monitor 物料投入生产线，生成新的 ProductionLot 及 Sublot，同时为每片晶圆赋予全局唯一 wafer_id。_detail.extra 无特殊信息，_wafer_detail_log.extra 为空 {}。【三层快照路径】CreateLocalLotEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(localLotSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(localLotSnapshotOfSublot)→ Sublot；快照层含 sub_lot_code/carrier_code/slot_no/wafer_type。每片 wafer 写一行快照，无 isSource 侧别。取消本地批次创建操作见 semi:CancelLocalLotEventRecord（op=21）。",
+      "subclass_of": "semi:ProductionEventRecord"
     },
     {
       "logic_class": "semi:CancelLocalLotEvent",
@@ -1378,7 +1386,8 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "取消本地批次创建操作执行记录，filter_condition = operation_type=21。仅针对通过本地批次创建（op=18）生成的批次可执行此操作，撤销投料，批次状态转为结批（Closed），生产流转终止。不产出新批次，output_lot_id 为 null。_detail.extra 为空 {}，无 detention 相关字段。【三层快照路径】CancelLocalLotEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(localLotSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(localLotSnapshotOfSublot)→ Sublot；每片 wafer 写一行快照，无 isSource 侧别。与 CreateLocalLotEventRecord（op=18）互为逆操作，共用 localLotSnapshotOfWafer/localLotSnapshotOfSublot 快照路径。"
+      "note": "取消本地批次创建操作执行记录，filter_condition = operation_type=21。仅针对通过本地批次创建（op=18）生成的批次可执行此操作，撤销投料，批次状态转为结批（Closed），生产流转终止。不产出新批次，output_lot_id 为 null。_detail.extra 为空 {}，无 detention 相关字段。【三层快照路径】CancelLocalLotEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(localLotSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(localLotSnapshotOfSublot)→ Sublot；每片 wafer 写一行快照，无 isSource 侧别。与 CreateLocalLotEventRecord（op=18）互为逆操作，共用 localLotSnapshotOfWafer/localLotSnapshotOfSublot 快照路径。",
+      "subclass_of": "semi:ProductionEventRecord"
     },
     {
       "logic_class": "semi:ReworkEvent",
@@ -1423,7 +1432,8 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "批次返工操作执行记录，filter_condition = operation_type=12。将不良片批次切入返工子路径，创建新返工批次编号（批次编码中特定位数体现返工信息），wafer_id 全程不变。返工后片类型默认 Good，需后续检测确认是否救回。物理层三联写入：主记录表（op=12）+ _detail（extra 直接含 sourceLotCode/targetLotCode，每行同时记录两个批次编码，无 isSource 字段）+ _wafer_detail_log（逐片 Wafer 迁移明细）。【三层快照路径】ReworkEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(reworkSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(reworkSnapshotOfSublot)→ Sublot；血缘批次导航：WaferTransitionSnapshot →(reworkSourceLot)→ ProductionLot（_detail.extra.sourceLotCode）；WaferTransitionSnapshot →(reworkTargetLot)→ ProductionLot（_detail.extra.targetLotCode）。取消返工操作见 semi:CancelReworkEventRecord（op=13）。"
+      "note": "批次返工操作执行记录，filter_condition = operation_type=12。将不良片批次切入返工子路径，创建新返工批次编号（批次编码中特定位数体现返工信息），wafer_id 全程不变。返工后片类型默认 Good，需后续检测确认是否救回。物理层三联写入：主记录表（op=12）+ _detail（extra 直接含 sourceLotCode/targetLotCode，每行同时记录两个批次编码，无 isSource 字段）+ _wafer_detail_log（逐片 Wafer 迁移明细）。【三层快照路径】ReworkEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(reworkSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(reworkSnapshotOfSublot)→ Sublot；血缘批次导航：WaferTransitionSnapshot →(reworkSourceLot)→ ProductionLot（_detail.extra.sourceLotCode）；WaferTransitionSnapshot →(reworkTargetLot)→ ProductionLot（_detail.extra.targetLotCode）。取消返工操作见 semi:CancelReworkEventRecord（op=13）。",
+      "subclass_of": "semi:ProductionEventRecord"
     },
     {
       "logic_class": "semi:CancelReworkEvent",
@@ -1468,7 +1478,8 @@
         "trace_id"
       ],
       "operation_type_ref": "value_mappings.semi:LotOperationType",
-      "note": "取消返工操作执行记录，filter_condition = operation_type=13。对已通过批次返工（op=12）创建的返工批次执行取消，返工批次转为完结状态（Closed），流转终止。不产出新批次。【三层快照路径】CancelReworkEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(reworkSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(reworkSnapshotOfSublot)→ Sublot；每片 wafer 写一行快照，无 isSource 侧别区分。与 ReworkEventRecord（op=12）互为逆操作，共用 reworkSnapshotOfWafer/reworkSnapshotOfSublot 快照路径。"
+      "note": "取消返工操作执行记录，filter_condition = operation_type=13。对已通过批次返工（op=12）创建的返工批次执行取消，返工批次转为完结状态（Closed），流转终止。不产出新批次。【三层快照路径】CancelReworkEventRecord →(hasWaferTransitionDetail)→ WaferTransitionSnapshot →(reworkSnapshotOfWafer)→ Wafer；WaferTransitionSnapshot →(reworkSnapshotOfSublot)→ Sublot；每片 wafer 写一行快照，无 isSource 侧别区分。与 ReworkEventRecord（op=12）互为逆操作，共用 reworkSnapshotOfWafer/reworkSnapshotOfSublot 快照路径。",
+      "subclass_of": "semi:ProductionEventRecord"
     },
     {
       "logic_class": "semi:CheckInEvent",
@@ -1598,7 +1609,8 @@
         "deleted",
         "trace_id"
       ],
-      "note": "攒批执行记录。⚠ 物理单行模型：每次攒批操作写入一行，lot_code = 攒批产出的新批次编码（非源批次）。⚠ Wafer 视角：攒批后 wafer 的 lot 和 sublot 均变更为新批次（区别于并批只改 lot）。⚠ _detail.extra 攒批专用结构（按 isSource 分两类）：isSource=true 行={sourceLotCode:来源主批, targetLotCode:目标新批次}；isSource=false 行={targetLotCode:目标新批次, sourceLotCode:null}；不同操作类型 extra 结构不同，禁止跨类型复用。⚠ _wafer_detail_log.extra 对攒批事件为空({})，禁止走 WaferTransitionSnapshot.extra JSON 路径；_wafer_detail_log 通过 _detail(isSource=true) 记录攒批前 wafer 快照，通过 _detail(isSource=false) 记录攒批后快照。核心关系：producesLot(WaferTransitionSnapshot目标侧快照 via hasWaferTransitionDetail → _detail.extra.targetLotCode) + producesSublot(WaferTransitionSnapshot目标侧快照.sub_lot_code) + accumulatesFromLot(WaferTransitionSnapshot源侧快照 via hasSourceWaferTransitionDetail → _detail.extra.sourceLotCode) + accumulatesFromSublot(WaferTransitionSnapshot源侧快照.sub_lot_code)。均经快照层桥接，不在 EventRecord 层直连 lot。"
+      "note": "攒批执行记录。⚠ 物理单行模型：每次攒批操作写入一行，lot_code = 攒批产出的新批次编码（非源批次）。⚠ Wafer 视角：攒批后 wafer 的 lot 和 sublot 均变更为新批次（区别于并批只改 lot）。⚠ _detail.extra 攒批专用结构（按 isSource 分两类）：isSource=true 行={sourceLotCode:来源主批, targetLotCode:目标新批次}；isSource=false 行={targetLotCode:目标新批次, sourceLotCode:null}；不同操作类型 extra 结构不同，禁止跨类型复用。⚠ _wafer_detail_log.extra 对攒批事件为空({})，禁止走 WaferTransitionSnapshot.extra JSON 路径；_wafer_detail_log 通过 _detail(isSource=true) 记录攒批前 wafer 快照，通过 _detail(isSource=false) 记录攒批后快照。核心关系：producesLot(WaferTransitionSnapshot目标侧快照 via hasWaferTransitionDetail → _detail.extra.targetLotCode) + producesSublot(WaferTransitionSnapshot目标侧快照.sub_lot_code) + accumulatesFromLot(WaferTransitionSnapshot源侧快照 via hasSourceWaferTransitionDetail → _detail.extra.sourceLotCode) + accumulatesFromSublot(WaferTransitionSnapshot源侧快照.sub_lot_code)。均经快照层桥接，不在 EventRecord 层直连 lot。",
+      "subclass_of": "semi:ProductionEventRecord"
     },
     {
       "logic_class": "semi:MergeEvent",
@@ -1642,7 +1654,8 @@
         "deleted",
         "trace_id"
       ],
-      "note": "并批执行记录。lot_code=源批次（被并入的批次）。目标父批次通过 mergesIntoLot 关系（JoinVia _detail(isSource=true).extra.targetLotCode）查询。⚠ 并批后 Wafer 的 sub_lot_id 不变（只有 lot 归属变化），_wafer_detail_log.sub_lot_code 快照记录各自时刻的子批次编码。⚠ _detail.extra 并批专用结构：{isSource, sourceLotCode, targetLotCode}（无 SubLotCode 字段）。_wafer_detail_log 有并批前（isSource=true侧）/后（isSource=false侧）两类行。物理表无独立 output_lot_id/output_lot_code 列，禁止引用。是谱系操作（actsOnWafer 有逐片迁移明细）。"
+      "note": "并批执行记录。lot_code=源批次（被并入的批次）。目标父批次通过 mergesIntoLot 关系（JoinVia _detail(isSource=true).extra.targetLotCode）查询。⚠ 并批后 Wafer 的 sub_lot_id 不变（只有 lot 归属变化），_wafer_detail_log.sub_lot_code 快照记录各自时刻的子批次编码。⚠ _detail.extra 并批专用结构：{isSource, sourceLotCode, targetLotCode}（无 SubLotCode 字段）。_wafer_detail_log 有并批前（isSource=true侧）/后（isSource=false侧）两类行。物理表无独立 output_lot_id/output_lot_code 列，禁止引用。是谱系操作（actsOnWafer 有逐片迁移明细）。",
+      "subclass_of": "semi:ProductionEventRecord"
     },
     {
       "logic_class": "semi:WaferTransitionSnapshot",

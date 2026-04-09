@@ -18,14 +18,9 @@ compute_mode: python_compute
 compute_tool: final_yield_computer
 standard_definition: "综合良率 = 最终检验合格晶圆数 / 最终检验总晶圆数 × 100%"
 formula: "good_count(rn=1 DESC, wafer_type='good', ng_code IS NULL) / total_count(rn=1 DESC) * 100"
-required_columns:
-  - wafer_id
-  - process_code
-  - wafer_type
-  - ng_code
-  - rn
-  - product_code
-  - report_date
+computed_columns:
+  - "rn | ROW_NUMBER() OVER (PARTITION BY w.wafer_id, l.process_code ORDER BY l.gmt_create {rn_order}) | 取末次出站记录，rn=1 即最后一次经过该站点（含返工后结果）"
+  - "report_date | DATE(l.gmt_create) | 按日聚合键"
 rn_order: DESC
 granularity:
   - daily

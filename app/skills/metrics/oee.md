@@ -8,19 +8,19 @@ zh_names:
   - 设备效率
   - 设备稼动率
   - 设备利用率
+  - 可用率
+  - 性能率
+  - 设备可用率
+  - 设备性能率
+  - 可用性
+  - availability
+  - performance rate
 compute_mode: python_compute
 compute_tool: oee_computer
-standard_definition: "OEE = 可用率(Availability) × 性能率(Performance) × 良品率(Quality) × 100%"
+standard_definition: "OEE（设备综合效率）= 可用率（Availability）× 性能率（Performance）× 良品率（Quality）。查询可用率、性能率或良品率单因子时同样走此 skill，返回结果包含三因子明细及复合 OEE 值"
 formula: "availability * performance * quality / 10000"
-required_columns:
-  - equipment_id
-  - equipment_code
-  - status_code
-  - start_time
-  - end_time
-  - actual_output
-  - process_code
-  - report_date
+computed_columns:
+  - "report_date | DATE(l.gmt_create) | 按日聚合键"
 granularity:
   - daily
   - by_equipment
@@ -111,3 +111,4 @@ OEE = 可用率 × 性能率 × 良品率 / 10000
 - **设备状态分类对齐 SEMI E10**：`engineering`（工程实验）和 `scheduled_maintenance`（计划保养）不计入非计划停机
 - **跨天状态记录裁剪**：计算时按查询时间范围裁剪 start_time/end_time
 - **世界级基准**：OEE 85%（可用率 90% × 性能率 95% × 良品率 99.5%），化合物半导体实际通常 40%–70%
+- **单因子查询**：查询"可用率"、"性能率"、"良品率"时路由到本 skill，返回结果包含三因子明细，用户可在结果中查看对应单因子数值。若未来需要拆分为独立 skill，在 skills/metrics/ 下新建文件即可

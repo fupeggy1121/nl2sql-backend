@@ -179,6 +179,25 @@ CLASS_SYNONYMS: dict = {
         ],
     },
 
+    "semi:OpenLotEventRecord": {
+        "label_cn": "开批操作执行记录",
+        "synonyms": [
+            "开批", "投料", "投料开批", "开批记录", "开批历史", "开批操作记录",
+            "投料记录", "投料开批记录", "新批次创建", "批次开批",
+            "开工单", "投片", "投片记录", "批次投料",
+            "openlot", "open_lot", "openloteventrecord",
+        ],
+    },
+
+    "semi:CreateLocalLotEventRecord": {
+        "label_cn": "本地批次创建记录",
+        "synonyms": [
+            "本地批次创建", "本地开批", "本地投料", "半成品投料",
+            "创建本地批次", "本地批次投片", "代工投料",
+            "createlocalloteventrecord", "create_local_lot",
+        ],
+    },
+
     "semi:ProductionEventRecord": {
         "label_cn": "生产事件记录",
         "synonyms": [

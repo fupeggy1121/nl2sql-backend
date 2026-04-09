@@ -39,7 +39,7 @@ _ANALYSIS_KEYWORD_MAP = {
     r"预测|predict|forecast|random forest|随机森林": "prediction",
     r"异常检测|anomaly|outlier|离群|孤立|3[σσ]|三倍标准差": "anomaly",
     r"描述性统计|基础统计|descriptive stats": "descriptive",
-    r"OEE|综合效率|设备效率": "oee_report",
+    r"OEE|综合效率|设备效率|设备可用率|设备性能率|可用率.*设备|性能率.*设备|设备.*可用率|设备.*性能率": "oee_report",
 }
 
 
@@ -118,7 +118,7 @@ def _llm_route(user_input: str) -> Dict[str, Any]:
 
 判断规则：
 1. 如果问题明确提到 skill 列表中的指标名称或同义词 → skill
-2. 如果问题提到"设备"或"机台"，并伴随以下任一模糊运行状态词：跑得怎么样/稼动率/利用率/运行效率/设备效率/运行状态/产能利用 → skill, skill_name=oee，时间范围默认取近7天
+2. 如果问题提到"设备"或"机台"，并伴随以下任一模糊运行状态词：跑得怎么样/稼动率/利用率/运行效率/设备效率/运行状态/产能利用/可用率/性能率 → skill, skill_name=oee，时间范围默认取近7天
 3. 如果问题是查询统计分析（SPC/相关性/回归等）→ analysis
 4. 如果问题涉及 MES 业务数据查询但没有预定义 skill → adhoc
 5. 如果完全与 MES 无关 → out_of_scope
@@ -466,25 +466,22 @@ def _llm_build_detail_sql(skill, user_input: str) -> Optional[str]:
 {skill.body}
 """
 
-        # required_columns 硬约束：Python Computer 依赖的列，LLM 必须全部 SELECT
+        # 派生列约束：Python Computer 依赖的列，LLM 必须全部 SELECT
         req_cols_block = ""
-        if skill and skill.required_columns:
+        req_cols_instr = ""
+        computed_cols = skill.computed_columns if skill else []
+        if computed_cols:
+            # 新格式：computed_columns 显式声明派生列，物理列由 required_entities 提供
             col_lines = []
-            for col in skill.required_columns:
-                if col == "rn":
-                    order = skill.rn_order or "ASC"
-                    col_lines.append(
-                        f"  - rn   （必须用 ROW_NUMBER() OVER "
-                        f"(PARTITION BY wafer_id, process_code ORDER BY gmt_create {order}) AS rn）"
-                    )
-                elif col == "report_date":
-                    col_lines.append("  - report_date   （必须用 DATE(gmt_create) AS report_date）")
-                else:
-                    col_lines.append(f"  - {col}")
+            for cc in computed_cols:
+                expr = cc.expr.replace("{rn_order}", skill.rn_order or "ASC")
+                col_lines.append(f"  - {cc.name}   （{expr}）  -- {cc.purpose}")
             req_cols_block = (
-                "\n## Python Computer 必须列（SELECT 中必须包含，列名须完全一致）\n"
+                "\n## SQL 派生列（SELECT 中必须包含，表达式须与此完全一致）\n"
                 + "\n".join(col_lines) + "\n"
             )
+            req_cols_instr = '- SELECT 中必须包含"SQL 派生列"中的所有列，列名与表达式须与列表完全一致'
+
 
         prompt = f"""{skill_block}
 {metric_context}
@@ -506,7 +503,7 @@ def _llm_build_detail_sql(skill, user_input: str) -> Optional[str]:
 后续 Python 程序将读取这些明细行并完成指标计算，SQL 不做指标聚合。
 
 要求：
-- SELECT 中必须包含"Python Computer 必须列"中的所有列（列名须与列表完全一致）
+- {req_cols_instr}
 - 返回计算所需的原始明细行（行级数据）
 - 必须应用"自动过滤条件"中的所有 WHERE 条件
 - 时间范围过滤用 gmt_create BETWEEN 或 >= / <=

@@ -17,10 +17,6 @@ compute_tool: wafer_wip_computer
 standard_definition: "在制品数量 = COUNT(DISTINCT wafer记录) 当前还在线上活跃子批次中的晶圆数，按工站/产品/路线维度汇总的预定义指标；不是批次计数查询"
 formula: "COUNT(DISTINCT wafer.id) WHERE lot.status=50 AND lot.parent_id!=0"
 rn_order: ""
-required_columns:
-  - wafer_id
-  - process_name
-  - product_code
 granularity:
   - 工站
   - 机台

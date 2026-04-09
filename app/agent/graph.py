@@ -26,7 +26,6 @@ from app.agent.nodes import (
     query_decomposer_node,
     sql_generator_node,
     sql_validator_node,
-    data_executor_node,
     result_analyzer_node,
     chart_generator_node,
     response_builder_node,
@@ -36,6 +35,7 @@ from app.agent.nodes import (
     clarification_node,       # Clarification 新增
     baseline_manager_node,    # 预警基线管理
 )
+from app.agent.nodes.execution_engine_node import execution_engine_node
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +161,7 @@ def build_agent_graph() -> StateGraph:
     graph.add_node("query_decomposer", query_decomposer_node)
     graph.add_node("sql_generator", sql_generator_node)
     graph.add_node("sql_validator", sql_validator_node)
-    graph.add_node("data_executor", data_executor_node)
+    graph.add_node("data_executor", execution_engine_node)
     graph.add_node("result_analyzer", result_analyzer_node)
     graph.add_node("chart_generator", chart_generator_node)
     graph.add_node("response_builder", response_builder_node)

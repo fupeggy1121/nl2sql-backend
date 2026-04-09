@@ -9,11 +9,8 @@ compute_mode: python_compute
 compute_tool: rework_rate_computer
 standard_definition: "返工率 = 返工晶圆数 / 总晶圆数 × 100%"
 formula: "count(visit_count > 1) / total_count * 100"
-required_columns:
-  - wafer_id
-  - process_code
-  - product_code
-  - report_date
+computed_columns:
+  - "report_date | DATE(l.gmt_create) | 按日聚合键"
 granularity:
   - daily
   - by_process
