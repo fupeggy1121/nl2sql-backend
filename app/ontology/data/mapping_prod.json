@@ -836,7 +836,8 @@
       ],
       "view_query": "SELECT trace_code, lot_id, sub_lot_id, process_id, process_code, eqp_id, create_user_id, create_user, MIN(gmt_create) AS gmt_create, COUNT(*) AS wafer_count FROM process_measure_data WHERE deleted = 0 GROUP BY trace_code, lot_id, sub_lot_id, process_id, process_code, eqp_id, create_user_id, create_user",
       "note": "量测录入事件记录（事件层）。代表一次完整的量测/制程参数录入会话，以 trace_code 作为事件边界标识：同一 trace_code 下的所有明细行属于同一次录入事件。\n\n当前临时映射：physical_table 声明真实存储表 process_measure_data；view_query 声明事件级聚合子查询（GROUP BY trace_code），SQL 生成时须用 view_query 替换直接的表引用。核心关联：hasSnapshot → WaferMeasurementSnapshot（1:N，每片 Wafer × 每个参数一条快照明细）。\n\n迁移路径：待 batch_resume_log 补充 operation_type 字段（pending_operation_type = TBD）后，MeasurementPassRecord 将迁移到 batch_resume_log 独立行，届时删除 view_query、修改 physical_table，TTL/SQL生成逻辑不变。\n\n事件层属性：gmt_create（录入时间）、create_user/create_user_id（操作员）。",
-      "pending_operation_type": "TBD"
+      "pending_operation_type": "TBD",
+      "estimated_rows": "large"
     },
     {
       "logic_class": "semi:WaferMeasurementSnapshot",
@@ -912,7 +913,8 @@
         "trace_id",
         "extra"
       ],
-      "note": "晶圆量测参数快照（快照明细层）。一片 Wafer 一个参数一行，代表一次量测录入行为中每片 Wafer 每个参数的具体采集结果。物理映射：process_measure_data（与 MeasurementPassRecord 当前同表，未来拆分为独立明细表）。\n\ntrace_code 是关联到 MeasurementPassRecord 事件层的分组键：同一 trace_code 的所有快照行属于同一次录入事件（通过 semi:hasTraceCode 属性暴露）。\n\n对象属性（6个，用于语义导航和 JOIN 查询）：\n• snapshotOfWafer → Wafer（wafer_id，核心锚点，全局唯一不变）\n• snapshotAtStation → ProcessStation（process_code → matrix_routerx_config_process.code）\n• snapshotOnEquipment → Equipment（eqp_id → equipment.id，type=1 人工录入时为空）\n• snapshotOfParam → ParamDefinition（param_model_id → param_model.id）\n• snapshotInLot → ProductionLot（lot_id varchar 快照编码 → operation_lot.current_lot_code）\n• snapshotInSublot → Sublot（sub_lot_id varchar 快照编码 → operation_lot.current_lot_code WHERE parent_id!=0）\n\n数据属性（4个）：\n• hasParamValue（value）—— 参数实测值\n• hasParamType（type）—— 参数来源类型枚举：1=制程参数，2=量测参数\n• hasLotCodeSnapshot（lot_id）—— 采集时刻批次编码文本快照，用于直接 WHERE 过滤而不走 JOIN\n• hasSublotCodeSnapshot（sub_lot_id）—— 采集时刻子批次编码文本快照\n\n辅助字段：\n• lot_last / sub_lot_last: 快照有效性标记 — 1 表示该 wafer 在当前批次/子批次上下文下的最新记录\n• param_model_id → param_model: 参数规格语义注释；param_group_id → param_group: 参数分组聚合"
+      "note": "晶圆量测参数快照（快照明细层）。一片 Wafer 一个参数一行，代表一次量测录入行为中每片 Wafer 每个参数的具体采集结果。物理映射：process_measure_data（与 MeasurementPassRecord 当前同表，未来拆分为独立明细表）。\n\ntrace_code 是关联到 MeasurementPassRecord 事件层的分组键：同一 trace_code 的所有快照行属于同一次录入事件（通过 semi:hasTraceCode 属性暴露）。\n\n对象属性（6个，用于语义导航和 JOIN 查询）：\n• snapshotOfWafer → Wafer（wafer_id，核心锚点，全局唯一不变）\n• snapshotAtStation → ProcessStation（process_code → matrix_routerx_config_process.code）\n• snapshotOnEquipment → Equipment（eqp_id → equipment.id，type=1 人工录入时为空）\n• snapshotOfParam → ParamDefinition（param_model_id → param_model.id）\n• snapshotInLot → ProductionLot（lot_id varchar 快照编码 → operation_lot.current_lot_code）\n• snapshotInSublot → Sublot（sub_lot_id varchar 快照编码 → operation_lot.current_lot_code WHERE parent_id!=0）\n\n数据属性（4个）：\n• hasParamValue（value）—— 参数实测值\n• hasParamType（type）—— 参数来源类型枚举：1=制程参数，2=量测参数\n• hasLotCodeSnapshot（lot_id）—— 采集时刻批次编码文本快照，用于直接 WHERE 过滤而不走 JOIN\n• hasSublotCodeSnapshot（sub_lot_id）—— 采集时刻子批次编码文本快照\n\n辅助字段：\n• lot_last / sub_lot_last: 快照有效性标记 — 1 表示该 wafer 在当前批次/子批次上下文下的最新记录\n• param_model_id → param_model: 参数规格语义注释；param_group_id → param_group: 参数分组聚合",
+      "estimated_rows": "large"
     },
     {
       "logic_class": "semi:MeasurementEvent",
@@ -1755,7 +1757,8 @@
           ],
           "note": "wafer_type 直接列，【整数枚举，禁止字符串比较】NULL=good/良品；2=reject/不良；9=loss/碎片/报销。SQL查询NG片：wafer_type IS NOT NULL 或 wafer_type IN (2, 9)，禁止 wafer_type='reject'。SQL查询良品：wafer_type IS NULL，禁止 wafer_type='good'。禁止使用 COALESCE(wafer_type,'good')（整数与字符串类型不兼容）。不良录入(op=6)后 wafer_type=2；取消不良(op=7)后 wafer_type=NULL；返工(op=12)后 wafer_type=NULL（默认良品）"
         }
-      }
+      },
+      "estimated_rows": "large"
     },
     {
       "logic_class": "semi:WarehouseLocation",

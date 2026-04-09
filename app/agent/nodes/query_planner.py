@@ -206,18 +206,37 @@ def _detect_forced_execution_plan(user_input: str) -> "dict | None":
     命中则返回骨架 ExecutionPlan dict（含 _forced=True 标记）；未命中返回 None。
 
     触发规则：
-      multi_sql_merge : 同时提及两张已知大表
+      multi_sql_merge : 同时提及 mapping_prod.json 中 estimated_rows:large 标记的 2+ 张大表
       sql_then_python  : 明确要求行列转置/透视表
     """
     import re
 
     text = user_input.lower()
 
-    # ── 规则 1: 两张 resume 大表同时出现 → multi_sql_merge ──
-    LARGE_TABLE_A = "matrix_routerx_operation_lot_batch_resume_log_detail"
-    LARGE_TABLE_B = "matrix_routerx_operation_lot_batch_resume_wafer_detail_log"
-    if LARGE_TABLE_A.lower() in text and LARGE_TABLE_B.lower() in text:
-        matched_tables = [LARGE_TABLE_A, LARGE_TABLE_B]
+    # ── 规则 1: 两张大表同时出现 → multi_sql_merge ──
+    # 大表集合从 mapping_prod.json 的 estimated_rows:"large" 动态读取，
+    # 并扩展到与大表直接 JOIN 且共享同一业务前缀的 via_table（如 batch_resume_log_detail）。
+    try:
+        from app.ontology.mapping import get_mapping
+        _m = get_mapping()
+        _large_tables: set[str] = {
+            pt.table_name
+            for pt in _m.list_physical_tables()
+            if pt.estimated_rows == "large" and pt.table_name
+        }
+        # 扩展：把与大表 JOIN 且共享 resume 业务前缀的 via_table 也纳入大表集合
+        _RESUME_PREFIX = "matrix_routerx_operation_lot_batch_resume"
+        for _rel in _m.list_all_relations():
+            for _jc in _rel.join_conditions:
+                if _jc.from_table in _large_tables and _jc.to_table.startswith(_RESUME_PREFIX):
+                    _large_tables.add(_jc.to_table)
+                if _jc.to_table in _large_tables and _jc.from_table.startswith(_RESUME_PREFIX):
+                    _large_tables.add(_jc.from_table)
+    except Exception:
+        _large_tables = set()
+
+    matched_tables = [t for t in _large_tables if t.lower() in text]
+    if len(matched_tables) >= 2:
         decomposed = _decompose_query_for_multi_sql(user_input, matched_tables)
         if decomposed:
             return decomposed

@@ -40,6 +40,7 @@ class PhysicalTable:
     time_column: Optional[str] = None        # 时间锚点列，有此字段的实体为时间过滤主表
     subclass_of: Optional[str] = None        # 父类 logic_class，用于关系匹配时的父类权限上卷
     note: Optional[str] = None
+    estimated_rows: Optional[str] = None     # 规模提示: "large" 表示超大表，query_planner 据此判断是否拆解
 
 
 @dataclass
@@ -307,6 +308,7 @@ class MappingDictionary:
                 time_column=item.get("time_column"),
                 subclass_of=item.get("subclass_of"),
                 note=item.get("note"),
+                estimated_rows=item.get("estimated_rows"),
             )
             self._table_by_class[pt.logic_class] = pt
             # 全量多表索引（每个本体类可能对应多张物理表）
