@@ -138,14 +138,14 @@ function EntityCard({ group, active, searchTerm, onClick }: {
     if (!searchTerm) return text;
     const idx = text.toLowerCase().indexOf(searchTerm.toLowerCase());
     if (idx < 0) return text;
-    return <>{text.slice(0, idx)}<mark style={{ background: '#fef08a', borderRadius: 2, padding: 0 }}>{text.slice(idx, idx + searchTerm.length)}</mark>{text.slice(idx + searchTerm.length)}</>;
+    return <>{text.slice(0, idx)}<mark style={{ background: 'rgba(250,204,21,0.3)', color: '#fef08a', borderRadius: 2, padding: 0 }}>{text.slice(idx, idx + searchTerm.length)}</mark>{text.slice(idx + searchTerm.length)}</>;
   };
 
   return (
     <button onClick={onClick} style={{
       display: 'block', width: '100%', textAlign: 'left', padding: '11px 12px', borderRadius: 9,
-      border: active ? `2px solid ${scene.color}` : '2px solid #e5e7eb',
-      background: active ? `${scene.color}08` : '#12142a',
+      border: active ? `2px solid ${scene.color}` : '2px solid #2d284e',
+      background: active ? `${scene.color}18` : '#12142a',
       cursor: 'pointer', marginBottom: 7, transition: 'all .12s',
       boxShadow: active ? `0 0 0 3px ${scene.color}20` : 'none',
     }}>
@@ -185,9 +185,9 @@ function SynonymChip({ s, onToggle, onDelete }: {
   const canEdit = !!s.id && !isBuiltin;
   const tooltip = `来源：${s.source === 'builtin' ? '内置' : s.source === 'manual' ? '手动' : '自动'}${s.created_at ? ' | ' + new Date(s.created_at).toLocaleDateString('zh-CN') : ''}`;
 
-  const borderColor = !s.is_active ? '#2d284e' : isBuiltin ? '#bfdbfe' : s.source === 'manual' ? '#e9d5ff' : '#a7f3d0';
-  const bg = !s.is_active ? '#f9fafb' : isBuiltin ? '#eff6ff' : s.source === 'manual' ? '#faf5ff' : '#f0fdf4';
-  const color = !s.is_active ? '#9ca3af' : isBuiltin ? '#1d4ed8' : s.source === 'manual' ? '#7c3aed' : '#065f46';
+  const borderColor = !s.is_active ? '#2d284e' : isBuiltin ? 'rgba(59,130,246,0.45)' : s.source === 'manual' ? 'rgba(139,92,246,0.45)' : 'rgba(16,185,129,0.4)';
+  const bg = !s.is_active ? '#0d0e1a' : isBuiltin ? 'rgba(59,130,246,0.1)' : s.source === 'manual' ? 'rgba(139,92,246,0.1)' : 'rgba(16,185,129,0.1)';
+  const color = !s.is_active ? '#4b5563' : isBuiltin ? '#93c5fd' : s.source === 'manual' ? '#c084fc' : '#34d399';
 
   return (
     <span title={tooltip} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{
@@ -271,7 +271,7 @@ function DetailPanel({ group, allUris, onRefresh }: {
   for (const s of group.synonyms) bySource[s.source ?? 'manual'].push(s);
 
   const sourceLabel: Record<string, string> = { builtin: '内置词', manual: '手动维护', auto: '自动学习' };
-  const sourceColor: Record<string, string> = { builtin: '#1d4ed8', manual: '#7c3aed', auto: '#059669' };
+  const sourceColor: Record<string, string> = { builtin: '#60a5fa', manual: '#c084fc', auto: '#34d399' };
 
   return (
     <div style={{ flex: 1, padding: '20px 24px', overflowY: 'auto' as const }}>
@@ -290,12 +290,12 @@ function DetailPanel({ group, allUris, onRefresh }: {
         </div>
         <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
           <div style={{ fontSize: 13, color: '#c4c9d6', marginBottom: 4 }}>
-            共 <b>{group.synonyms.length}</b> 条 · 活跃 <b style={{ color: '#059669' }}>{group.synonyms.filter(s => s.is_active).length}</b>
+            共 <b>{group.synonyms.length}</b> 条 · 活跃 <b style={{ color: '#34d399' }}>{group.synonyms.filter(s => s.is_active).length}</b>
           </div>
           <div style={{ display: 'flex', gap: 10, fontSize: 11, color: '#9ca3af', justifyContent: 'flex-end' }}>
-            <span style={{ color: '#1d4ed8' }}>● 内置 {bySource.builtin.length}</span>
-            <span style={{ color: '#7c3aed' }}>● 手动 {bySource.manual.length}</span>
-            <span style={{ color: '#059669' }}>● 自动 {bySource.auto.length}</span>
+            <span style={{ color: '#60a5fa' }}>● 内置 {bySource.builtin.length}</span>
+            <span style={{ color: '#c084fc' }}>● 手动 {bySource.manual.length}</span>
+            <span style={{ color: '#34d399' }}>● 自动 {bySource.auto.length}</span>
           </div>
         </div>
       </div>
@@ -321,7 +321,7 @@ function DetailPanel({ group, allUris, onRefresh }: {
 
       <div style={{
         marginTop: 8, padding: '13px 15px', borderRadius: 9,
-        border: '1px dashed #d1d5db', background: '#12142a',
+        border: '1px dashed #3d3870', background: '#12142a',
       }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: '#c4c9d6', marginBottom: 7 }}>
           + 添加同义词
@@ -356,9 +356,9 @@ function DetailPanel({ group, allUris, onRefresh }: {
 
       <div style={{ marginTop: 14, fontSize: 11, color: '#9ca3af' }}>
         悬停词片可 ⏸ 停用 / × 删除 &nbsp;｜&nbsp;
-        <span style={{ color: '#1d4ed8' }}>蓝框 = 内置（不可删）</span> &nbsp;
-        <span style={{ color: '#7c3aed' }}>紫框 = 手动</span> &nbsp;
-        <span style={{ color: '#059669' }}>绿框 = 自动学习</span>
+        <span style={{ color: '#60a5fa' }}>蓝框 = 内置（不可删）</span> &nbsp;
+        <span style={{ color: '#c084fc' }}>紫框 = 手动</span> &nbsp;
+        <span style={{ color: '#34d399' }}>绿框 = 自动学习</span>
       </div>
     </div>
   );
@@ -499,7 +499,7 @@ export default function SynonymManager() {
             <span style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9' }}>同义词管理</span>
             {stats && (
               <div style={{ display: 'flex', gap: 10, fontSize: 12, color: '#6b7280' }}>
-                <span>活跃 <b style={{ color: '#059669' }}>{stats.synonyms.active}</b></span>
+                <span>活跃 <b style={{ color: '#34d399' }}>{stats.synonyms.active}</b></span>
                 <span>本体类 <b>{stats.synonyms.tables}</b></span>
                 {stats.unmatched.pending > 0 && (
                   <span style={{ color: '#d97706' }}>待审批 <b>{stats.unmatched.pending}</b></span>
@@ -516,8 +516,8 @@ export default function SynonymManager() {
             <div key={t}
               style={{
                 padding: '10px 18px', cursor: 'pointer', fontSize: 13, fontWeight: tab === t ? 600 : 400,
-                color: tab === t ? '#4f46e5' : '#6b7280',
-                borderBottom: `2px solid ${tab === t ? '#4f46e5' : 'transparent'}`,
+                color: tab === t ? '#a5b4fc' : '#6b7280',
+                borderBottom: `2px solid ${tab === t ? '#818cf8' : 'transparent'}`,
                 marginBottom: -1,
               }}
               onClick={() => setTab(t)}>
@@ -575,7 +575,7 @@ export default function SynonymManager() {
                 ))
               )}
             </div>
-            <div style={{ padding: '7px 12px', borderTop: '1px solid #f3f4f6', fontSize: 11, color: '#9ca3af', display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ padding: '7px 12px', borderTop: '1px solid #1e1b4b', fontSize: 11, color: '#9ca3af', display: 'flex', justifyContent: 'space-between' }}>
               <span>{filteredGroups.length} 个本体对象</span>
               <span>{filteredGroups.reduce((n, g) => n + g.synonyms.filter(s => s.is_active).length, 0)} 条活跃</span>
             </div>
@@ -663,7 +663,7 @@ export default function SynonymManager() {
                   <tr key={l.id ?? i} style={{ borderBottom: '1px solid #1e1b4b' }}>
                     <td style={{ padding: '9px 14px', color: '#6b7280', whiteSpace: 'nowrap' }}>{l.created_at ? new Date(l.created_at).toLocaleString('zh-CN') : '—'}</td>
                     <td style={{ padding: '9px 14px' }}>
-                      <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: 'rgba(59,130,246,0.2)', color: '#1d4ed8' }}>{l.action}</span>
+                      <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: 'rgba(59,130,246,0.15)', color: '#93c5fd' }}>{l.action}</span>
                     </td>
                     <td style={{ padding: '9px 14px' }}><code style={{ fontSize: 11, background: '#1a1c35', padding: '1px 6px', borderRadius: 4 }}>{l.target_uri || (l as any).table_name || '—'}</code></td>
                     <td style={{ padding: '9px 14px', fontWeight: 600 }}>{l.synonym}</td>
@@ -705,7 +705,7 @@ export default function SynonymManager() {
                 <span>出现 {approveItem.frequency} 次</span>
               </div>
             </div>
-            <div style={{ padding: '12px 22px', borderTop: '1px solid #f3f4f6', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <div style={{ padding: '12px 22px', borderTop: '1px solid #2d284e', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button style={S.btn('#6b7280')} onClick={() => setShowApproveModal(false)}>取消</button>
               <button style={S.btn('#059669')} onClick={handleApprove}>✓ 审批通过</button>
             </div>
