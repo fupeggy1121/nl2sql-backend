@@ -125,11 +125,6 @@ export default function BaselinesManager() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="w-full p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">数据源管理</h1>
-          <p className="text-sm text-gray-500 mt-1">预警基线配置与管理</p>
-        </div>
-
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-200">
             <AlertCircle size={16} className="text-orange-500" />
@@ -163,50 +158,72 @@ export default function BaselinesManager() {
             ) : items.length === 0 ? (
               <div className="text-sm text-gray-400 py-8 text-center">暂无预警基线，点击「新建基线」创建第一条</div>
             ) : (
-              <div className="space-y-2">
-                {items.map(bl => (
-                  <div key={bl.id} className={`border rounded-lg p-4 ${bl.enabled ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50 opacity-60'}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium text-gray-900 text-sm">{bl.label}</span>
-                          <span className="font-mono text-xs text-gray-400 border border-gray-200 rounded px-1">{bl.field}</span>
+              <div className="overflow-hidden rounded-lg border border-gray-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left text-xs font-medium text-gray-500 px-4 py-2.5">名称</th>
+                      <th className="text-left text-xs font-medium text-gray-500 px-4 py-2.5">字段</th>
+                      <th className="text-left text-xs font-medium text-gray-500 px-4 py-2.5">阈值</th>
+                      <th className="text-left text-xs font-medium text-gray-500 px-4 py-2.5">方向</th>
+                      <th className="text-left text-xs font-medium text-gray-500 px-4 py-2.5">关键词</th>
+                      <th className="text-left text-xs font-medium text-gray-500 px-4 py-2.5">状态</th>
+                      <th className="text-right text-xs font-medium text-gray-500 px-4 py-2.5">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {items.map(bl => (
+                      <tr key={bl.id} className={`hover:bg-gray-50 transition-colors ${!bl.enabled ? 'opacity-60' : ''}`}>
+                        <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{bl.label}</td>
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-xs text-gray-500 border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50">{bl.field}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {(bl.thresholds || []).map((t, i) => (
+                              <span key={i} className="text-xs rounded-full px-2 py-0.5 font-medium whitespace-nowrap"
+                                style={{ backgroundColor: `${t.color || '#6b7280'}20`, color: t.color || '#6b7280', border: `1px solid ${t.color || '#6b7280'}40` }}>
+                                {t.label}: {t.value}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
                           <span className={`text-xs px-1.5 py-0.5 rounded-full ${bl.direction === 'above' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
                             {bl.direction === 'above' ? '超过预警' : '低于预警'}
                           </span>
-                          {!bl.enabled && <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">已禁用</span>}
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {(bl.thresholds || []).map((t, i) => (
-                            <span key={i} className="text-xs rounded-full px-2 py-0.5 font-medium"
-                              style={{ backgroundColor: `${t.color || '#6b7280'}20`, color: t.color || '#6b7280', border: `1px solid ${t.color || '#6b7280'}40` }}>
-                              {t.label}: {t.value}
-                            </span>
-                          ))}
-                        </div>
-                        {bl.keywords?.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1.5">
-                            {bl.keywords.map((kw, i) => (
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {(bl.keywords || []).map((kw, i) => (
                               <span key={i} className="text-xs bg-gray-100 text-gray-600 rounded px-1.5 py-0.5">{kw}</span>
                             ))}
                           </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <button onClick={() => handleToggle(bl.id)} title={bl.enabled ? '禁用' : '启用'}
-                          className="text-xs px-2 py-1 border rounded hover:bg-gray-50">
-                          {bl.enabled ? '禁用' : '启用'}
-                        </button>
-                        <button onClick={() => handleEdit(bl)} className="p-1.5 rounded hover:bg-blue-50 text-blue-600">
-                          <Edit2 size={13} />
-                        </button>
-                        <button onClick={() => handleDelete(bl.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500">
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {bl.enabled
+                            ? <span className="text-xs bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-full">启用</span>
+                            : <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">禁用</span>
+                          }
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button onClick={() => handleToggle(bl.id)} title={bl.enabled ? '禁用' : '启用'}
+                              className="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-50">
+                              {bl.enabled ? '禁用' : '启用'}
+                            </button>
+                            <button onClick={() => handleEdit(bl)} className="p-1.5 rounded hover:bg-blue-50 text-blue-600">
+                              <Edit2 size={13} />
+                            </button>
+                            <button onClick={() => handleDelete(bl.id)} className="p-1.5 rounded hover:bg-red-50 text-red-500">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
 

@@ -346,14 +346,8 @@ export default function DataSourceManager() {
     <div style={{ padding: '28px 32px', maxWidth: 820 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <Database size={20} color="#6366f1" />
-            <span style={{ fontSize: 20, fontWeight: 700, color: '#f1f5f9' }}>数据源管理</span>
-          </div>
-          <div style={{ fontSize: 13, color: '#6b7280' }}>
-            配置和管理多个 MySQL 数据库连接，系统将在查询时自动路由到对应数据源
-          </div>
+        <div style={{ fontSize: 13, color: '#6b7280' }}>
+          配置和管理多个 MySQL 数据库连接，系统将在查询时自动路由到对应数据源
         </div>
         <button style={btn('#4f46e5', '#fff')} onClick={openNew}>
           <Plus size={14} /> 新增数据源
