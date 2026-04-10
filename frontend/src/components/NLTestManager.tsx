@@ -389,9 +389,9 @@ const NLTestManager: React.FC = () => {
           {/* summary badges */}
           {done.length > 0 && (
             <>
-              <Badge color="#16a34a" bg="#f0fdf4">{passed.length} 通过</Badge>
-              {failed.length > 0 && <Badge color="#dc2626" bg="#fef2f2">{failed.length} 失败</Badge>}
-              {running_n > 0 && <Badge color="#d97706" bg="#fffbeb">{running_n} 进行中</Badge>}
+              <Badge color="#4ade80" bg="rgba(22,163,74,0.15)">{passed.length} 通过</Badge>
+              {failed.length > 0 && <Badge color="#f87171" bg="rgba(220,38,38,0.15)">{failed.length} 失败</Badge>}
+              {running_n > 0 && <Badge color="#fbbf24" bg="rgba(245,158,11,0.15)">{running_n} 进行中</Badge>}
             </>
           )}
           <Btn icon={Download} onClick={exportReport} disabled={done.length === 0}>导出报告</Btn>
@@ -420,7 +420,7 @@ const NLTestManager: React.FC = () => {
             return (
               <div key={tc.id}
                 onClick={() => setSelected(tc.id)}
-                style={{ padding: '10px 14px', cursor: 'pointer', background: isActive ? '#eff6ff' : 'transparent', borderLeft: isActive ? '3px solid #2563eb' : '3px solid transparent', borderBottom: '1px solid #1e1b4b', display: 'flex', flexDirection: 'column', gap: 3 }}
+                style={{ padding: '10px 14px', cursor: 'pointer', background: isActive ? 'rgba(99,102,241,0.15)' : 'transparent', borderLeft: isActive ? '3px solid #6366f1' : '3px solid transparent', borderBottom: '1px solid #1e1b4b', display: 'flex', flexDirection: 'column', gap: 3 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -433,25 +433,25 @@ const NLTestManager: React.FC = () => {
                     <IconBtn title="删除" onClick={e => { e.stopPropagation(); deleteCase(tc.id); }}><Trash2 size={12} color="#dc2626" /></IconBtn>
                   </div>
                 </div>
-                <div style={{ fontSize: 12, color: '#1d4ed8', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 12, color: '#a5b4fc', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {tc.nl}
                 </div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <PillTag>×{tc.run_count} 次</PillTag>
                   {st?.status === 'done' && (
                     <>
-                      <PillTag color={passAll ? '#16a34a' : '#dc2626'} bg={passAll ? '#f0fdf4' : '#fef2f2'}>
+                      <PillTag color={passAll ? '#4ade80' : '#f87171'} bg={passAll ? 'rgba(22,163,74,0.15)' : 'rgba(220,38,38,0.15)'}>
                         {st.runs.filter(r => r.success).length}/{st.runs.length} pass
                       </PillTag>
                       {tc.run_count > 1 && st.stable !== null && (
-                        <PillTag color={st.stable ? '#0891b2' : '#d97706'} bg={st.stable ? '#ecfeff' : '#fffbeb'}>
+                        <PillTag color={st.stable ? '#67e8f9' : '#fbbf24'} bg={st.stable ? 'rgba(8,145,178,0.15)' : 'rgba(245,158,11,0.15)'}>
                           {st.stable ? '稳定' : '不稳定'}
                         </PillTag>
                       )}
                     </>
                   )}
                   {isRunning && (
-                    <PillTag color="#7c3aed" bg="#f5f3ff">
+                    <PillTag color="#c084fc" bg="rgba(124,58,237,0.15)">
                       <Loader2 size={9} style={{ animation: 'spin 1s linear infinite' }} />运行中
                     </PillTag>
                   )}
@@ -515,7 +515,7 @@ const CaseDetail: React.FC<{
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>{tc.id}</div>
-            <div style={{ fontSize: 14, color: '#1d4ed8', fontWeight: 500, marginBottom: 6 }}>"{tc.nl}"</div>
+            <div style={{ fontSize: 14, color: '#a5b4fc', fontWeight: 500, marginBottom: 6 }}>"{tc.nl}"</div>
             <div style={{ fontSize: 12, color: '#6b7280' }}>{tc.intent}</div>
           </div>
           <button onClick={onRun} disabled={isRunning}
@@ -528,13 +528,13 @@ const CaseDetail: React.FC<{
         {/* assertions */}
         <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {tc.expected.sql_contains.map(kw => (
-            <PillTag key={kw} color="#0891b2" bg="#ecfeff">must: {kw}</PillTag>
+            <PillTag key={kw} color="#67e8f9" bg="rgba(8,145,178,0.15)">must: {kw}</PillTag>
           ))}
           {tc.expected.sql_excludes.map(kw => (
-            <PillTag key={kw} color="#dc2626" bg="#fef2f2">no: {kw}</PillTag>
+            <PillTag key={kw} color="#f87171" bg="rgba(239,68,68,0.15)">no: {kw}</PillTag>
           ))}
           {tc.expected.tables_present.map(t => (
-            <PillTag key={t} color="#7c3aed" bg="#f5f3ff">table: {t}</PillTag>
+            <PillTag key={t} color="#c084fc" bg="rgba(124,58,237,0.15)">table: {t}</PillTag>
           ))}
         </div>
       </div>
@@ -545,7 +545,7 @@ const CaseDetail: React.FC<{
           <div style={{ fontSize: 12, fontWeight: 600, color: '#c4c9d6', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
             <ListChecks size={13} /> 运行结果
             {st.status === 'done' && tc.run_count > 1 && st.stable !== null && (
-              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 9999, background: st.stable ? '#ecfeff' : '#fffbeb', color: st.stable ? '#0891b2' : '#d97706', fontWeight: 600 }}>
+              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 9999, background: st.stable ? 'rgba(8,145,178,0.15)' : 'rgba(245,158,11,0.15)', color: st.stable ? '#67e8f9' : '#fbbf24', fontWeight: 600 }}>
                 {st.stable ? '✓ 输出稳定' : '⚠ 多次输出不一致'}
               </span>
             )}
@@ -588,14 +588,14 @@ const RunCard: React.FC<{ run: RunResult; total: number; expanded: boolean; onTo
 
   return (
     <div style={{ background: '#12142a', border: `1px solid ${run.success ? '#bbf7d0' : '#fecaca'}`, borderRadius: 8, overflow: 'hidden' }}>
-      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', background: run.success ? '#f0fdf4' : '#fef2f2' }}>
+      <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', background: run.success ? 'rgba(22,163,74,0.1)' : 'rgba(220,38,38,0.1)' }}>
         {run.success
           ? <CheckCircle size={14} color="#16a34a" />
           : <AlertCircle size={14} color="#dc2626" />
         }
         <span style={{ fontSize: 12, fontWeight: 600, color: '#c4c9d6' }}>Run {run.run_idx}/{total}</span>
         {run.sql_retry_count > 0 && (
-          <PillTag color="#d97706" bg="#fffbeb">retry ×{run.sql_retry_count}</PillTag>
+            <PillTag color="#fbbf24" bg="rgba(245,158,11,0.15)">retry ×{run.sql_retry_count}</PillTag>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 11, color: '#9ca3af', display: 'flex', alignItems: 'center', gap: 3 }}><Clock size={10} />{run.latency_ms.toFixed(0)}ms</span>
@@ -621,13 +621,13 @@ const RunCard: React.FC<{ run: RunResult; total: number; expanded: boolean; onTo
           {run.physical_tables.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               <span style={{ fontSize: 11, color: '#6b7280', marginRight: 4 }}>物理表:</span>
-              {run.physical_tables.map(t => <PillTag key={t} color="#7c3aed" bg="#f5f3ff">{t}</PillTag>)}
+              {run.physical_tables.map(t => <PillTag key={t} color="#c084fc" bg="rgba(124,58,237,0.15)">{t}</PillTag>)}
             </div>
           )}
           {run.matched_classes.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               <span style={{ fontSize: 11, color: '#6b7280', marginRight: 4 }}>本体类:</span>
-              {run.matched_classes.map(c => <PillTag key={c} color="#0891b2" bg="#ecfeff">{c}</PillTag>)}
+              {run.matched_classes.map(c => <PillTag key={c} color="#67e8f9" bg="rgba(8,145,178,0.15)">{c}</PillTag>)}
             </div>
           )}
 
@@ -664,7 +664,7 @@ const DiffPanel: React.FC<{ runs: RunResult[] }> = ({ runs }) => {
 
   return (
     <div style={{ marginTop: 12, background: '#12142a', border: '1px solid #fde68a', borderRadius: 8, overflow: 'hidden' }}>
-      <div style={{ background: 'rgba(245,158,11,0.1)', padding: '8px 14px', fontSize: 12, fontWeight: 600, color: '#92400e', display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ background: 'rgba(245,158,11,0.1)', padding: '8px 14px', fontSize: 12, fontWeight: 600, color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 6 }}>
         <BarChart2 size={13} /> SQL 差异分析（多次运行不一致）
       </div>
       {diffs.map(d => (
@@ -672,7 +672,7 @@ const DiffPanel: React.FC<{ runs: RunResult[] }> = ({ runs }) => {
           <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 6 }}>{d.label}</div>
           <pre style={{ margin: 0, fontSize: 11, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
             {d.lines.map((line, i) => (
-              <div key={i} style={{ background: line.startsWith('-') ? '#fef2f2' : line.startsWith('+') ? '#f0fdf4' : 'transparent', color: line.startsWith('-') ? '#b91c1c' : line.startsWith('+') ? '#15803d' : '#374151', padding: '0 4px' }}>
+              <div key={i} style={{ background: line.startsWith('-') ? 'rgba(239,68,68,0.15)' : line.startsWith('+') ? 'rgba(22,163,74,0.15)' : 'transparent', color: line.startsWith('-') ? '#fca5a5' : line.startsWith('+') ? '#86efac' : '#c4c9d6', padding: '0 4px' }}>
                 {line}
               </div>
             ))}
@@ -788,20 +788,20 @@ const Badge: React.FC<{ color: string; bg: string; children: React.ReactNode }> 
   <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 9999, background: bg, color }}>{children}</span>
 );
 
-const PillTag: React.FC<{ color?: string; bg?: string; children: React.ReactNode }> = ({ color = '#6b7280', bg = '#f3f4f6', children }) => (
+const PillTag: React.FC<{ color?: string; bg?: string; children: React.ReactNode }> = ({ color = '#8892a4', bg = 'rgba(255,255,255,0.07)', children }) => (
   <span style={{ fontSize: 10, fontWeight: 500, padding: '2px 6px', borderRadius: 9999, background: bg, color, display: 'inline-flex', alignItems: 'center', gap: 3 }}>{children}</span>
 );
 
 const Btn: React.FC<{ icon: any; variant?: 'primary' | 'danger' | 'default'; onClick: () => void; disabled?: boolean; children: React.ReactNode }> = ({ icon: Icon, variant = 'default', onClick, disabled, children }) => {
   const colors = {
     primary: { bg: '#7c3aed', color: '#fff' },
-    danger:  { bg: '#fee2e2', color: '#dc2626' },
-    default: { bg: '#f3f4f6', color: '#c4c9d6' },
+    danger:  { bg: 'rgba(220,38,38,0.2)', color: '#f87171' },
+    default: { bg: '#1e1b4b', color: '#c4c9d6' },
   };
   const style = colors[variant];
   return (
     <button onClick={onClick} disabled={disabled}
-      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6, border: 'none', background: disabled ? '#f3f4f6' : style.bg, color: disabled ? '#9ca3af' : style.color, fontSize: 12, fontWeight: 500, cursor: disabled ? 'default' : 'pointer' }}>
+      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6, border: 'none', background: disabled ? '#1e1b4b' : style.bg, color: disabled ? '#4b5563' : style.color, fontSize: 12, fontWeight: 500, cursor: disabled ? 'default' : 'pointer' }}>
       <Icon size={12} />{children}
     </button>
   );
@@ -809,13 +809,13 @@ const Btn: React.FC<{ icon: any; variant?: 'primary' | 'danger' | 'default'; onC
 
 const IconBtn: React.FC<{ onClick: (e: React.MouseEvent) => void; title?: string; children: React.ReactNode }> = ({ onClick, title, children }) => (
   <button title={title} onClick={onClick} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '3px 4px', borderRadius: 4, color: '#9ca3af', display: 'flex', alignItems: 'center' }}
-    onMouseEnter={e => (e.currentTarget.style.background = '#f3f4f6')}
+    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
     onMouseLeave={e => (e.currentTarget.style.background = 'none')}
   >{children}</button>
 );
 
 const StatusDot: React.FC<{ running: boolean; pass: boolean; fail: boolean; idle: boolean }> = ({ running, pass, fail, idle }) => {
-  const color = running ? '#7c3aed' : pass ? '#16a34a' : fail ? '#dc2626' : '#d1d5db';
+  const color = running ? '#a78bfa' : pass ? '#4ade80' : fail ? '#f87171' : '#4b5563';
   const anim  = running ? 'spin 1s linear infinite' : 'none';
   return running
     ? <Loader2 size={9} style={{ color, animation: anim, flexShrink: 0 }} />
