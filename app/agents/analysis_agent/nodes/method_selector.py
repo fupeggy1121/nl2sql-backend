@@ -728,7 +728,25 @@ def method_selector_node(state: AnalysisState) -> dict:
         if method == "yield_report":
             data_source_config = _build_yield_sql(user_input)
         elif method == "oee_report":
-            data_source_config = _build_oee_sql(user_input)
+            try:
+                from app.config.data_sources import DataSourceRegistry, EQUIP_MGMT
+                _registry = DataSourceRegistry.get_instance()
+                if _registry.has(EQUIP_MGMT):
+                    _plan = _build_oee_multi_source_plan(user_input)
+                    start_date, end_date = _extract_date_range(user_input)
+                    data_source_config = {
+                        "type": "multi_source",
+                        "production_sql": _build_oee_production_sql(user_input),
+                        "downtime_sql": _build_oee_downtime_sql(user_input),
+                        "production_source_id": "mes_prod",
+                        "downtime_source_id": "equip_mgmt",
+                        "merge_keys": ["equipment_code", "report_date"],
+                        "limit": 20000,
+                    }
+                else:
+                    data_source_config = _build_oee_sql(user_input)
+            except Exception:
+                data_source_config = _build_oee_sql(user_input)
         else:
             data_source_config = {"type": "data", "data": state.get("raw_data") or []}
 
@@ -983,7 +1001,11 @@ def _extract_station_filter(user_input: str, alias: str = "ci") -> str:
 
 
 def _build_oee_sql(user_input: str) -> Dict[str, Any]:
-    """构建 OEE 日报数据查询 SQL。"""
+    """构建 OEE 日报数据查询 SQL（单源兼容模式，仅查 MES 产出数据）。
+
+    当设备管理数据库 (equip_mgmt) 未配置时继续使用此路径；
+    若希望获得含停机数据的完整 OEE，请使用 _build_oee_multi_source_plan()。
+    """
     start_date, end_date = _extract_date_range(user_input)
     sql = f"""SELECT
     e.operation_type,
@@ -1005,4 +1027,100 @@ WHERE e.operation_type IN (8, 9)
 ORDER BY e.lot_code, e.process_code, e.gmt_create"""
     logger.info(f"[method_selector] oee_report SQL date range: {start_date} ~ {end_date}")
     return {"type": "sql", "sql": sql, "limit": 20000}
+
+
+def _build_oee_production_sql(user_input: str) -> str:
+    """MES 侧：产出与过站事件（operation_type 8=进站 9=完工），供多源 OEE 使用。"""
+    start_date, end_date = _extract_date_range(user_input)
+    return f"""SELECT
+    DATE(e.gmt_create)                                       AS report_date,
+    JSON_UNQUOTE(JSON_EXTRACT(e.extra, '$.equipment_id'))    AS equipment_id,
+    JSON_UNQUOTE(JSON_EXTRACT(e.extra, '$.equipment_name'))  AS equipment_name,
+    e.operation_type,
+    e.lot_code,
+    e.process_code,
+    e.process_name,
+    e.product_code,
+    COALESCE(d.wafer_num, 0)                                AS wafer_num,
+    e.gmt_create                                             AS event_time
+FROM matrix_routerx_operation_lot_batch_resume_log e
+LEFT JOIN matrix_routerx_operation_lot_batch_resume_log_detail d
+       ON d.batch_resume_log_id = e.id
+WHERE e.operation_type IN (8, 9)
+  AND (e.deleted = 0 OR e.deleted IS NULL)
+  AND e.gmt_create >= '{start_date} 00:00:00'
+  AND e.gmt_create <= '{end_date} 23:59:59'
+ORDER BY report_date, equipment_id, e.gmt_create"""
+
+
+def _build_oee_downtime_sql(user_input: str) -> str:
+    """设备管理侧：停机/维修事件日汇总，供多源 OEE 使用。
+
+    表结构假设（equip_mgmt 库）：
+      equipment_downtime_log (
+        equipment_code VARCHAR,   -- 跨系统业务键
+        equipment_name VARCHAR,
+        start_time     DATETIME,
+        end_time       DATETIME,
+        downtime_type  VARCHAR,   -- 'PM'|'UM'|'IDLE'...
+        downtime_min   DECIMAL    -- 可选预计算列
+      )
+    若实际表名/列名不同，请在 mapping_prod.json 的 view_query 中定义视图 SQL。
+    """
+    start_date, end_date = _extract_date_range(user_input)
+    return f"""SELECT
+    DATE(start_time)                            AS report_date,
+    equipment_code,
+    equipment_name,
+    downtime_type,
+    SUM(
+        TIMESTAMPDIFF(MINUTE, start_time, LEAST(end_time, NOW()))
+    )                                           AS downtime_minutes
+FROM equipment_downtime_log
+WHERE start_time >= '{start_date} 00:00:00'
+  AND start_time <= '{end_date} 23:59:59'
+GROUP BY report_date, equipment_code, equipment_name, downtime_type
+ORDER BY report_date, equipment_code"""
+
+
+def _build_oee_multi_source_plan(user_input: str):
+    """构建跨数据源 OEE 查询执行计划（MultiSourceExecutionPlan）。
+
+    Returns:
+        MultiSourceExecutionPlan：含 MES 产出任务 + equip_mgmt 停机任务，
+        merge_keys=["equipment_code","report_date"]。
+        若 equip_mgmt 数据源未配置，仅含 MES 单源任务（降级模式）。
+    """
+    from app.config.data_sources import DataSourceRegistry, MES_PROD, EQUIP_MGMT
+    from app.services.multi_source_query_executor import (
+        MultiSourceExecutionPlan,
+        SourceSqlTask,
+    )
+
+    mes_task = SourceSqlTask(
+        source_id=MES_PROD,
+        sql=_build_oee_production_sql(user_input),
+        result_name="production",
+    )
+
+    tasks = [mes_task]
+
+    registry = DataSourceRegistry.get_instance()
+    if registry.has(EQUIP_MGMT):
+        downtime_task = SourceSqlTask(
+            source_id=EQUIP_MGMT,
+            sql=_build_oee_downtime_sql(user_input),
+            result_name="downtime",
+        )
+        tasks.append(downtime_task)
+        logger.info("[method_selector] OEE: equip_mgmt 数据源已配置，使用多源模式")
+    else:
+        logger.warning("[method_selector] OEE: equip_mgmt 数据源未配置，降级为单源模式（availability=100%%）")
+
+    return MultiSourceExecutionPlan(
+        tasks=tasks,
+        merge_keys=["equipment_code", "report_date"],
+        merge_strategy="outer",
+        primary_result="production",
+    )
 

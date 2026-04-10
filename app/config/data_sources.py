@@ -187,50 +187,50 @@ class DataSourceRegistry:
     # ── 加载 ──────────────────────────────────────────────────────────────
 
     def _load_all(self) -> None:
-        """加载所有数据源：先从环境变量，再用 JSON 文件覆盖/追加。"""
-        # 1. 从已知 source_id 列表加载
-        known_sources = [MES_PROD, EQUIP_MGMT]
-        extra = os.getenv("DATA_SOURCE_IDS", "")
-        if extra:
-            for sid in extra.split(","):
-                sid = sid.strip()
-                if sid and sid not in known_sources:
-                    known_sources.append(sid)
+        """加载所有数据源：若 JSON store 存在则以其为权威列表，否则从环境变量发现。"""
+        # 1. 若 JSON 持久化文件存在，直接以其为权威（避免 env fallback 重新注入已删除的数据源）
+        if _STORE_PATH.exists():
+            self._load_from_store()
+        else:
+            # JSON 不存在时，从环境变量自动发现（首次启动 / 迁移场景）
+            known_sources: list = []
+            extra = os.getenv("DATA_SOURCE_IDS", "")
+            if extra:
+                for sid in extra.split(","):
+                    sid = sid.strip()
+                    if sid and sid not in known_sources:
+                        known_sources.append(sid)
 
-        # 2. 自动发现所有 MYSQL_HOST_<X> 环境变量对应的数据源
-        #    例如 MYSQL_HOST_TEST → source_id "test"
-        for key, val in os.environ.items():
-            if key.startswith("MYSQL_HOST_") and val.strip():
-                sid = key[len("MYSQL_HOST_"):].lower()
-                if sid and sid not in known_sources:
-                    known_sources.append(sid)
+            # 自动发现所有 MYSQL_HOST_<X> 环境变量对应的数据源
+            for key, val in os.environ.items():
+                if key.startswith("MYSQL_HOST_") and val.strip():
+                    sid = key[len("MYSQL_HOST_"):].lower()
+                    if sid and sid not in known_sources:
+                        known_sources.append(sid)
 
-        for sid in known_sources:
-            cfg = _load_source_config(sid)
-            if cfg is not None:
-                # 补充友好显示名（若无则根据 source_id 生成）
-                if not cfg.display_name:
-                    cfg.display_name = sid.replace("_", " ").title()
-                self._configs[sid] = cfg
-                logger.debug("[DataSourceRegistry] 已注册数据源(env): %s → %s:%s/%s",
-                             sid, cfg.host, cfg.port, cfg.db)
+            for sid in known_sources:
+                cfg = _load_source_config(sid)
+                if cfg is not None:
+                    if not cfg.display_name:
+                        cfg.display_name = sid.replace("_", " ").title()
+                    self._configs[sid] = cfg
+                    logger.debug("[DataSourceRegistry] 已注册数据源(env): %s → %s:%s/%s",
+                                 sid, cfg.host, cfg.port, cfg.db)
 
-        # 3. 从 JSON 文件加载（覆盖/追加，JSON 优先级更高）
-        self._load_from_store()
-
-        # 4. 同步 is_default 标记
+        # 2. 同步 is_default 标记
         self._sync_default_flag()
 
         logger.info("[DataSourceRegistry] 已加载数据源: %s (默认: %s)",
                     list(self._configs.keys()), self._default_id)
 
     def _load_from_store(self) -> None:
-        """从 JSON 持久化文件加载数据源配置。"""
+        """从 JSON 持久化文件加载数据源配置（完整替换，JSON 即权威列表）。"""
         if not _STORE_PATH.exists():
             return
         try:
             data = json.loads(_STORE_PATH.read_text(encoding="utf-8"))
             self._default_id = data.get("default_source_id", DEFAULT_SOURCE_ID)
+            self._configs.clear()  # JSON 为权威，清除 env 阶段加载的条目
             for item in data.get("sources", []):
                 sid = item.get("source_id", "").strip()
                 if not sid:

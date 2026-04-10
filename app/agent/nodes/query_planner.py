@@ -272,10 +272,35 @@ def _detect_forced_execution_plan(user_input: str) -> "dict | None":
                 "_trigger": f"pivot_keyword:{pat[:20]}",
             }
 
+    # ── 规则 3: 跨数据源实体同时出现 → multi_source_compute ──
+    # 检测用户是否同时提及属于不同 source_id 的实体（如 MES 产出 + 设备停机）
+    try:
+        from app.ontology.mapping import get_mapping
+        from app.config.data_sources import DataSourceRegistry, DEFAULT_SOURCE_ID
+        _m2 = get_mapping()
+        _registry = DataSourceRegistry.get_instance()
+        _source_ids_in_query: set[str] = set()
+        for _pt in _m2.list_physical_tables():
+            sid = _pt.source_id or DEFAULT_SOURCE_ID
+            if _pt.table_name and _pt.table_name.lower() in text:
+                _source_ids_in_query.add(sid)
+            elif _pt.label_cn and _pt.label_cn in user_input:
+                _source_ids_in_query.add(sid)
+        if len(_source_ids_in_query) >= 2 and _registry.has("equip_mgmt"):
+            return {
+                "mode": "multi_source_compute",
+                "source_ids": list(_source_ids_in_query),
+                "sqls": [],
+                "merges": [],
+                "postprocess": [],
+                "primary_result": "production",
+                "_forced": True,
+                "_trigger": "cross_source_entities",
+            }
+    except Exception:
+        pass
+
     return None
-
-
-def _extract_table_from_sql(sql: str) -> str:
     """从 SQL 中提取主表名"""
     import re
     m = re.search(r'FROM\s+([a-zA-Z_][a-zA-Z0-9_]*)', sql, re.IGNORECASE)

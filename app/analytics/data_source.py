@@ -48,6 +48,8 @@ def load_dataframe(config: Dict[str, Any]) -> pd.DataFrame:
         return _load_from_data(config["data"])
     elif source_type == "nlquery":
         return _load_from_nlquery(config["nlquery"], config.get("limit"))
+    elif source_type == "multi_source":
+        return _load_from_multi_source(config)
     else:
         raise ValueError(f"不支持的数据源类型: {source_type}")
 
@@ -165,3 +167,76 @@ def _execute_mysql(sql: str, params: tuple = None) -> Optional[List[Dict]]:
     finally:
         if executor.conn:
             executor.conn.close()
+
+
+def _load_from_multi_source(config: Dict[str, Any]) -> pd.DataFrame:
+    """执行多数据源查询（type="multi_source"），返回生产数据 DataFrame。
+
+    当前策略：
+      - 执行 production_sql（MES 侧），返回产出事件 DataFrame
+      - 若 downtime_source_id 已配置，执行 downtime_sql 并将聚合停机时长列
+        左连接到 production df（按 report_date + equipment_code/eqp_id）
+      - run_oee_report 可以读取 __downtime_minutes__ 列（若存在）来计算可用率
+    """
+    from app.services.multi_source_query_executor import MultiSourceQueryExecutor, SourceSqlTask
+
+    production_sql = config.get("production_sql", "")
+    downtime_sql = config.get("downtime_sql", "")
+    production_source_id = config.get("production_source_id", "mes_prod")
+    downtime_source_id = config.get("downtime_source_id", "equip_mgmt")
+    limit = config.get("limit", _MAX_ROWS)
+
+    if not production_sql:
+        raise ValueError("multi_source 配置缺少 production_sql")
+
+    executor = MultiSourceQueryExecutor()
+
+    # ── 执行生产查询 ──────────────────────────────────────────────────────────
+    prod_task = SourceSqlTask(
+        source_id=production_source_id,
+        sql=production_sql,
+        result_name="production",
+    )
+    prod_df = executor.execute_single(prod_task)
+
+    if prod_df.empty:
+        logger.warning("[data_source] multi_source: 生产数据为空")
+        return prod_df
+
+    # 截断至 limit
+    if len(prod_df) > limit:
+        prod_df = prod_df.head(limit)
+
+    # ── 尝试执行停机查询并附加 ────────────────────────────────────────────────
+    if downtime_sql and downtime_source_id:
+        try:
+            from app.config.data_sources import DataSourceRegistry
+            registry = DataSourceRegistry.get_instance()
+            if registry.has(downtime_source_id):
+                down_task = SourceSqlTask(
+                    source_id=downtime_source_id,
+                    sql=downtime_sql,
+                    result_name="downtime",
+                )
+                down_df = executor.execute_single(down_task)
+                if not down_df.empty and "report_date" in down_df.columns:
+                    # 聚合到设备+日期维度，计算总停机分钟
+                    agg_cols = [c for c in ["report_date", "equipment_code"] if c in down_df.columns]
+                    if agg_cols and "downtime_minutes" in down_df.columns:
+                        down_agg = (
+                            down_df.groupby(agg_cols, as_index=False)["downtime_minutes"]
+                            .sum()
+                            .rename(columns={"downtime_minutes": "__downtime_minutes__"})
+                        )
+                        # 将 report_date 类型对齐后 LEFT JOIN 到生产数据
+                        if "report_date" in prod_df.columns:
+                            prod_df["report_date"] = prod_df["report_date"].astype(str)
+                            down_agg["report_date"] = down_agg["report_date"].astype(str)
+                            merge_on = [c for c in agg_cols if c in prod_df.columns]
+                            if merge_on:
+                                prod_df = pd.merge(prod_df, down_agg, on=merge_on, how="left")
+                                logger.info("[data_source] multi_source: 停机数据已附加 (%d rows)", len(down_agg))
+        except Exception as e:
+            logger.warning("[data_source] multi_source: 停机数据加载失败（降级）: %s", e)
+
+    return prod_df

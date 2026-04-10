@@ -2,17 +2,6 @@
   "default_source_id": "epi",
   "sources": [
     {
-      "source_id": "mes_prod",
-      "display_name": "Mes Prod",
-      "host": "10.60.120.33",
-      "port": 3336,
-      "db": "cc_semi_mvp",
-      "user": "root",
-      "password": "Csxw@2024",
-      "description": "",
-      "read_timeout": 45
-    },
-    {
       "source_id": "test",
       "display_name": "Test",
       "host": "10.60.120.33",

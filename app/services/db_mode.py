@@ -54,10 +54,11 @@ def set_db_mode(mode: str) -> dict:
     切换运行时数据库模式，并立即清除所有缓存的连接对象。
 
     Args:
-        mode: "test" | "dev" | "epi" | "mysql" | "supabase" | "prod" | "demo" | "auto"
-              - test:     MySQL 测试环境 (10.60.120.33:3336)
-              - dev:      MySQL 开发环境 (172.16.57.29:3306)
-              - epi:      MySQL 外延测试环境 (10.60.120.33:40306)
+        mode: "test" | "dev" | "epi" | "pms" | "mysql" | "supabase" | "prod" | "demo" | "auto"
+              - test:     MySQL 测试环境 (10.60.120.33:3336)  db: cc_semi_mvp
+              - dev:      MySQL 开发环境 (172.16.57.29:3306)  db: cc_semi_mvp
+              - epi:      MySQL 外延测试环境 (10.60.120.33:40306) db: cc_epi_mvp
+              - pms:      MySQL 设备管理系统 (10.60.120.33:40306) db: cc_epi_pms
               - mysql:    等同 test（向后兼容）
               - supabase: 切换到 Supabase（已停用，保留兼容）
               - prod/demo/auto: 切换 Supabase 环境（历史模式）
@@ -79,6 +80,10 @@ def set_db_mode(mode: str) -> dict:
         os.environ["DB_BACKEND"] = "mysql"
         os.environ["MYSQL_SOURCE"] = "epi"
         logger.info("[db_mode] DB_BACKEND=mysql, MYSQL_SOURCE=epi (外延测试环境)")
+    elif mode == "pms":
+        os.environ["DB_BACKEND"] = "mysql"
+        os.environ["MYSQL_SOURCE"] = "pms"
+        logger.info("[db_mode] DB_BACKEND=mysql, MYSQL_SOURCE=pms (设备管理系统)")
     elif mode == "supabase":
         os.environ["DB_BACKEND"] = "supabase"
         logger.info("[db_mode] DB_BACKEND switched to: supabase")
@@ -87,7 +92,7 @@ def set_db_mode(mode: str) -> dict:
     elif mode in ("prod", "demo"):
         _RUNTIME_DB_MODE = mode
     else:
-        raise ValueError(f"Invalid db mode: {mode!r}. Must be 'test', 'dev', 'epi', 'mysql', 'supabase', 'prod', 'demo', or 'auto'")
+        raise ValueError(f"Invalid db mode: {mode!r}. Must be 'test', 'dev', 'epi', 'pms', 'mysql', 'supabase', 'prod', 'demo', or 'auto'")
 
     _reset_cached_connections()
 
