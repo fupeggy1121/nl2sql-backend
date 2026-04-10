@@ -340,7 +340,7 @@ export default function OntologyViewer() {
       .attr('fill', d => getGroupColor(d.group))
       .attr('stroke', d => {
         if (searchTerm && d.label.toLowerCase().includes(searchTerm.toLowerCase())) return '#fbbf24';
-        return '#1e293b';
+        return '#1a1c35';
       })
       .attr('stroke-width', d =>
         searchTerm && d.label.toLowerCase().includes(searchTerm.toLowerCase()) ? 3 : 2
@@ -918,7 +918,7 @@ export default function OntologyViewer() {
             <div
               style={styles.dropZone}
               onClick={() => fileInputRef.current?.click()}
-              onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#0ea5e9'; }}
+              onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#6366f1'; }}
               onDragLeave={e => { e.currentTarget.style.borderColor = '#475569'; }}
               onDrop={e => {
                 e.preventDefault();
@@ -996,11 +996,11 @@ export default function OntologyViewer() {
 const styles: Record<string, React.CSSProperties> = {
   container: {
     display: 'flex', flexDirection: 'column', height: '100%',
-    background: '#0f172a', color: '#e2e8f0', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+    background: '#0d0e1a', color: '#f1f5f9', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
   },
   toolbar: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '10px 16px', background: '#1e293b', borderBottom: '1px solid #334155',
+    padding: '10px 16px', background: '#12142a', borderBottom: '1px solid #1e1b4b',
     flexShrink: 0, gap: 12, flexWrap: 'wrap' as const,
   },
   toolbarLeft: { display: 'flex', alignItems: 'center', gap: 16 },
@@ -1014,12 +1014,12 @@ const styles: Record<string, React.CSSProperties> = {
   statValue: { color: '#38bdf8' },
   searchWrap: {
     display: 'flex', alignItems: 'center', gap: 4,
-    padding: '4px 10px', background: '#0f172a', borderRadius: 6,
-    border: '1px solid #334155',
+    padding: '4px 10px', background: '#0d0e1a', borderRadius: 6,
+    border: '1px solid #1e1b4b',
   },
   searchInput: {
     background: 'transparent', border: 'none', outline: 'none',
-    color: '#e2e8f0', fontSize: 13, width: 120,
+    color: '#f1f5f9', fontSize: 13, width: 120,
   },
   toggleLabel: {
     display: 'flex', alignItems: 'center', fontSize: 12, color: '#94a3b8',
@@ -1028,52 +1028,52 @@ const styles: Record<string, React.CSSProperties> = {
   btn: {
     display: 'inline-flex', alignItems: 'center', gap: 4,
     padding: '6px 12px', fontSize: 13, borderRadius: 6, cursor: 'pointer',
-    background: '#334155', color: '#e2e8f0', border: '1px solid #475569',
+    background: '#1a1c35', color: '#f1f5f9', border: '1px solid #2d284e',
   },
-  btnActive: { background: '#0ea5e9', borderColor: '#0ea5e9', color: '#fff' },
+  btnActive: { background: '#4f46e5', borderColor: '#4f46e5', color: '#fff' },
   btnPrimary: {
     display: 'inline-flex', alignItems: 'center', gap: 4,
     padding: '6px 14px', fontSize: 13, borderRadius: 6, cursor: 'pointer',
-    background: '#0ea5e9', color: '#fff', border: '1px solid #0ea5e9',
+    background: '#4f46e5', color: '#fff', border: '1px solid #4f46e5',
   },
   main: { display: 'flex', flex: 1, overflow: 'hidden' },
   viewerWrap: { flex: 1, position: 'relative' as const, overflow: 'hidden' },
-  svg: { width: '100%', height: '100%', background: '#0f172a' },
+  svg: { width: '100%', height: '100%', background: '#0d0e1a' },
   loadingOverlay: {
     position: 'absolute' as const, inset: 0, display: 'flex',
     flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center',
-    gap: 12, color: '#94a3b8', fontSize: 14, zIndex: 10,
-    background: 'rgba(15,23,42,.7)',
+    gap: 12, color: '#8892a4', fontSize: 14, zIndex: 10,
+    background: 'rgba(13,14,26,.7)',
   },
   errorOverlay: {
     position: 'absolute' as const, inset: 0, display: 'flex',
     flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center',
     gap: 12, color: '#fca5a5', fontSize: 14, zIndex: 10,
-    background: 'rgba(15,23,42,.9)', textAlign: 'center' as const,
+    background: 'rgba(13,14,26,.9)', textAlign: 'center' as const,
   },
 
   // Node detail
   detailPanel: {
     position: 'absolute' as const, bottom: 16, left: 16,
-    background: '#1e293b', border: '1px solid #334155', borderRadius: 10,
+    background: '#12142a', border: '1px solid #1e1b4b', borderRadius: 10,
     padding: 0, width: 340, maxWidth: 'calc(100vw - 32px)', zIndex: 20, overflow: 'hidden',
     boxShadow: '0 8px 24px rgba(0,0,0,.4)',
   },
   detailHeader: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '10px 14px', borderBottom: '1px solid #334155',
+    padding: '10px 14px', borderBottom: '1px solid #1e1b4b',
   },
-  detailTitle: { fontSize: 14, fontWeight: 600, color: '#38bdf8' },
+  detailTitle: { fontSize: 14, fontWeight: 600, color: '#a5b4fc' },
   detailBody: { padding: '8px 14px 12px', maxHeight: 420, overflowY: 'auto' as const },
   detailRow: { marginBottom: 8 },
-  detailLabel: { fontSize: 11, color: '#64748b', display: 'block', marginBottom: 3 },
-  detailValue: { fontSize: 13, color: '#e2e8f0', wordBreak: 'break-all' as const },
-  sectionDivider: { height: 1, background: '#334155', margin: '8px 0' },
-  sectionTitle: { fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 6 },
-  colBadge: { fontSize: 10, padding: '1px 6px', background: '#0f172a', border: '1px solid #334155', borderRadius: 4, color: '#94a3b8', fontFamily: 'monospace' },
+  detailLabel: { fontSize: 11, color: '#6b7280', display: 'block', marginBottom: 3 },
+  detailValue: { fontSize: 13, color: '#f1f5f9', wordBreak: 'break-all' as const },
+  sectionDivider: { height: 1, background: '#1e1b4b', margin: '8px 0' },
+  sectionTitle: { fontSize: 11, fontWeight: 700, color: '#8892a4', textTransform: 'uppercase' as const, letterSpacing: '0.05em', marginBottom: 6 },
+  colBadge: { fontSize: 10, padding: '1px 6px', background: '#0d0e1a', border: '1px solid #1e1b4b', borderRadius: 4, color: '#8892a4', fontFamily: 'monospace' },
   propRow: { display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 },
   propSem: { fontSize: 11, color: '#a5b4fc', fontFamily: 'monospace', minWidth: 0, flex: '1 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
-  propArrow: { fontSize: 11, color: '#475569', flexShrink: 0 },
+  propArrow: { fontSize: 11, color: '#2d284e', flexShrink: 0 },
   propCol: { fontSize: 11, color: '#38bdf8', fontFamily: 'monospace', minWidth: 0, flex: '1 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const },
   relRow: { display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, flexWrap: 'wrap' as const },
   relProp: { fontSize: 11, color: '#fbbf24', fontFamily: 'monospace' },
@@ -1085,32 +1085,32 @@ const styles: Record<string, React.CSSProperties> = {
 
   // Version panel
   versionPanel: {
-    width: 320, minWidth: 320, background: '#1e293b',
-    borderLeft: '1px solid #334155', display: 'flex', flexDirection: 'column' as const,
+    width: 320, minWidth: 320, background: '#12142a',
+    borderLeft: '1px solid #1e1b4b', display: 'flex', flexDirection: 'column' as const,
     overflow: 'hidden',
   },
   vPanelHeader: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '12px 16px', borderBottom: '1px solid #334155',
+    padding: '12px 16px', borderBottom: '1px solid #1e1b4b',
   },
-  vPanelTitle: { fontSize: 14, fontWeight: 600, color: '#e2e8f0', margin: 0 },
+  vPanelTitle: { fontSize: 14, fontWeight: 600, color: '#f1f5f9', margin: 0 },
   closeBtn: {
     background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer',
     padding: '2px 6px', borderRadius: 4,
   },
   versionList: { flex: 1, overflowY: 'auto' as const, padding: 8 },
   versionCard: {
-    background: '#0f172a', border: '1px solid #334155', borderRadius: 8,
+    background: '#0d0e1a', border: '1px solid #1e1b4b', borderRadius: 8,
     padding: 12, marginBottom: 8, transition: 'all .15s',
   },
-  versionCardActive: { borderColor: '#0ea5e9', background: '#0c1a30' },
+  versionCardActive: { borderColor: '#6366f1', background: 'rgba(99,102,241,0.1)' },
   vCardHeader: {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4,
   },
-  vNum: { fontSize: 14, fontWeight: 600, color: '#38bdf8' },
+  vNum: { fontSize: 14, fontWeight: 600, color: '#a5b4fc' },
   badge: {
     fontSize: 10, padding: '2px 6px', borderRadius: 10,
-    background: '#334155', color: '#94a3b8',
+    background: '#1a1c35', color: '#8892a4',
   },
   badgeCurrent: {
     fontSize: 10, padding: '2px 6px', borderRadius: 10,
@@ -1125,7 +1125,7 @@ const styles: Record<string, React.CSSProperties> = {
   btnSm: {
     display: 'inline-flex', alignItems: 'center', gap: 3,
     padding: '3px 8px', fontSize: 11, borderRadius: 4, cursor: 'pointer',
-    background: '#334155', color: '#e2e8f0', border: '1px solid #475569',
+    background: '#1a1c35', color: '#f1f5f9', border: '1px solid #2d284e',
   },
   btnSmDanger: { background: '#7f1d1d', borderColor: '#991b1b', color: '#fca5a5' },
   centerText: {
@@ -1135,8 +1135,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   legendWrap: {
     display: 'flex', alignItems: 'center', gap: 10,
-    padding: '3px 10px', background: '#0f172a', borderRadius: 6,
-    border: '1px solid #334155',
+    padding: '3px 10px', background: '#0d0e1a', borderRadius: 6,
+    border: '1px solid #1e1b4b',
   },
   legendItem: {
     display: 'flex', alignItems: 'center', fontSize: 11, color: '#94a3b8',
@@ -1145,15 +1145,15 @@ const styles: Record<string, React.CSSProperties> = {
 
   // Upload modal
   overlay: {
-    position: 'fixed' as const, inset: 0, background: 'rgba(15,23,42,.85)',
+    position: 'fixed' as const, inset: 0, background: 'rgba(13,14,26,.85)',
     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300,
   },
   modal: {
-    background: '#1e293b', border: '1px solid #475569', borderRadius: 12,
+    background: '#12142a', border: '1px solid #2d284e', borderRadius: 12,
     padding: 24, width: 460, maxWidth: '90vw',
   },
   modalTitle: {
-    fontSize: 16, fontWeight: 600, color: '#e2e8f0', margin: '0 0 16px',
+    fontSize: 16, fontWeight: 600, color: '#f1f5f9', margin: '0 0 16px',
     display: 'flex', alignItems: 'center', gap: 8,
   },
   dropZone: {
