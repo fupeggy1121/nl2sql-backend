@@ -22,31 +22,41 @@ logger = logging.getLogger(__name__)
 
 
 def _build_mysql_connect_kwargs() -> dict:
-    """从环境变量构建 pymysql.connect 关键字参数。
+    """从 DataSourceRegistry 获取默认数据源连接参数。
 
     优先级:
-      1. MYSQL_SOURCE=test|dev → 对应 MYSQL_*_TEST / MYSQL_*_DEV 系列变量
-      2. MYSQL_HOST/PORT/DB/USER/PASSWORD 直接变量（兼容回退）
-      3. 内置默认值
+      1. DataSourceRegistry 当前 default_source_id
+      2. 环境变量回退（Registry 不可用时）
     """
-    source = os.getenv("MYSQL_SOURCE", "test").lower()
-    suffix = source.upper()  # "TEST" or "DEV"
+    try:
+        from app.config.data_sources import DataSourceRegistry
+        cfg = DataSourceRegistry.get_instance().get_or_default(None)
+        read_timeout = int(os.getenv("MYSQL_QUERY_TIMEOUT", str(cfg.read_timeout)))
+        logger.debug("[MySQLExecutor] 使用数据源: %s → %s:%s/%s",
+                     cfg.source_id, cfg.host, cfg.port, cfg.db)
+        return dict(
+            host=cfg.host, port=cfg.port, db=cfg.db,
+            user=cfg.user, password=cfg.password,
+            connect_timeout=3, read_timeout=read_timeout, charset="utf8mb4",
+        )
+    except Exception as e:
+        logger.warning("[MySQLExecutor] DataSourceRegistry 不可用，回退到环境变量: %s", e)
+        source = os.getenv("MYSQL_SOURCE", "test").lower()
+        suffix = source.upper()
 
-    def _get(key: str, fallback: str) -> str:
-        return (os.getenv(f"MYSQL_{key}_{suffix}")
-                or os.getenv(f"MYSQL_{key}")
-                or os.getenv(f"PROD_DB_{key}", fallback))
+        def _get(key: str, fallback: str) -> str:
+            return (os.getenv(f"MYSQL_{key}_{suffix}")
+                    or os.getenv(f"MYSQL_{key}")
+                    or os.getenv(f"PROD_DB_{key}", fallback))
 
-    host     = _get("HOST",     "10.60.120.33")
-    port     = int(_get("PORT", "3336"))
-    db       = _get("DB",       "cc_semi_mvp")
-    user     = _get("USER",     "root")
-    password = _get("PASSWORD", "")
-    # read_timeout: max seconds to wait for a query response.
-    # Prevents slow / full-table-scan queries from hanging indefinitely.
-    read_timeout = int(os.getenv("MYSQL_QUERY_TIMEOUT", "45"))
-    return dict(host=host, port=port, db=db, user=user, password=password,
-                connect_timeout=3, read_timeout=read_timeout, charset="utf8mb4")
+        host     = _get("HOST",     "10.60.120.33")
+        port     = int(_get("PORT", "3336"))
+        db       = _get("DB",       "cc_semi_mvp")
+        user     = _get("USER",     "root")
+        password = _get("PASSWORD", "")
+        read_timeout = int(os.getenv("MYSQL_QUERY_TIMEOUT", "45"))
+        return dict(host=host, port=port, db=db, user=user, password=password,
+                    connect_timeout=3, read_timeout=read_timeout, charset="utf8mb4")
 
 
 class MySQLExecutor:
@@ -64,6 +74,8 @@ class MySQLExecutor:
         if not PYMYSQL_AVAILABLE:
             logger.error("❌ pymysql not installed")
             return False
+        # 每次连接时重新读取，确保 default_source_id 变更后立即生效
+        self._kwargs = _build_mysql_connect_kwargs()
         try:
             self.conn   = pymysql.connect(**self._kwargs,
                                           cursorclass=pymysql.cursors.DictCursor)

@@ -350,9 +350,17 @@ class DataSourceRegistry:
         self._save_to_store()
 
     def set_default(self, source_id: str) -> None:
-        """设置默认数据源并持久化。"""
+        """设置默认数据源并持久化。切换时清除查询缓存，避免返回旧数据源的缓存结果。"""
         if source_id not in self._configs:
             raise KeyError(f"数据源 '{source_id}' 不存在")
         self._default_id = source_id
         self._sync_default_flag()
         self._save_to_store()
+        # 清除查询缓存，避免切换数据源后返回旧数据
+        try:
+            import app.services.query_cache as _qc
+            if _qc._query_cache is not None:
+                _qc._query_cache.clear()
+            logger.info("[DataSourceRegistry] ✅ 已切换默认数据源为 '%s'，查询缓存已清除", source_id)
+        except Exception as e:
+            logger.warning("[DataSourceRegistry] 清除查询缓存失败: %s", e)

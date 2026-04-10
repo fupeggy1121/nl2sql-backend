@@ -31,6 +31,12 @@ class QueryExecutor:
             self._db_mode_at_init = f"{_info['mode']}|{_info.get('mysql_source', '')}"
         except Exception:
             self._db_mode_at_init = "auto|"
+        # 记录初始化时 DataSourceRegistry 默认数据源，检测切换
+        try:
+            from app.config.data_sources import DataSourceRegistry
+            self._registry_default_at_init = DataSourceRegistry.get_instance().default_id
+        except Exception:
+            self._registry_default_at_init = ""
     
     @property
     def cache(self):
@@ -110,6 +116,20 @@ class QueryExecutor:
                         self.supabase_client = get_supabase_client()
                     except Exception as e:
                         logger.warning(f"[QueryExecutor] Could not refresh supabase_client: {e}")
+            except Exception:
+                pass
+
+            # ── 0b. 检测 DataSourceRegistry 默认数据源是否已切换 ──
+            try:
+                from app.config.data_sources import DataSourceRegistry
+                current_default = DataSourceRegistry.get_instance().default_id
+                if current_default != self._registry_default_at_init:
+                    logger.info(
+                        f"[QueryExecutor] DataSource default changed "
+                        f"{self._registry_default_at_init!r} → {current_default!r}, resetting pg_executor"
+                    )
+                    self.pg_executor = None
+                    self._registry_default_at_init = current_default
             except Exception:
                 pass
 
