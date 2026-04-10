@@ -28,10 +28,10 @@ function FilterInput({ filter, onChange }: { filter: DashboardFilter; onChange: 
     return (
       <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <input type="date" value={start ?? ''} onChange={ev => setRange(ev.target.value, end ?? '')}
-          style={{ fontSize: 12, padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, color: '#374151' }} />
+          style={{ fontSize: 12, padding: '3px 6px', border: '1px solid #2d284e', borderRadius: 4, color: '#c4c9d6' }} />
         <span style={{ color: '#9ca3af', fontSize: 12 }}>至</span>
         <input type="date" value={end ?? ''} onChange={ev => setRange(start ?? '', ev.target.value)}
-          style={{ fontSize: 12, padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, color: '#374151' }} />
+          style={{ fontSize: 12, padding: '3px 6px', border: '1px solid #2d284e', borderRadius: 4, color: '#c4c9d6' }} />
       </span>
     )
   }
@@ -39,7 +39,7 @@ function FilterInput({ filter, onChange }: { filter: DashboardFilter; onChange: 
   if (filter.type === 'select' && filter.options && filter.options.length > 0) {
     return (
       <select value={val} onChange={ev => onChange(ev.target.value)}
-        style={{ fontSize: 12, padding: '3px 8px', border: '1px solid #d1d5db', borderRadius: 4, color: '#374151' }}>
+        style={{ fontSize: 12, padding: '3px 8px', border: '1px solid #2d284e', borderRadius: 4, color: '#c4c9d6' }}>
         <option value="">全部</option>
         {filter.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
       </select>
@@ -49,7 +49,7 @@ function FilterInput({ filter, onChange }: { filter: DashboardFilter; onChange: 
   return (
     <input type="text" value={val} onChange={ev => onChange(ev.target.value)}
       placeholder={filter.label}
-      style={{ fontSize: 12, padding: '3px 8px', border: '1px solid #d1d5db', borderRadius: 4, color: '#374151', width: 140 }} />
+      style={{ fontSize: 12, padding: '3px 8px', border: '1px solid #2d284e', borderRadius: 4, color: '#c4c9d6', width: 140 }} />
   )
 }
 
@@ -62,13 +62,13 @@ export function DashboardFilterBar({ dashboard, onFiltersChange, onRefresh, onSa
   if (dashboard.globalFilters.length === 0 && dashboard.refreshInterval === 'manual') {
     // simplified bar: just a refresh button
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '8px 16px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '8px 16px', background: '#12142a', borderBottom: '1px solid #2d284e', gap: 8 }}>
         <button onClick={onRefresh}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 12, color: '#374151', cursor: 'pointer' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', background: '#12142a', border: '1px solid #2d284e', borderRadius: 6, fontSize: 12, color: '#c4c9d6', cursor: 'pointer' }}>
           <RefreshCw size={12} /> 刷新
         </button>
         <select value={dashboard.refreshInterval} onChange={ev => onIntervalChange(ev.target.value as RefreshInterval)}
-          style={{ fontSize: 12, padding: '4px 8px', border: '1px solid #d1d5db', borderRadius: 6, color: '#374151' }}>
+          style={{ fontSize: 12, padding: '4px 8px', border: '1px solid #2d284e', borderRadius: 6, color: '#c4c9d6' }}>
           {INTERVAL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </div>
@@ -93,7 +93,7 @@ export function DashboardFilterBar({ dashboard, onFiltersChange, onRefresh, onSa
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '10px 16px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '10px 16px', background: '#12142a', borderBottom: '1px solid #2d284e' }}>
       <Filter size={13} color="#6b7280" />
       {filters.map(filter => (
         <span key={filter.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -105,12 +105,12 @@ export function DashboardFilterBar({ dashboard, onFiltersChange, onRefresh, onSa
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
         {dirty && (
           <button onClick={handleReset} title="重置"
-            style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 5, fontSize: 12, color: '#6b7280', cursor: 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', background: '#12142a', border: '1px solid #2d284e', borderRadius: 5, fontSize: 12, color: '#6b7280', cursor: 'pointer' }}>
             <RotateCcw size={11} /> 重置
           </button>
         )}
         <button onClick={() => onSaveDefaults(filters)} title="保存为默认值"
-          style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 5, fontSize: 12, color: '#6b7280', cursor: 'pointer' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', background: '#12142a', border: '1px solid #2d284e', borderRadius: 5, fontSize: 12, color: '#6b7280', cursor: 'pointer' }}>
           <Save size={11} /> 保存默认
         </button>
         <button onClick={handleApply}
@@ -118,13 +118,13 @@ export function DashboardFilterBar({ dashboard, onFiltersChange, onRefresh, onSa
           应用过滤
         </button>
         <button onClick={onRefresh}
-          style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 5, fontSize: 12, color: '#374151', cursor: 'pointer' }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '4px 10px', background: '#12142a', border: '1px solid #2d284e', borderRadius: 5, fontSize: 12, color: '#c4c9d6', cursor: 'pointer' }}>
           <RefreshCw size={11} />
         </button>
         <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#9ca3af' }}>
           <Clock size={11} />
           <select value={dashboard.refreshInterval} onChange={ev => onIntervalChange(ev.target.value as RefreshInterval)}
-            style={{ fontSize: 12, padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 5, color: '#374151' }}>
+            style={{ fontSize: 12, padding: '3px 6px', border: '1px solid #2d284e', borderRadius: 5, color: '#c4c9d6' }}>
             {INTERVAL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </span>

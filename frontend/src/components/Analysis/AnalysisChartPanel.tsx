@@ -21,8 +21,8 @@ const AnalysisChartPanel: React.FC<Props> = ({ charts }) => {
           <div
             key={idx}
             style={{
-              background: '#fff',
-              border: '1px solid #e5e7eb',
+              background: '#12142a',
+              border: '1px solid #2d284e',
               borderRadius: 8,
               padding: '12px 8px 8px',
             }}

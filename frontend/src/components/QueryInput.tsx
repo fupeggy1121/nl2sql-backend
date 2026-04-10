@@ -50,7 +50,7 @@ export function QueryInput({ onQuery, loading }: Props) {
                       padding: '4px 10px',
                       borderRadius: 14,
                       border: '1px solid #e0e7ff',
-                      background: '#f5f3ff',
+                      background: 'rgba(99,102,241,0.15)',
                       color: '#4f46e5',
                       fontSize: 13,
                       cursor: 'pointer',
@@ -89,7 +89,7 @@ export function QueryInput({ onQuery, loading }: Props) {
             fontFamily: 'inherit',
           }}
           onFocus={e => (e.currentTarget.style.borderColor = '#4f46e5')}
-          onBlur={e => (e.currentTarget.style.borderColor = '#e5e7eb')}
+          onBlur={e => (e.currentTarget.style.borderColor = '#2d284e')}
           disabled={loading}
         />
         <button

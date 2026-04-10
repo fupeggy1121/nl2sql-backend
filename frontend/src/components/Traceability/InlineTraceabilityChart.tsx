@@ -153,8 +153,8 @@ function buildGenealogyOption(transitions: StateTransition[], rootLot: string) {
             ? `{state|${eventKind}}\n{proc|${stationStr}}`
             : `{state|${stateLabel}}\n{proc|${lotShort}}`,
         rich: {
-          bold:  { fontSize: 10, color: '#1f2937', fontWeight: 'bold', lineHeight: 15 },
-          state: { fontSize: 10, color: '#1f2937', fontWeight: 'bold', lineHeight: 15 },
+          bold:  { fontSize: 10, color: '#e2e8f0', fontWeight: 'bold', lineHeight: 15 },
+          state: { fontSize: 10, color: '#e2e8f0', fontWeight: 'bold', lineHeight: 15 },
           proc:  { fontSize: 8,  color: '#6b7280', lineHeight: 13 },
         },
         position: 'bottom',
@@ -177,7 +177,7 @@ function buildGenealogyOption(transitions: StateTransition[], rootLot: string) {
 
   return {
     animation: false,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#0d0e1a',
     tooltip: {
       trigger: 'item',
       enterable: false,
@@ -261,21 +261,21 @@ const PassTimeline: React.FC<{ records: Array<Record<string, any>> }> = ({ recor
     return <div style={{ textAlign: 'center', padding: '24px 0', color: '#9ca3af', fontSize: 12 }}>暂无过站记录</div>;
   return (
     <div style={{ position: 'relative', paddingLeft: 20 }}>
-      <div style={{ position: 'absolute', left: 7, top: 6, bottom: 6, width: 2, background: '#e5e7eb', borderRadius: 1 }} />
+      <div style={{ position: 'absolute', left: 7, top: 6, bottom: 6, width: 2, background: '#2d284e', borderRadius: 1 }} />
       {records.map((rec, idx) => (
         <div key={rec.id || idx} style={{ position: 'relative', marginBottom: 10 }}>
           <div style={{ position: 'absolute', left: -20, top: 4, width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', border: '2px solid #fff', boxShadow: '0 0 0 1px #93c5fd', zIndex: 1 }} />
-          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, padding: '6px 10px' }}>
+          <div style={{ background: '#12142a', border: '1px solid #2d284e', borderRadius: 6, padding: '6px 10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
               <Cpu size={11} color="#6b7280" />
-              <span style={{ fontWeight: 600, fontSize: 11, color: '#1f2937' }}>
+              <span style={{ fontWeight: 600, fontSize: 11, color: '#e2e8f0' }}>
                 {rec.station_id || rec.station_name || `#${idx + 1}`}
               </span>
               {rec.equipment_id && (
                 <><ChevronRight size={10} color="#9ca3af" /><span style={{ fontSize: 10, color: '#6b7280' }}>{rec.equipment_id}</span></>
               )}
               {rec.wafer_id && (
-                <span style={{ marginLeft: 'auto', fontSize: 9, color: '#6b7280', background: '#f3f4f6', padding: '1px 5px', borderRadius: 10 }}>
+                <span style={{ marginLeft: 'auto', fontSize: 9, color: '#6b7280', background: '#1a1c35', padding: '1px 5px', borderRadius: 10 }}>
                   W-{rec.wafer_id}
                 </span>
               )}
@@ -299,13 +299,13 @@ const MeasTable: React.FC<{ rows: Array<Record<string, any>> }> = ({ rows }) => 
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-        <thead><tr style={{ background: '#f9fafb' }}>
-          {cols.map((c) => <th key={c} style={{ padding: '5px 8px', textAlign: 'left', borderBottom: '1px solid #e5e7eb', fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap' }}>{c}</th>)}
+        <thead><tr style={{ background: '#12142a' }}>
+          {cols.map((c) => <th key={c} style={{ padding: '5px 8px', textAlign: 'left', borderBottom: '1px solid #2d284e', fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap' }}>{c}</th>)}
         </tr></thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
-              {cols.map((c) => <td key={c} style={{ padding: '5px 8px', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#374151' }}>{row[c] == null ? '—' : String(row[c])}</td>)}
+            <tr key={i} style={{ background: i % 2 === 0 ? '#12142a' : '#161830', borderBottom: '1px solid #1e1b4b' }}>
+              {cols.map((c) => <td key={c} style={{ padding: '5px 8px', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#c4c9d6' }}>{row[c] == null ? '—' : String(row[c])}</td>)}
             </tr>
           ))}
         </tbody>
@@ -387,8 +387,8 @@ const InlineTraceabilityChart: React.FC<Props> = ({ lotCode: initLot, waferCode:
   const panelHeight = maximized ? 'calc(100vh - 160px)' : 380;
 
   const Header = (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 12, fontWeight: 600, color: '#4b5563', whiteSpace: 'nowrap' }}>📦 批次追溯</span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: '#0d0e1a', borderBottom: '1px solid #2d284e', flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 12, fontWeight: 600, color: '#8892a4', whiteSpace: 'nowrap' }}>📦 批次追溯</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 180 }}>
         <div style={{ position: 'relative', flex: 1 }}>
           <input
@@ -396,7 +396,7 @@ const InlineTraceabilityChart: React.FC<Props> = ({ lotCode: initLot, waferCode:
             onChange={(e) => setDraftLot(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             placeholder="输入批次号…"
-            style={{ width: '100%', padding: '4px 28px 4px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, outline: 'none', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '4px 28px 4px 8px', borderRadius: 6, border: '1px solid #2d284e', fontSize: 12, outline: 'none', boxSizing: 'border-box' }}
           />
           <button onClick={handleSearch}
             style={{ position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#9ca3af', display: 'flex' }}>
@@ -406,7 +406,7 @@ const InlineTraceabilityChart: React.FC<Props> = ({ lotCode: initLot, waferCode:
       </div>
       {data?.success && data.wafer_ids.length > 0 && (
         <select value={selectedWafer} onChange={(e) => setSelectedWafer(e.target.value)}
-          style={{ padding: '4px 24px 4px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 12, background: '#fff', cursor: 'pointer', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}>
+          style={{ padding: '4px 24px 4px 8px', borderRadius: 6, border: '1px solid #2d284e', fontSize: 12, background: '#12142a', cursor: 'pointer', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 6px center' }}>
           <option value="all">全部 Wafer ({data.wafer_ids.length})</option>
           {data.wafer_ids.map((w) => <option key={w} value={w}>Wafer {w}</option>)}
         </select>
@@ -422,13 +422,13 @@ const InlineTraceabilityChart: React.FC<Props> = ({ lotCode: initLot, waferCode:
     <>
       {!loading && data?.success && (
         <>
-          <div style={{ display: 'flex', gap: 16, padding: '8px 14px', background: '#f0fdf4', borderBottom: '1px solid #e5e7eb', fontSize: 11, color: '#374151', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 16, padding: '8px 14px', background: 'rgba(16,185,129,0.1)', borderBottom: '1px solid #2d284e', fontSize: 11, color: '#c4c9d6', flexWrap: 'wrap' }}>
             {Object.entries(data.lot_info).slice(0, 6).map(([k, v]) => (
               <span key={k}><span style={{ color: '#9ca3af' }}>{k}:</span> {String(v ?? '—')}</span>
             ))}
             <span style={{ marginLeft: 'auto', color: '#9ca3af' }}>{data.wafer_ids.length} 片Wafer</span>
           </div>
-          <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', background: '#fff' }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid #2d284e', background: '#12142a' }}>
             {tabs.map((t) => (
               <button key={t.id} onClick={() => setActiveTab(t.id)}
                 style={{ padding: '8px 14px', border: 'none', borderBottom: activeTab === t.id ? '2px solid #3b82f6' : '2px solid transparent', background: 'transparent', color: activeTab === t.id ? '#2563eb' : '#6b7280', fontSize: 12, fontWeight: activeTab === t.id ? 600 : 400, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -478,7 +478,7 @@ const InlineTraceabilityChart: React.FC<Props> = ({ lotCode: initLot, waferCode:
         style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         onClick={(e) => { if (e.target === e.currentTarget) setMaximized(false); }}
       >
-        <div style={{ width: 'calc(100vw - 48px)', maxWidth: 1200, maxHeight: 'calc(100vh - 48px)', background: '#fff', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+        <div style={{ width: 'calc(100vw - 48px)', maxWidth: 1200, maxHeight: 'calc(100vh - 48px)', background: '#12142a', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
           {Header}
           <div style={{ flex: 1, overflowY: 'auto' }}>{StatusArea}{DataPanel}</div>
         </div>
@@ -487,7 +487,7 @@ const InlineTraceabilityChart: React.FC<Props> = ({ lotCode: initLot, waferCode:
   }
 
   return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff', marginTop: 8, fontSize: 13 }}>
+    <div style={{ border: '1px solid #2d284e', borderRadius: 10, overflow: 'hidden', background: '#12142a', marginTop: 8, fontSize: 13 }}>
       {Header}
 
       {StatusArea}

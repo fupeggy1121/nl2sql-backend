@@ -42,7 +42,7 @@ export function MethodSelector({ methods, selected, onSelect }: Props) {
               display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6,
               padding: '12px 14px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
               border: isActive ? `2px solid ${color}` : '2px solid #e5e7eb',
-              background: isActive ? `${color}12` : '#fff',
+              background: isActive ? `${color}12` : '#12142a',
               transition: 'all .15s',
               boxShadow: isActive ? `0 0 0 3px ${color}20` : 'none',
             }}

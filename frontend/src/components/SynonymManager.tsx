@@ -109,9 +109,9 @@ function SceneBar({ active, counts, onChange }: {
         return (
           <button key={s.id} onClick={() => onChange(s.id)} style={{
             padding: '3px 10px', borderRadius: 16,
-            border: `1px solid ${isActive ? s.color : '#e5e7eb'}`,
-            background: isActive ? s.color : '#fff',
-            color: isActive ? '#fff' : '#374151',
+            border: `1px solid ${isActive ? s.color : '#2d284e'}`,
+            background: isActive ? s.color : '#12142a',
+            color: isActive ? '#fff' : '#c4c9d6',
             fontSize: 11, fontWeight: isActive ? 600 : 400, cursor: 'pointer',
           }}>
             {s.label}{s.id !== 'all' && n > 0 ? ` (${n})` : s.id === 'all' ? ` (${n})` : ''}
@@ -145,7 +145,7 @@ function EntityCard({ group, active, searchTerm, onClick }: {
     <button onClick={onClick} style={{
       display: 'block', width: '100%', textAlign: 'left', padding: '11px 12px', borderRadius: 9,
       border: active ? `2px solid ${scene.color}` : '2px solid #e5e7eb',
-      background: active ? `${scene.color}08` : '#fff',
+      background: active ? `${scene.color}08` : '#12142a',
       cursor: 'pointer', marginBottom: 7, transition: 'all .12s',
       boxShadow: active ? `0 0 0 3px ${scene.color}20` : 'none',
     }}>
@@ -155,7 +155,7 @@ function EntityCard({ group, active, searchTerm, onClick }: {
           background: `${scene.color}18`, color: scene.color, border: `1px solid ${scene.color}30`,
           flexShrink: 0,
         }}>{scene.label}</span>
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#111827', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
           {hl(group.labelCn)}
         </span>
         <span style={{ fontSize: 11, color: '#9ca3af', flexShrink: 0 }}>{activeSynonyms.length}</span>
@@ -165,7 +165,7 @@ function EntityCard({ group, active, searchTerm, onClick }: {
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 3 }}>
         {previewWords.map((w, i) => (
-          <span key={i} style={{ padding: '1px 6px', borderRadius: 8, fontSize: 11, background: '#f3f4f6', color: '#4b5563' }}>
+          <span key={i} style={{ padding: '1px 6px', borderRadius: 8, fontSize: 11, background: '#1a1c35', color: '#8892a4' }}>
             {searchTerm && !w.startsWith('+') ? hl(w) : w}
           </span>
         ))}
@@ -185,7 +185,7 @@ function SynonymChip({ s, onToggle, onDelete }: {
   const canEdit = !!s.id && !isBuiltin;
   const tooltip = `来源：${s.source === 'builtin' ? '内置' : s.source === 'manual' ? '手动' : '自动'}${s.created_at ? ' | ' + new Date(s.created_at).toLocaleDateString('zh-CN') : ''}`;
 
-  const borderColor = !s.is_active ? '#e5e7eb' : isBuiltin ? '#bfdbfe' : s.source === 'manual' ? '#e9d5ff' : '#a7f3d0';
+  const borderColor = !s.is_active ? '#2d284e' : isBuiltin ? '#bfdbfe' : s.source === 'manual' ? '#e9d5ff' : '#a7f3d0';
   const bg = !s.is_active ? '#f9fafb' : isBuiltin ? '#eff6ff' : s.source === 'manual' ? '#faf5ff' : '#f0fdf4';
   const color = !s.is_active ? '#9ca3af' : isBuiltin ? '#1d4ed8' : s.source === 'manual' ? '#7c3aed' : '#065f46';
 
@@ -282,14 +282,14 @@ function DetailPanel({ group, allUris, onRefresh }: {
               padding: '2px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600,
               background: `${scene.color}18`, color: scene.color, border: `1px solid ${scene.color}30`,
             }}>{scene.label}</span>
-            <h2 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>{group.labelCn}</h2>
+            <h2 style={{ fontSize: 17, fontWeight: 700, color: '#f1f5f9', margin: 0 }}>{group.labelCn}</h2>
           </div>
-          <code style={{ fontSize: 11, color: '#6b7280', background: '#f3f4f6', padding: '2px 8px', borderRadius: 4 }}>
+          <code style={{ fontSize: 11, color: '#6b7280', background: '#1a1c35', padding: '2px 8px', borderRadius: 4 }}>
             {group.uri}
           </code>
         </div>
         <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
-          <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>
+          <div style={{ fontSize: 13, color: '#c4c9d6', marginBottom: 4 }}>
             共 <b>{group.synonyms.length}</b> 条 · 活跃 <b style={{ color: '#059669' }}>{group.synonyms.filter(s => s.is_active).length}</b>
           </div>
           <div style={{ display: 'flex', gap: 10, fontSize: 11, color: '#9ca3af', justifyContent: 'flex-end' }}>
@@ -321,9 +321,9 @@ function DetailPanel({ group, allUris, onRefresh }: {
 
       <div style={{
         marginTop: 8, padding: '13px 15px', borderRadius: 9,
-        border: '1px dashed #d1d5db', background: '#fafafa',
+        border: '1px dashed #d1d5db', background: '#12142a',
       }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 7 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#c4c9d6', marginBottom: 7 }}>
           + 添加同义词
           <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 400, marginLeft: 6 }}>多个词用逗号或换行分隔，回车提交</span>
         </div>
@@ -335,7 +335,7 @@ function DetailPanel({ group, allUris, onRefresh }: {
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAdd(); } }}
             placeholder={`为"${group.labelCn}"添加别称…`}
             style={{
-              flex: 1, padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6,
+              flex: 1, padding: '7px 10px', border: '1px solid #2d284e', borderRadius: 6,
               fontSize: 13, outline: 'none', fontFamily: 'inherit',
             }}
           />
@@ -344,7 +344,7 @@ function DetailPanel({ group, allUris, onRefresh }: {
             disabled={!newWord.trim() || adding}
             style={{
               padding: '7px 16px', borderRadius: 6, border: 'none', fontSize: 13, fontWeight: 600,
-              background: !newWord.trim() || adding ? '#e5e7eb' : '#4f46e5',
+              background: !newWord.trim() || adding ? '#2d284e' : '#4f46e5',
               color: !newWord.trim() || adding ? '#9ca3af' : '#fff',
               cursor: !newWord.trim() ? 'not-allowed' : 'pointer',
             }}
@@ -480,8 +480,8 @@ export default function SynonymManager() {
 
   // ── 共用样式 ──────────────────────────────────────────────────
   const S = {
-    container: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column' as const, fontFamily: '-apple-system, sans-serif', background: '#f8fafc' },
-    topBar: { padding: '14px 20px 0', background: '#fff', borderBottom: '1px solid #e5e7eb' },
+    container: { width: '100%', height: '100%', display: 'flex', flexDirection: 'column' as const, fontFamily: '-apple-system, sans-serif', background: '#0d0e1a' },
+    topBar: { padding: '14px 20px 0', background: '#12142a', borderBottom: '1px solid #2d284e' },
     badge: { background: '#dc2626', color: '#fff', fontSize: 10, borderRadius: '50%', width: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: 5 },
     btn: (color: string): React.CSSProperties => ({
       display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 14px', border: 'none',
@@ -496,7 +496,7 @@ export default function SynonymManager() {
       <div style={S.topBar}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>同义词管理</span>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9' }}>同义词管理</span>
             {stats && (
               <div style={{ display: 'flex', gap: 10, fontSize: 12, color: '#6b7280' }}>
                 <span>活跃 <b style={{ color: '#059669' }}>{stats.synonyms.active}</b></span>
@@ -535,10 +535,10 @@ export default function SynonymManager() {
         <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
           {/* 左侧 */}
           <div style={{
-            width: 300, minWidth: 260, flexShrink: 0, borderRight: '1px solid #e5e7eb',
-            background: '#fff', display: 'flex', flexDirection: 'column',
+            width: 300, minWidth: 260, flexShrink: 0, borderRight: '1px solid #2d284e',
+            background: '#12142a', display: 'flex', flexDirection: 'column',
           }}>
-            <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid #f3f4f6' }}>
+            <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid #1e1b4b' }}>
               <div style={{ position: 'relative' }}>
                 <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
                 <input
@@ -546,7 +546,7 @@ export default function SynonymManager() {
                   onChange={e => setSearchTerm(e.target.value)}
                   placeholder="搜索对象名称或同义词…"
                   style={{
-                    width: '100%', padding: '7px 28px 7px 28px', border: '1px solid #e5e7eb',
+                    width: '100%', padding: '7px 28px 7px 28px', border: '1px solid #2d284e',
                     borderRadius: 8, fontSize: 13, outline: 'none', boxSizing: 'border-box',
                   }}
                 />
@@ -555,7 +555,7 @@ export default function SynonymManager() {
                 )}
               </div>
             </div>
-            <div style={{ padding: '8px 12px', borderBottom: '1px solid #f3f4f6' }}>
+            <div style={{ padding: '8px 12px', borderBottom: '1px solid #1e1b4b' }}>
               <SceneBar active={activeScene} counts={sceneCounts} onChange={id => { setActiveScene(id); setSelectedUri(null); }} />
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
@@ -602,26 +602,26 @@ export default function SynonymManager() {
       {/* ── 未匹配词 Tab ── */}
       {tab === 'unmatched' && (
         <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
-          <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-            <div style={{ padding: '12px 18px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ background: '#12142a', borderRadius: 10, border: '1px solid #2d284e', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid #1e1b4b', display: 'flex', justifyContent: 'space-between' }}>
               <b style={{ fontSize: 14 }}>未匹配查询词 ({unmatched.length})</b>
               <button style={S.btn('#6b7280')} onClick={loadUnmatched}><RefreshCw size={12} /> 刷新</button>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
-                <tr style={{ background: '#f9fafb' }}>
+                <tr style={{ background: '#12142a' }}>
                   {['查询词', '频次', '原始查询', '推荐对象', '操作'].map(h => (
-                    <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
+                    <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #2d284e' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {unmatched.map(t => (
-                  <tr key={t.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                  <tr key={t.id} style={{ borderBottom: '1px solid #1e1b4b' }}>
                     <td style={{ padding: '9px 14px', fontWeight: 600 }}>{t.term}</td>
                     <td style={{ padding: '9px 14px', color: '#d97706' }}>{t.frequency}次</td>
                     <td style={{ padding: '9px 14px', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#6b7280' }}>{t.original_query || '—'}</td>
-                    <td style={{ padding: '9px 14px' }}>{t.suggested_table ? <code style={{ fontSize: 11, background: '#f3f4f6', padding: '1px 6px', borderRadius: 4 }}>{t.suggested_table}</code> : '—'}</td>
+                    <td style={{ padding: '9px 14px' }}>{t.suggested_table ? <code style={{ fontSize: 11, background: '#1a1c35', padding: '1px 6px', borderRadius: 4 }}>{t.suggested_table}</code> : '—'}</td>
                     <td style={{ padding: '9px 14px' }}>
                       <div style={{ display: 'flex', gap: 5 }}>
                         <button style={S.btn('#059669')} onClick={() => { setApproveItem(t); setApproveTable(t.suggested_table || allUris[0]?.uri || ''); setShowApproveModal(true); }}>
@@ -645,27 +645,27 @@ export default function SynonymManager() {
       {/* ── 审计日志 Tab ── */}
       {tab === 'audit' && (
         <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
-          <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-            <div style={{ padding: '12px 18px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ background: '#12142a', borderRadius: 10, border: '1px solid #2d284e', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid #1e1b4b', display: 'flex', justifyContent: 'space-between' }}>
               <b style={{ fontSize: 14 }}>操作日志 ({auditLog.length})</b>
               <button style={S.btn('#6b7280')} onClick={loadAudit}><RefreshCw size={12} /> 刷新</button>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
-                <tr style={{ background: '#f9fafb' }}>
+                <tr style={{ background: '#12142a' }}>
                   {['时间', '操作', '本体对象', '同义词', '操作人'].map(h => (
-                    <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #e5e7eb' }}>{h}</th>
+                    <th key={h} style={{ padding: '9px 14px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #2d284e' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {auditLog.map((l, i) => (
-                  <tr key={l.id ?? i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                  <tr key={l.id ?? i} style={{ borderBottom: '1px solid #1e1b4b' }}>
                     <td style={{ padding: '9px 14px', color: '#6b7280', whiteSpace: 'nowrap' }}>{l.created_at ? new Date(l.created_at).toLocaleString('zh-CN') : '—'}</td>
                     <td style={{ padding: '9px 14px' }}>
-                      <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: '#dbeafe', color: '#1d4ed8' }}>{l.action}</span>
+                      <span style={{ padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, background: 'rgba(59,130,246,0.2)', color: '#1d4ed8' }}>{l.action}</span>
                     </td>
-                    <td style={{ padding: '9px 14px' }}><code style={{ fontSize: 11, background: '#f3f4f6', padding: '1px 6px', borderRadius: 4 }}>{l.target_uri || (l as any).table_name || '—'}</code></td>
+                    <td style={{ padding: '9px 14px' }}><code style={{ fontSize: 11, background: '#1a1c35', padding: '1px 6px', borderRadius: 4 }}>{l.target_uri || (l as any).table_name || '—'}</code></td>
                     <td style={{ padding: '9px 14px', fontWeight: 600 }}>{l.synonym}</td>
                     <td style={{ padding: '9px 14px', color: '#6b7280' }}>{l.performed_by}</td>
                   </tr>
@@ -683,7 +683,7 @@ export default function SynonymManager() {
       {showApproveModal && approveItem && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}
           onClick={() => setShowApproveModal(false)}>
-          <div style={{ background: '#fff', borderRadius: 12, width: 460, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,.15)' }}
+          <div style={{ background: '#12142a', borderRadius: 12, width: 460, maxWidth: '90vw', boxShadow: '0 20px 60px rgba(0,0,0,.15)' }}
             onClick={e => e.stopPropagation()}>
             <div style={{ padding: '18px 22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>映射：<span style={{ color: '#4f46e5' }}>"{approveItem.term}"</span></h3>
@@ -691,11 +691,11 @@ export default function SynonymManager() {
             </div>
             <div style={{ padding: '14px 22px' }}>
               <div style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 13, fontWeight: 500, color: '#374151', display: 'block', marginBottom: 4 }}>映射到本体对象</label>
+                <label style={{ fontSize: 13, fontWeight: 500, color: '#c4c9d6', display: 'block', marginBottom: 4 }}>映射到本体对象</label>
                 <select
                   value={approveTable}
                   onChange={e => setApproveTable(e.target.value)}
-                  style={{ width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid #2d284e', borderRadius: 6, fontSize: 13 }}
                 >
                   {allUris.map(u => <option key={u.uri} value={u.uri}>{u.label}（{u.uri}）</option>)}
                 </select>

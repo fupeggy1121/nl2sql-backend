@@ -17,9 +17,9 @@ export function SqlPreview({ plan, onExecute, executing }: Props) {
 
   return (
     <div style={{
-      background: '#fff',
+      background: '#12142a',
       borderRadius: 12,
-      border: '1px solid #e5e7eb',
+      border: '1px solid #2d284e',
       overflow: 'hidden',
     }}>
       {/* Header */}
@@ -28,12 +28,12 @@ export function SqlPreview({ plan, onExecute, executing }: Props) {
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '12px 16px',
-        background: '#f8fafc',
-        borderBottom: '1px solid #e5e7eb',
+        background: '#0d0e1a',
+        borderBottom: '1px solid #2d284e',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Code2 size={16} color="#4f46e5" />
-          <span style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>
+          <span style={{ fontWeight: 600, fontSize: 14, color: '#c4c9d6' }}>
             生成的 SQL
           </span>
           <span style={{
@@ -51,8 +51,8 @@ export function SqlPreview({ plan, onExecute, executing }: Props) {
           onClick={() => setEditing(e => !e)}
           style={{
             display: 'flex', alignItems: 'center', gap: 4,
-            padding: '4px 10px', borderRadius: 6, border: '1px solid #e5e7eb',
-            background: editing ? '#ede9fe' : '#fff', color: editing ? '#4f46e5' : '#6b7280',
+            padding: '4px 10px', borderRadius: 6, border: '1px solid #2d284e',
+            background: editing ? 'rgba(99,102,241,0.15)' : '#12142a', color: editing ? '#4f46e5' : '#6b7280',
             fontSize: 13, cursor: 'pointer', fontWeight: 500,
           }}
         >
@@ -104,7 +104,7 @@ export function SqlPreview({ plan, onExecute, executing }: Props) {
       {plan.self_correction && plan.self_correction.retries > 0 && (
         <div style={{
           padding: '8px 16px',
-          background: '#fffbeb',
+          background: 'rgba(245,158,11,0.1)',
           borderTop: '1px solid #fde68a',
           display: 'flex', alignItems: 'center', gap: 6,
           fontSize: 13, color: '#92400e',
@@ -118,7 +118,7 @@ export function SqlPreview({ plan, onExecute, executing }: Props) {
       {plan.explanation && (
         <div style={{
           padding: '10px 16px',
-          borderTop: '1px solid #e5e7eb',
+          borderTop: '1px solid #2d284e',
           fontSize: 13, color: '#6b7280',
           display: 'flex', alignItems: 'flex-start', gap: 6,
         }}>
@@ -128,7 +128,7 @@ export function SqlPreview({ plan, onExecute, executing }: Props) {
       )}
 
       {/* Execute button */}
-      <div style={{ padding: '12px 16px', borderTop: '1px solid #e5e7eb', textAlign: 'right' }}>
+      <div style={{ padding: '12px 16px', borderTop: '1px solid #2d284e', textAlign: 'right' }}>
         <button
           onClick={() => onExecute(sql)}
           disabled={executing}

@@ -146,7 +146,7 @@ function SemanticDetail({ step }: { step: TraceStep }) {
             <div key={i}>
               <span style={{ color: '#818cf8' }}>{c.label_cn || c.logic_class}</span>
               {c.physical_table && <>
-                <span style={{ color: '#4b5563' }}> → </span>
+                <span style={{ color: '#8892a4' }}> → </span>
                 <span style={{ color: '#7dd3fc', fontFamily: 'monospace' }}>{c.physical_table}</span>
               </>}
             </div>

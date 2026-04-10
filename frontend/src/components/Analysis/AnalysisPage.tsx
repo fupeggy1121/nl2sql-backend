@@ -156,7 +156,7 @@ function ScenarioCard({ s, active, onClick }: { s: Scenario; active: boolean; on
         display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6,
         padding: '14px 16px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
         border: active ? '2px solid #2563eb' : '2px solid #e5e7eb',
-        background: active ? '#eff6ff' : '#fff',
+        background: active ? 'rgba(59,130,246,0.12)' : '#12142a',
         boxShadow: active ? '0 0 0 3px #2563eb22' : 'none',
         transition: 'all .15s', width: '100%',
       }}
@@ -184,8 +184,8 @@ function PresetDatasetPicker({ presets, onSelect }: {
           }
           style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
-            borderRadius: 8, border: '1px solid #e5e7eb', background: '#f9fafb',
-            color: '#374151', fontSize: 13, cursor: 'pointer', textAlign: 'left',
+            borderRadius: 8, border: '1px solid #2d284e', background: '#12142a',
+            color: '#c4c9d6', fontSize: 13, cursor: 'pointer', textAlign: 'left',
             transition: 'all .15s',
           }}
         >
@@ -211,12 +211,12 @@ function DataPreview({ columns, sample, rowsCount }: DataPreviewProps) {
       <div style={{ fontSize: 12, color: '#059669', fontWeight: 600, marginBottom: 8 }}>
         ✅ 数据加载成功：{rowsCount} 行 × {columns.length} 列
       </div>
-      <div style={{ overflowX: 'auto', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+      <div style={{ overflowX: 'auto', border: '1px solid #2d284e', borderRadius: 8 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, whiteSpace: 'nowrap' }}>
           <thead>
-            <tr style={{ background: '#f9fafb' }}>
+            <tr style={{ background: '#12142a' }}>
               {columns.slice(0, 10).map(col => (
-                <th key={col} style={{ padding: '6px 10px', textAlign: 'left', borderBottom: '1px solid #e5e7eb', color: '#374151', fontWeight: 600 }}>
+                <th key={col} style={{ padding: '6px 10px', textAlign: 'left', borderBottom: '1px solid #2d284e', color: '#c4c9d6', fontWeight: 600 }}>
                   {col}
                 </th>
               ))}
@@ -225,9 +225,9 @@ function DataPreview({ columns, sample, rowsCount }: DataPreviewProps) {
           </thead>
           <tbody>
             {sample.slice(0, 5).map((row, i) => (
-              <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+              <tr key={i} style={{ borderBottom: '1px solid #1e1b4b' }}>
                 {columns.slice(0, 10).map(col => (
-                  <td key={col} style={{ padding: '5px 10px', color: '#4b5563', fontFamily: 'monospace' }}>
+                  <td key={col} style={{ padding: '5px 10px', color: '#8892a4', fontFamily: 'monospace' }}>
                     {String(row[col] ?? '—').slice(0, 30)}
                   </td>
                 ))}
@@ -358,9 +358,9 @@ export function AnalysisPage() {
   }
 
   const card = (title: string, children: React.ReactNode, extra?: React.ReactNode) => (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
-      <div style={{ padding: '12px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>{title}</div>
+    <div style={{ background: '#12142a', border: '1px solid #2d284e', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
+      <div style={{ padding: '12px 20px', borderBottom: '1px solid #1e1b4b', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: '#f1f5f9' }}>{title}</div>
         {extra}
       </div>
       <div style={{ padding: '16px 20px' }}>{children}</div>
@@ -371,15 +371,15 @@ export function AnalysisPage() {
     padding: '9px 24px', borderRadius: 8, border: 'none',
     cursor: disabled ? 'not-allowed' : 'pointer',
     fontSize: 13, fontWeight: 600,
-    background: disabled ? '#e5e7eb' : '#2563eb',
+    background: disabled ? '#2d284e' : '#2563eb',
     color: disabled ? '#9ca3af' : '#fff',
   })
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 24, background: '#f8fafc' }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: 24, background: '#0d0e1a' }}>
       <div style={{ maxWidth: 960, margin: '0 auto' }}>
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>自助数据分析</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9' }}>自助数据分析</div>
           <div style={{ fontSize: 13, color: '#6b7280', marginTop: 3 }}>
             选择分析场景，系统自动加载推荐数据、填入参数，开箱即用
           </div>
@@ -394,7 +394,7 @@ export function AnalysisPage() {
             ))}
           </div>,
           selectedScenario ? (
-            <span style={{ fontSize: 12, background: '#d1fae5', color: '#065f46', padding: '3px 10px', borderRadius: 12, fontWeight: 600 }}>
+            <span style={{ fontSize: 12, background: 'rgba(16,185,129,0.15)', color: '#065f46', padding: '3px 10px', borderRadius: 12, fontWeight: 600 }}>
               已选：{selectedScenario.label}
             </span>
           ) : undefined
@@ -418,7 +418,7 @@ export function AnalysisPage() {
                   onChange={e => setNlInput(e.target.value)}
                   placeholder={`例：查询近30天${selectedScenario.label}相关数据…`}
                   style={{
-                    flex: 1, padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db',
+                    flex: 1, padding: '8px 10px', borderRadius: 6, border: '1px solid #2d284e',
                     fontSize: 13, resize: 'none', fontFamily: 'inherit',
                   }}
                 />
@@ -440,7 +440,7 @@ export function AnalysisPage() {
               <div style={{ color: '#6b7280', fontSize: 13 }}>⏳ 正在查询数据，请稍候…</div>
             )}
             {previewError && (
-              <div style={{ color: '#dc2626', fontSize: 13, background: '#fef2f2', padding: '8px 12px', borderRadius: 6 }}>
+              <div style={{ color: '#dc2626', fontSize: 13, background: 'rgba(239,68,68,0.1)', padding: '8px 12px', borderRadius: 6 }}>
                 ❌ {previewError}
               </div>
             )}
@@ -449,7 +449,7 @@ export function AnalysisPage() {
             )}
           </div>,
           dataReady ? (
-            <span style={{ fontSize: 12, background: '#d1fae5', color: '#065f46', padding: '3px 10px', borderRadius: 12, fontWeight: 600 }}>
+            <span style={{ fontSize: 12, background: 'rgba(16,185,129,0.15)', color: '#065f46', padding: '3px 10px', borderRadius: 12, fontWeight: 600 }}>
               ✅ 数据已就绪
             </span>
           ) : undefined
@@ -491,13 +491,13 @@ export function AnalysisPage() {
               response.success && response.result ? (
                 <ResultView result={response.result} answer={response.answer} />
               ) : (
-                <div style={{ padding: 16, background: '#fef2f2', borderRadius: 8, color: '#dc2626', fontSize: 13 }}>
+                <div style={{ padding: 16, background: 'rgba(239,68,68,0.1)', borderRadius: 8, color: '#dc2626', fontSize: 13 }}>
                   分析失败：{response.error ?? '未知错误'}
                 </div>
               ),
               <button
                 onClick={() => { setResponse(null); setRunError('') }}
-                style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #d1d5db', background: '#fff', fontSize: 12, cursor: 'pointer', color: '#374151' }}
+                style={{ padding: '4px 12px', borderRadius: 6, border: '1px solid #2d284e', background: '#12142a', fontSize: 12, cursor: 'pointer', color: '#c4c9d6' }}
               >
                 重新分析
               </button>

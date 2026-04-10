@@ -1,0 +1,60 @@
+{
+  "default_source_id": "epi",
+  "sources": [
+    {
+      "source_id": "mes_prod",
+      "display_name": "Mes Prod",
+      "host": "10.60.120.33",
+      "port": 3336,
+      "db": "cc_semi_mvp",
+      "user": "root",
+      "password": "Csxw@2024",
+      "description": "",
+      "read_timeout": 45
+    },
+    {
+      "source_id": "test",
+      "display_name": "Test",
+      "host": "10.60.120.33",
+      "port": 3336,
+      "db": "cc_semi_mvp",
+      "user": "root",
+      "password": "Csxw@2024",
+      "description": "",
+      "read_timeout": 45
+    },
+    {
+      "source_id": "dev",
+      "display_name": "Dev",
+      "host": "172.16.57.29",
+      "port": 3306,
+      "db": "cc_semi_mvp",
+      "user": "cc_mes_read",
+      "password": "read@Cc2025",
+      "description": "",
+      "read_timeout": 45
+    },
+    {
+      "source_id": "epi",
+      "display_name": "Epi",
+      "host": "10.60.120.33",
+      "port": 40306,
+      "db": "cc_epi_mvp",
+      "user": "root",
+      "password": "root123",
+      "description": "",
+      "read_timeout": 45
+    },
+    {
+      "source_id": "pms",
+      "display_name": "Pms",
+      "host": "10.60.120.33",
+      "port": 40306,
+      "db": "cc_epi_pms",
+      "user": "root",
+      "password": "root123",
+      "description": "",
+      "read_timeout": 45
+    }
+  ]
+}

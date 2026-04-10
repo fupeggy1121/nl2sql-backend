@@ -267,8 +267,8 @@ function buildGenealogyOption(
             ? `{state|${eventKind}}\n{proc|${stationStr}}`
             : `{state|${stateLabel}}\n{proc|${lotShort}}`,
         rich: {
-          bold:  { fontSize: 11, color: '#1f2937', fontWeight: 'bold', lineHeight: 16 },
-          state: { fontSize: 11, color: '#1f2937', fontWeight: 'bold', lineHeight: 16 },
+          bold:  { fontSize: 11, color: '#e2e8f0', fontWeight: 'bold', lineHeight: 16 },
+          state: { fontSize: 11, color: '#e2e8f0', fontWeight: 'bold', lineHeight: 16 },
           proc:  { fontSize: 9,  color: '#6b7280', lineHeight: 14 },
         },
         position: 'bottom',
@@ -292,7 +292,7 @@ function buildGenealogyOption(
 
   return {
     animation: false,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#0d0e1a',
     tooltip: {
       trigger: 'item',
       enterable: false,
@@ -327,10 +327,10 @@ function buildGenealogyOption(
 const selectStyle: React.CSSProperties = {
   padding: '5px 28px 5px 10px',
   borderRadius: 6,
-  border: '1px solid #d1d5db',
-  background: '#fff',
+  border: '1px solid #2d284e',
+  background: '#12142a',
   fontSize: 13,
-  color: '#374151',
+  color: '#c4c9d6',
   cursor: 'pointer',
   appearance: 'none' as any,
   backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
@@ -358,7 +358,7 @@ const SearchInput: React.FC<{
           placeholder={placeholder}
           style={{
             padding: '5px 32px 5px 10px', borderRadius: 6,
-            border: '1px solid #d1d5db', fontSize: 13, color: '#374151',
+            border: '1px solid #2d284e', fontSize: 13, color: '#c4c9d6',
             outline: 'none', width: 150,
           }}
         />
@@ -381,8 +381,8 @@ const SearchInput: React.FC<{
 const MetaPanel: React.FC<{ title: string; data: Record<string, any> }> = ({ title, data }) => {
   const entries = Object.entries(data).filter(([, v]) => v !== null && v !== undefined && v !== '');
   return (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, marginBottom: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10, borderBottom: '1px solid #f3f4f6', paddingBottom: 8 }}>{title}</div>
+    <div style={{ background: '#12142a', border: '1px solid #2d284e', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: '#c4c9d6', marginBottom: 10, borderBottom: '1px solid #1e1b4b', paddingBottom: 8 }}>{title}</div>
       {entries.length === 0 ? (
         <div style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>暂无数据</div>
       ) : (
@@ -390,7 +390,7 @@ const MetaPanel: React.FC<{ title: string; data: Record<string, any> }> = ({ tit
           {entries.map(([k, v]) => (
             <div key={k} style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontSize: 10, color: '#9ca3af', marginBottom: 1 }}>{k}</span>
-              <span style={{ fontSize: 12, color: '#1f2937', wordBreak: 'break-all' }}>{String(v)}</span>
+              <span style={{ fontSize: 12, color: '#e2e8f0', wordBreak: 'break-all' }}>{String(v)}</span>
             </div>
           ))}
         </div>
@@ -405,21 +405,21 @@ const PassTimeline: React.FC<{ records: Array<Record<string, any>> }> = ({ recor
     return <div style={{ textAlign: 'center', padding: '32px 0', color: '#9ca3af', fontSize: 13 }}>暂无过站记录</div>;
   return (
     <div style={{ position: 'relative', paddingLeft: 24 }}>
-      <div style={{ position: 'absolute', left: 9, top: 8, bottom: 8, width: 2, background: '#e5e7eb', borderRadius: 1 }} />
+      <div style={{ position: 'absolute', left: 9, top: 8, bottom: 8, width: 2, background: '#2d284e', borderRadius: 1 }} />
       {records.map((rec, idx) => (
         <div key={rec.id || idx} style={{ position: 'relative', marginBottom: 16 }}>
           <div style={{ position: 'absolute', left: -24, top: 4, width: 10, height: 10, borderRadius: '50%', background: '#3b82f6', border: '2px solid #fff', boxShadow: '0 0 0 1px #93c5fd', zIndex: 1 }} />
-          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, padding: '8px 12px' }}>
+          <div style={{ background: '#12142a', border: '1px solid #2d284e', borderRadius: 6, padding: '8px 12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
               <Cpu size={12} color="#6b7280" />
-              <span style={{ fontWeight: 600, fontSize: 12, color: '#1f2937' }}>
+              <span style={{ fontWeight: 600, fontSize: 12, color: '#e2e8f0' }}>
                 {rec.station_id || rec.station_name || `记录 #${idx + 1}`}
               </span>
               {rec.equipment_id && (
                 <><ChevronRight size={11} color="#9ca3af" /><span style={{ fontSize: 11, color: '#6b7280' }}>{rec.equipment_id}</span></>
               )}
               {rec.wafer_id && (
-                <span style={{ marginLeft: 'auto', fontSize: 10, color: '#6b7280', background: '#f3f4f6', padding: '1px 6px', borderRadius: 10 }}>
+                <span style={{ marginLeft: 'auto', fontSize: 10, color: '#6b7280', background: '#1a1c35', padding: '1px 6px', borderRadius: 10 }}>
                   {rec.wafer_id}
                 </span>
               )}
@@ -442,15 +442,15 @@ const SimpleTable: React.FC<{ rows: Array<Record<string, any>> }> = ({ rows }) =
   const cols = Object.keys(rows[0]);
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#374151' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#c4c9d6' }}>
         <thead>
-          <tr style={{ background: '#f9fafb' }}>
-            {cols.map((c) => <th key={c} style={{ padding: '6px 10px', textAlign: 'left', borderBottom: '1px solid #e5e7eb', fontWeight: 600, whiteSpace: 'nowrap', color: '#6b7280' }}>{c}</th>)}
+          <tr style={{ background: '#12142a' }}>
+            {cols.map((c) => <th key={c} style={{ padding: '6px 10px', textAlign: 'left', borderBottom: '1px solid #2d284e', fontWeight: 600, whiteSpace: 'nowrap', color: '#6b7280' }}>{c}</th>)}
           </tr>
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
+            <tr key={i} style={{ background: i % 2 === 0 ? '#12142a' : '#161830', borderBottom: '1px solid #1e1b4b' }}>
               {cols.map((c) => <td key={c} style={{ padding: '6px 10px', whiteSpace: 'nowrap', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{row[c] == null ? '—' : String(row[c])}</td>)}
             </tr>
           ))}
@@ -564,7 +564,7 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({ params }) =>
         if (!option) return null;
         return (
           <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ fontSize: 11, color: '#9ca3af', padding: '6px 16px', borderBottom: '1px solid #f3f4f6', flexShrink: 0 }}>
+            <div style={{ fontSize: 11, color: '#9ca3af', padding: '6px 16px', borderBottom: '1px solid #1e1b4b', flexShrink: 0 }}>
               节点 = 批次状态快照 &nbsp;·&nbsp; 连线 = 驱动状态切换的操作事件 &nbsp;·&nbsp; 可拖拽节点 / 滚轮缩放
             </div>
             <ReactECharts option={option} style={{ flex: 1, minHeight: 0 }} />
@@ -581,18 +581,18 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({ params }) =>
   const currentTarget = viewMode === 'lot' ? activeLot : activeWafer;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f0f2f5', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0d0e1a', overflow: 'hidden' }}>
 
       {/* ── 头部 ── */}
-      <header style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap' }}>
+      <header style={{ background: '#12142a', borderBottom: '1px solid #2d284e', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap' }}>
         <GitBranch size={17} color="#3b82f6" style={{ flexShrink: 0 }} />
         <span style={{ fontSize: 15, fontWeight: 700, color: '#1a1a2e', marginRight: 4, flexShrink: 0 }}>追溯查询</span>
 
         {/* ── 模式切换 ── */}
-        <div style={{ display: 'flex', borderRadius: 6, border: '1px solid #d1d5db', overflow: 'hidden', flexShrink: 0 }}>
+        <div style={{ display: 'flex', borderRadius: 6, border: '1px solid #2d284e', overflow: 'hidden', flexShrink: 0 }}>
           {(['lot', 'wafer'] as ViewMode[]).map((m) => (
             <button key={m} onClick={() => setViewMode(m)}
-              style={{ padding: '5px 12px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: viewMode === m ? 600 : 400, background: viewMode === m ? '#3b82f6' : '#fff', color: viewMode === m ? '#fff' : '#6b7280', transition: 'all .15s' }}>
+              style={{ padding: '5px 12px', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: viewMode === m ? 600 : 400, background: viewMode === m ? '#3b82f6' : '#12142a', color: viewMode === m ? '#fff' : '#6b7280', transition: 'all .15s' }}>
               {m === 'lot' ? '批次' : 'Wafer'}
             </button>
           ))}
@@ -627,7 +627,7 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({ params }) =>
 
         {/* ── 当前标签 ── */}
         {currentTarget && (
-          <span style={{ fontSize: 12, color: '#9ca3af', background: '#f3f4f6', padding: '3px 8px', borderRadius: 10, whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 12, color: '#9ca3af', background: '#1a1c35', padding: '3px 8px', borderRadius: 10, whiteSpace: 'nowrap' }}>
             {viewMode === 'lot' ? '批次' : 'Wafer'}：{currentTarget}
             {viewMode === 'lot' && selectedWafer !== 'all' && ` · Wafer ${selectedWafer}`}
           </span>
@@ -635,7 +635,7 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({ params }) =>
 
         <div style={{ marginLeft: 'auto' }}>
           <button onClick={fetchData} disabled={loading}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff', color: '#374151', fontSize: 12, cursor: 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 6, border: '1px solid #2d284e', background: '#12142a', color: '#c4c9d6', fontSize: 12, cursor: 'pointer' }}>
             <RefreshCw size={12} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
             刷新
           </button>
@@ -659,7 +659,7 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({ params }) =>
               />
               {/* Wafer 列表（批次模式下，供快速点击切换）*/}
               {viewMode === 'lot' && waferIdOptions.length > 0 && (
-                <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12 }}>
+                <div style={{ background: '#12142a', border: '1px solid #2d284e', borderRadius: 8, padding: 12 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
                     Wafer 列表（{waferIdOptions.length} 片）
                   </div>
@@ -680,22 +680,22 @@ export const TraceabilityView: React.FC<TraceabilityViewProps> = ({ params }) =>
               )}
               {/* 错误提示 */}
               {((viewMode === 'lot' && lotData && !lotData.success) || (viewMode === 'wafer' && waferData && !waferData.success)) && (
-                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 12, display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: '#dc2626', marginTop: 12 }}>
+                <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid #fecaca', borderRadius: 8, padding: 12, display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: '#dc2626', marginTop: 12 }}>
                   <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
                   <span>数据加载失败：{(viewMode === 'lot' ? lotData?.error : waferData?.error)}</span>
                 </div>
               )}
               {!lotData && !waferData && !loading && (
-                <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: 12, fontSize: 12, color: '#c2410c', marginTop: 12 }}>
+                <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid #fed7aa', borderRadius: 8, padding: 12, fontSize: 12, color: '#c2410c', marginTop: 12 }}>
                   {currentTarget ? '未找到该追溯数据，请确认编号正确且数据库已连接。' : '请输入批次号或 Wafer 号后按 Enter 查询。'}
                 </div>
               )}
             </div>
 
             {/* 右侧主内容 */}
-            <div style={{ flex: 1, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ flex: 1, background: '#12142a', border: '1px solid #2d284e', borderRadius: 8, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               {/* Tab 导航 */}
-              <div style={{ display: 'flex', borderBottom: '1px solid #e5e7eb', padding: '0 16px', flexShrink: 0 }}>
+              <div style={{ display: 'flex', borderBottom: '1px solid #2d284e', padding: '0 16px', flexShrink: 0 }}>
                 {tabs.map((tab) => (
                   <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                     style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', border: 'none', borderBottom: activeTab === tab.id ? '2px solid #3b82f6' : '2px solid transparent', background: 'transparent', color: activeTab === tab.id ? '#2563eb' : '#6b7280', fontSize: 13, fontWeight: activeTab === tab.id ? 600 : 400, cursor: 'pointer', marginBottom: -1 }}>

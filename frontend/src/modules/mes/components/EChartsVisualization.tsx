@@ -214,13 +214,13 @@ function generateBarChartOptions(
       type: 'category',
       data: xAxisData,
       axisLabel: { interval: 0, rotate: 45 },
-      axisLine: { lineStyle: { color: '#ddd' } }
+      axisLine: { lineStyle: { color: '#4b5563' } }
     },
     yAxis: {
       type: 'value',
       name: yField,
-      axisLine: { lineStyle: { color: '#ddd' } },
-      splitLine: { lineStyle: { color: '#f0f0f0' } }
+      axisLine: { lineStyle: { color: '#4b5563' } },
+      splitLine: { lineStyle: { color: '#2d284e' } }
     },
     series: [
       {
@@ -283,7 +283,7 @@ function generateGroupedBarChartOptions(
     yAxis: {
       type: 'value',
       name: yField,
-      splitLine: { lineStyle: { color: '#f0f0f0' } },
+      splitLine: { lineStyle: { color: '#2d284e' } },
     },
     series,
   };
@@ -345,13 +345,13 @@ function generateLineChartOptions(
       type: 'category',
       data: xAxisData,
       axisLabel: { interval: Math.floor(displayData.length / 10) || 0, rotate: 45 },
-      axisLine: { lineStyle: { color: '#ddd' } }
+      axisLine: { lineStyle: { color: '#4b5563' } }
     },
     yAxis: {
       type: 'value',
       name: yField,
-      axisLine: { lineStyle: { color: '#ddd' } },
-      splitLine: { lineStyle: { color: '#f0f0f0' } }
+      axisLine: { lineStyle: { color: '#4b5563' } },
+      splitLine: { lineStyle: { color: '#2d284e' } }
     },
     series: [
       {
@@ -463,14 +463,14 @@ function generateScatterChartOptions(
     xAxis: {
       type: 'value',
       name: xField,
-      axisLine: { lineStyle: { color: '#ddd' } },
-      splitLine: { lineStyle: { color: '#f0f0f0' } }
+      axisLine: { lineStyle: { color: '#4b5563' } },
+      splitLine: { lineStyle: { color: '#2d284e' } }
     },
     yAxis: {
       type: 'value',
       name: yField,
-      axisLine: { lineStyle: { color: '#ddd' } },
-      splitLine: { lineStyle: { color: '#f0f0f0' } }
+      axisLine: { lineStyle: { color: '#4b5563' } },
+      splitLine: { lineStyle: { color: '#2d284e' } }
     },
     series: [
       {

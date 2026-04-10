@@ -18,13 +18,13 @@ export function DataSourceConfig({ value, onChange }: Props) {
   const setType = (type: DataSourceType) => onChange({ type, limit: value.limit })
 
   const inputStyle: React.CSSProperties = {
-    width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #d1d5db',
-    fontSize: 13, fontFamily: 'monospace', boxSizing: 'border-box', background: '#fff',
+    width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid #2d284e',
+    fontSize: 13, fontFamily: 'monospace', boxSizing: 'border-box', background: '#12142a',
     outline: 'none', resize: 'vertical',
   }
 
   const labelStyle: React.CSSProperties = {
-    display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4,
+    display: 'block', fontSize: 12, fontWeight: 600, color: '#c4c9d6', marginBottom: 4,
   }
 
   return (
@@ -38,7 +38,7 @@ export function DataSourceConfig({ value, onChange }: Props) {
             style={{
               padding: '5px 14px', borderRadius: 6, border: '1px solid',
               borderColor: value.type === t.id ? '#2563eb' : '#d1d5db',
-              background: value.type === t.id ? '#eff6ff' : '#fff',
+              background: value.type === t.id ? 'rgba(59,130,246,0.12)' : '#12142a',
               color: value.type === t.id ? '#1d4ed8' : '#374151',
               fontSize: 12, fontWeight: value.type === t.id ? 600 : 400, cursor: 'pointer',
             }}
@@ -99,7 +99,7 @@ export function DataSourceConfig({ value, onChange }: Props) {
             const n = parseInt(e.target.value, 10)
             if (!isNaN(n) && n > 0) onChange({ ...value, limit: n })
           }}
-          style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 13 }}
+          style={{ width: 90, padding: '5px 8px', borderRadius: 6, border: '1px solid #2d284e', fontSize: 13 }}
         />
       </div>
     </div>

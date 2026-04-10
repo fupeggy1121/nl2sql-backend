@@ -115,32 +115,32 @@ export function DashboardModule({ dashboardId }: Props) {
   }
 
   return (
-    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f0f2f5', overflow: 'hidden' }}>
+    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0d0e1a', overflow: 'hidden' }}>
       {/* Dashboard header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', background: '#fff', borderBottom: '1px solid #e5e7eb', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', background: '#12142a', borderBottom: '1px solid #2d284e', flexShrink: 0 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dashboard.name}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dashboard.name}</div>
           {dashboard.description && <div style={{ fontSize: 12, color: '#6b7280', marginTop: 1 }}>{dashboard.description}</div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           {isEditing && (
             <button onClick={() => setShowAddPanel(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, fontSize: 13, color: '#1d4ed8', cursor: 'pointer' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: 'rgba(59,130,246,0.12)', border: '1px solid #bfdbfe', borderRadius: 6, fontSize: 13, color: '#1d4ed8', cursor: 'pointer' }}>
               <PlusCircle size={13} /> 添加图表
             </button>
           )}
           <button onClick={() => { setIsEditing(v => !v) }}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: isEditing ? '#4f46e5' : '#fff', border: isEditing ? 'none' : '1px solid #d1d5db', borderRadius: 6, fontSize: 13, color: isEditing ? '#fff' : '#374151', cursor: 'pointer', fontWeight: isEditing ? 600 : 400 }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: isEditing ? '#4f46e5' : '#1e1b4b', border: isEditing ? 'none' : '1px solid #2d284e', borderRadius: 6, fontSize: 13, color: isEditing ? '#fff' : '#c4c9d6', cursor: 'pointer', fontWeight: isEditing ? 600 : 400 }}>
             <Pencil size={13} /> {isEditing ? '完成编辑' : '编辑看板'}
           </button>
           {isEditing && (
             <button onClick={() => setShowEditor(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 14px', background: '#12142a', border: '1px solid #2d284e', borderRadius: 6, fontSize: 13, color: '#c4c9d6', cursor: 'pointer' }}>
               设置
             </button>
           )}
           <button onClick={() => setRefreshTick(t => t + 1)}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', background: '#12142a', border: '1px solid #2d284e', borderRadius: 6, fontSize: 13, color: '#c4c9d6', cursor: 'pointer' }}>
             <RefreshCw size={13} />
           </button>
         </div>

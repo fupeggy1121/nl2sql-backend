@@ -2464,7 +2464,7 @@ function SkillEditorTab() {
               >
                 <div style={{ fontSize: 13, fontWeight: selected === s.skill_name ? 600 : 400, fontFamily: 'monospace' }}>{s.skill_name}</div>
                 {s.zh_names.length > 0 && (
-                  <div style={{ fontSize: 11, color: '#4b5563', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 11, color: '#8892a4', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {s.zh_names.slice(0, 3).join(' / ')}
                   </div>
                 )}
@@ -2480,7 +2480,7 @@ function SkillEditorTab() {
             </div>
           ))}
           {skills.length === 0 && !error && (
-            <div style={{ padding: 24, textAlign: 'center', color: '#4b5563', fontSize: 12 }}>暂无 skill 文件</div>
+            <div style={{ padding: 24, textAlign: 'center', color: '#8892a4', fontSize: 12 }}>暂无 skill 文件</div>
           )}
         </div>
       </div>
@@ -2534,9 +2534,9 @@ function SkillEditorTab() {
 
         {/* 编辑器 / 预览区 */}
         {loading ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4b5563', fontSize: 13 }}>加载中...</div>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8892a4', fontSize: 13 }}>加载中...</div>
         ) : !selected ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4b5563', fontSize: 13 }}>← 选择左侧 skill 开始编辑</div>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8892a4', fontSize: 13 }}>← 选择左侧 skill 开始编辑</div>
         ) : (
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
             {/* 编辑 pane */}

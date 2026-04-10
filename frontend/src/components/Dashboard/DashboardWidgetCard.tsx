@@ -107,12 +107,12 @@ export function DashboardWidgetCard({
   const activeChartType = widget.chartTypeOverride || chartType
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#12142a', borderRadius: 8, border: '1px solid #2d284e', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
       {/* Header */}
       <div className="drag-handle"
-        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: '#f9fafb', borderBottom: '1px solid #e5e7eb', cursor: isEditing ? 'grab' : 'default', minHeight: 36 }}>
+        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: '#12142a', borderBottom: '1px solid #2d284e', cursor: isEditing ? 'grab' : 'default', minHeight: 36 }}>
         {isEditing && <GripVertical size={13} color="#9ca3af" style={{ flexShrink: 0 }} />}
-        <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayTitle}</span>
+        <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: '#c4c9d6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayTitle}</span>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           {/* Refresh button */}
@@ -132,7 +132,7 @@ export function DashboardWidgetCard({
                 <Settings size={12} />
               </button>
               {showTypeMenu && (
-                <div style={{ position: 'absolute', right: 0, top: 20, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', zIndex: 50, minWidth: 110 }}>
+                <div style={{ position: 'absolute', right: 0, top: 20, background: '#12142a', border: '1px solid #2d284e', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', zIndex: 50, minWidth: 110 }}>
                   {CHART_TYPES.map(ct => (
                     <button key={ct.value} onClick={() => { onChartTypeChange(ct.value); setChartType(ct.value); setShowTypeMenu(false) }}
                       style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', fontSize: 12, background: activeChartType === ct.value ? '#eff6ff' : 'none', color: activeChartType === ct.value ? '#1d4ed8' : '#374151', border: 'none', cursor: 'pointer' }}>
@@ -169,7 +169,7 @@ export function DashboardWidgetCard({
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 6, color: '#ef4444', fontSize: 12, padding: 16, textAlign: 'center' }}>
             <AlertCircle size={20} />
             <span>{errorMsg}</span>
-            <button onClick={loadData} style={{ marginTop: 4, padding: '4px 12px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 4, fontSize: 11, color: '#ef4444', cursor: 'pointer' }}>重试</button>
+            <button onClick={loadData} style={{ marginTop: 4, padding: '4px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid #fca5a5', borderRadius: 4, fontSize: 11, color: '#ef4444', cursor: 'pointer' }}>重试</button>
           </div>
         )}
         {status === 'ok' && (

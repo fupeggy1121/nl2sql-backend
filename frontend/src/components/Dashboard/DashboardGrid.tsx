@@ -109,7 +109,7 @@ export function DashboardGrid({
       {isEditing && (
         <div style={{ textAlign: 'center', paddingTop: 8 }}>
           <button onClick={onAddClick}
-            style={{ padding: '7px 16px', background: '#fff', border: '1px dashed #9ca3af', borderRadius: 6, fontSize: 12, color: '#6b7280', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            style={{ padding: '7px 16px', background: '#12142a', border: '1px dashed #9ca3af', borderRadius: 6, fontSize: 12, color: '#6b7280', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             <PlusCircle size={13} /> 添加图表
           </button>
         </div>

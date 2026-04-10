@@ -78,7 +78,7 @@ export function ResultTable({ result }: Props) {
 
   if (!result.success) {
     return (
-      <div style={{ padding: 24, color: '#ef4444', background: '#fef2f2', borderRadius: 10 }}>
+      <div style={{ padding: 24, color: '#ef4444', background: 'rgba(239,68,68,0.1)', borderRadius: 10 }}>
         ❌ 查询失败：{result.error ?? '未知错误'}
       </div>
     )
@@ -86,7 +86,7 @@ export function ResultTable({ result }: Props) {
 
   if (!result.data || result.data.length === 0) {
     return (
-      <div style={{ padding: 24, color: '#6b7280', textAlign: 'center', background: '#f9fafb', borderRadius: 10 }}>
+      <div style={{ padding: 24, color: '#6b7280', textAlign: 'center', background: '#12142a', borderRadius: 10 }}>
         查询未返回数据
       </div>
     )
@@ -137,19 +137,19 @@ export function ResultTable({ result }: Props) {
   const valueCol = numCols[0] ?? cols[1]
 
   return (
-    <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+    <div style={{ background: '#12142a', borderRadius: 12, border: '1px solid #2d284e', overflow: 'hidden' }}>
       {/* Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb',
+        padding: '12px 16px', background: '#0d0e1a', borderBottom: '1px solid #2d284e',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>
+          <span style={{ fontWeight: 600, fontSize: 14, color: '#c4c9d6' }}>
             查询结果
           </span>
           <span style={{
             padding: '2px 8px', borderRadius: 10,
-            background: '#e0e7ff', color: '#4338ca', fontSize: 12, fontWeight: 600,
+            background: 'rgba(99,102,241,0.2)', color: '#4338ca', fontSize: 12, fontWeight: 600,
           }}>
             {result.rows_count} 行
           </span>
@@ -159,14 +159,14 @@ export function ResultTable({ result }: Props) {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {numCols.length > 0 && (
-            <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: 6, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', border: '1px solid #2d284e', borderRadius: 6, overflow: 'hidden' }}>
               {(['table', 'chart'] as const).map(m => (
                 <button
                   key={m}
                   onClick={() => setViewMode(m)}
                   style={{
                     padding: '4px 10px', border: 'none', cursor: 'pointer', fontSize: 12,
-                    background: viewMode === m ? '#4f46e5' : '#fff',
+                    background: viewMode === m ? '#4f46e5' : '#1e1b4b',
                     color: viewMode === m ? '#fff' : '#6b7280',
                     display: 'flex', alignItems: 'center', gap: 4,
                   }}
@@ -181,8 +181,8 @@ export function ResultTable({ result }: Props) {
             onClick={exportCsv}
             style={{
               display: 'flex', alignItems: 'center', gap: 4,
-              padding: '4px 10px', borderRadius: 6, border: '1px solid #e5e7eb',
-              background: '#fff', color: '#374151', fontSize: 12, cursor: 'pointer',
+              padding: '4px 10px', borderRadius: 6, border: '1px solid #2d284e',
+              background: '#12142a', color: '#c4c9d6', fontSize: 12, cursor: 'pointer',
             }}
           >
             <Download size={13} />
@@ -206,7 +206,7 @@ export function ResultTable({ result }: Props) {
               fontSize: 13, lineHeight: 1.5,
             }}>
               <thead>
-                <tr style={{ background: '#f8fafc' }}>
+                <tr style={{ background: '#0d0e1a' }}>
                   {cols.map(col => (
                     <th
                       key={col}
@@ -214,7 +214,7 @@ export function ResultTable({ result }: Props) {
                       style={{
                         padding: '10px 14px', textAlign: 'left',
                         borderBottom: '2px solid #e5e7eb', whiteSpace: 'nowrap',
-                        fontWeight: 600, color: '#374151', cursor: 'pointer',
+                        fontWeight: 600, color: '#c4c9d6', cursor: 'pointer',
                         userSelect: 'none',
                       }}
                     >
@@ -228,16 +228,16 @@ export function ResultTable({ result }: Props) {
                 {pageData.map((row, i) => (
                   <tr
                     key={i}
-                    style={{ background: i % 2 === 0 ? '#fff' : '#f9fafb' }}
+                    style={{ background: i % 2 === 0 ? '#12142a' : '#161830' }}
                     onMouseEnter={e => (e.currentTarget.style.background = '#f0f4ff')}
-                    onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? '#fff' : '#f9fafb')}
+                    onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? '#12142a' : '#161830')}
                   >
                     {cols.map(col => {
                       const v = row[col]
                       return (
                         <td key={col} style={{
                           padding: '9px 14px',
-                          borderBottom: '1px solid #f3f4f6',
+                          borderBottom: '1px solid #1e1b4b',
                           maxWidth: 260, overflow: 'hidden',
                           textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           color: v == null ? '#d1d5db' : '#111827',
@@ -255,15 +255,15 @@ export function ResultTable({ result }: Props) {
           {totalPages > 1 && (
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              gap: 12, padding: '12px 16px', borderTop: '1px solid #e5e7eb',
+              gap: 12, padding: '12px 16px', borderTop: '1px solid #2d284e',
               fontSize: 13, color: '#6b7280',
             }}>
               <button
                 onClick={() => setPage(p => Math.max(0, p - 1))}
                 disabled={page === 0}
                 style={{
-                  padding: '4px 8px', borderRadius: 6, border: '1px solid #e5e7eb',
-                  background: page === 0 ? '#f3f4f6' : '#fff', cursor: page === 0 ? 'not-allowed' : 'pointer',
+                  padding: '4px 8px', borderRadius: 6, border: '1px solid #2d284e',
+                  background: page === 0 ? '#f3f4f6' : '#12142a', cursor: page === 0 ? 'not-allowed' : 'pointer',
                   display: 'flex', alignItems: 'center',
                 }}
               >
@@ -274,8 +274,8 @@ export function ResultTable({ result }: Props) {
                 onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
                 disabled={page === totalPages - 1}
                 style={{
-                  padding: '4px 8px', borderRadius: 6, border: '1px solid #e5e7eb',
-                  background: page === totalPages - 1 ? '#f3f4f6' : '#fff',
+                  padding: '4px 8px', borderRadius: 6, border: '1px solid #2d284e',
+                  background: page === totalPages - 1 ? '#f3f4f6' : '#12142a',
                   cursor: page === totalPages - 1 ? 'not-allowed' : 'pointer',
                   display: 'flex', alignItems: 'center',
                 }}

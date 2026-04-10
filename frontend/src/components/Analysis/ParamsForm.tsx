@@ -29,8 +29,8 @@ function ParamField({
   detectedColumns?: string[]
 }) {
   const inputStyle: React.CSSProperties = {
-    padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db',
-    fontSize: 13, width: '100%', boxSizing: 'border-box', background: '#fff',
+    padding: '6px 10px', borderRadius: 6, border: '1px solid #2d284e',
+    fontSize: 13, width: '100%', boxSizing: 'border-box', background: '#12142a',
   }
   const label = getLabel(name, schema)
   const hint = getHint(schema)
@@ -58,7 +58,7 @@ function ParamField({
   if (enumOptions.length > 0) {
     return (
       <div title={hint}>
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#c4c9d6', marginBottom: 4 }}>
           {label}{hint && <span style={{ color: '#9ca3af', fontWeight: 400, marginLeft: 4, fontSize: 11 }}>ⓘ {hint}</span>}
         </label>
         <select
@@ -77,7 +77,7 @@ function ParamField({
   if (schema.type === 'number' || schema.type === 'integer') {
     return (
       <div>
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#c4c9d6', marginBottom: 4 }}>
           {label}{hint && <span style={{ color: '#9ca3af', fontWeight: 400, marginLeft: 4, fontSize: 11 }}>ⓘ {hint}</span>}
         </label>
         <input
@@ -99,7 +99,7 @@ function ParamField({
 
   return (
     <div>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#c4c9d6', marginBottom: 4 }}>
         {label}{hint && <span style={{ color: '#9ca3af', fontWeight: 400, marginLeft: 4, fontSize: 11 }}>ⓘ {hint}</span>}
       </label>
       {isColumnField ? (
@@ -188,8 +188,8 @@ export function ParamsForm({ method, params, onChange, detectedColumns }: Props)
 
       {/* 字段映射（有列名检测时折叠，否则展开）*/}
       {fieldKeys.length > 0 && (
-        <details open={!detectedColumns || detectedColumns.length === 0} style={{ border: '1px solid #e5e7eb', borderRadius: 8 }}>
-          <summary style={{ padding: '8px 14px', fontSize: 12, fontWeight: 600, color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+        <details open={!detectedColumns || detectedColumns.length === 0} style={{ border: '1px solid #2d284e', borderRadius: 8 }}>
+          <summary style={{ padding: '8px 14px', fontSize: 12, fontWeight: 600, color: '#c4c9d6', cursor: 'pointer', userSelect: 'none' }}>
             字段映射（列名设置）{detectedColumns && detectedColumns.length > 0 ? ' — 已自动检测，可展开确认' : ''}
           </summary>
           <div style={{ padding: '12px 14px' }}>

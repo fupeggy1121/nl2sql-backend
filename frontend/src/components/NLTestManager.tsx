@@ -376,13 +376,13 @@ const NLTestManager: React.FC = () => {
   // Render
   // ═══════════════════════════════════════════════════════════════
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#f8fafc' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0d0e1a' }}>
 
       {/* ── Top bar ── */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+      <div style={{ background: '#12142a', borderBottom: '1px solid #2d284e', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <FlaskConical size={18} color="#7c3aed" />
-          <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>NL 语义测试</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>NL 语义测试</span>
           <span style={{ fontSize: 12, color: '#6b7280', marginLeft: 4 }}>端到端 SQL 生成质量验证</span>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -407,8 +407,8 @@ const NLTestManager: React.FC = () => {
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
         {/* ── Left: case list ── */}
-        <div style={{ width: 340, flexShrink: 0, background: '#fff', borderRight: '1px solid #e5e7eb', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '10px 14px 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid #f3f4f6' }}>
+        <div style={{ width: 340, flexShrink: 0, background: '#12142a', borderRight: '1px solid #2d284e', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '10px 14px 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid #1e1b4b' }}>
             用例列表 ({cases.length})
           </div>
           {cases.map(tc => {
@@ -420,12 +420,12 @@ const NLTestManager: React.FC = () => {
             return (
               <div key={tc.id}
                 onClick={() => setSelected(tc.id)}
-                style={{ padding: '10px 14px', cursor: 'pointer', background: isActive ? '#eff6ff' : 'transparent', borderLeft: isActive ? '3px solid #2563eb' : '3px solid transparent', borderBottom: '1px solid #f3f4f6', display: 'flex', flexDirection: 'column', gap: 3 }}
+                style={{ padding: '10px 14px', cursor: 'pointer', background: isActive ? '#eff6ff' : 'transparent', borderLeft: isActive ? '3px solid #2563eb' : '3px solid transparent', borderBottom: '1px solid #1e1b4b', display: 'flex', flexDirection: 'column', gap: 3 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <StatusDot running={isRunning} pass={passAll} fail={failAny} idle={!st} />
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{tc.id}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#c4c9d6' }}>{tc.id}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <IconBtn title="编辑" onClick={e => { e.stopPropagation(); openEdit(tc); }}><Edit2 size={12} /></IconBtn>
@@ -511,15 +511,15 @@ const CaseDetail: React.FC<{
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* header */}
-      <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', padding: 16 }}>
+      <div style={{ background: '#12142a', borderRadius: 8, border: '1px solid #2d284e', padding: 16 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#111827', marginBottom: 4 }}>{tc.id}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>{tc.id}</div>
             <div style={{ fontSize: 14, color: '#1d4ed8', fontWeight: 500, marginBottom: 6 }}>"{tc.nl}"</div>
             <div style={{ fontSize: 12, color: '#6b7280' }}>{tc.intent}</div>
           </div>
           <button onClick={onRun} disabled={isRunning}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: isRunning ? '#e5e7eb' : '#7c3aed', color: isRunning ? '#9ca3af' : '#fff', border: 'none', borderRadius: 6, cursor: isRunning ? 'default' : 'pointer', fontSize: 12, fontWeight: 600 }}>
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: isRunning ? '#2d284e' : '#7c3aed', color: isRunning ? '#9ca3af' : '#fff', border: 'none', borderRadius: 6, cursor: isRunning ? 'default' : 'pointer', fontSize: 12, fontWeight: 600 }}>
             {isRunning ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Play size={13} />}
             {isRunning ? '运行中…' : `运行 ×${tc.run_count}`}
           </button>
@@ -542,7 +542,7 @@ const CaseDetail: React.FC<{
       {/* runs */}
       {st && st.runs.length > 0 && (
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#c4c9d6', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
             <ListChecks size={13} /> 运行结果
             {st.status === 'done' && tc.run_count > 1 && st.stable !== null && (
               <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 9999, background: st.stable ? '#ecfeff' : '#fffbeb', color: st.stable ? '#0891b2' : '#d97706', fontWeight: 600 }}>
@@ -567,7 +567,7 @@ const CaseDetail: React.FC<{
       )}
 
       {(!st || st.runs.length === 0) && (
-        <div style={{ background: '#fff', borderRadius: 8, border: '1px solid #e5e7eb', padding: 32, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
+        <div style={{ background: '#12142a', borderRadius: 8, border: '1px solid #2d284e', padding: 32, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
           点击"运行"按钮开始测试
         </div>
       )}
@@ -587,13 +587,13 @@ const RunCard: React.FC<{ run: RunResult; total: number; expanded: boolean; onTo
   };
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${run.success ? '#bbf7d0' : '#fecaca'}`, borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ background: '#12142a', border: `1px solid ${run.success ? '#bbf7d0' : '#fecaca'}`, borderRadius: 8, overflow: 'hidden' }}>
       <div onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', background: run.success ? '#f0fdf4' : '#fef2f2' }}>
         {run.success
           ? <CheckCircle size={14} color="#16a34a" />
           : <AlertCircle size={14} color="#dc2626" />
         }
-        <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>Run {run.run_idx}/{total}</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: '#c4c9d6' }}>Run {run.run_idx}/{total}</span>
         {run.sql_retry_count > 0 && (
           <PillTag color="#d97706" bg="#fffbeb">retry ×{run.sql_retry_count}</PillTag>
         )}
@@ -604,9 +604,9 @@ const RunCard: React.FC<{ run: RunResult; total: number; expanded: boolean; onTo
       </div>
 
       {expanded && (
-        <div style={{ padding: '12px 14px', borderTop: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ padding: '12px 14px', borderTop: '1px solid #2d284e', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {run.failures.length > 0 && (
-            <div style={{ background: '#fef2f2', borderRadius: 6, padding: '8px 10px' }}>
+            <div style={{ background: 'rgba(239,68,68,0.1)', borderRadius: 6, padding: '8px 10px' }}>
               {run.failures.map((f, i) => (
                 <div key={i} style={{ fontSize: 12, color: '#dc2626', display: 'flex', gap: 6 }}>
                   <span>✗</span><span>{f}</span>
@@ -663,8 +663,8 @@ const DiffPanel: React.FC<{ runs: RunResult[] }> = ({ runs }) => {
   if (diffs.length === 0) return null;
 
   return (
-    <div style={{ marginTop: 12, background: '#fff', border: '1px solid #fde68a', borderRadius: 8, overflow: 'hidden' }}>
-      <div style={{ background: '#fffbeb', padding: '8px 14px', fontSize: 12, fontWeight: 600, color: '#92400e', display: 'flex', alignItems: 'center', gap: 6 }}>
+    <div style={{ marginTop: 12, background: '#12142a', border: '1px solid #fde68a', borderRadius: 8, overflow: 'hidden' }}>
+      <div style={{ background: 'rgba(245,158,11,0.1)', padding: '8px 14px', fontSize: 12, fontWeight: 600, color: '#92400e', display: 'flex', alignItems: 'center', gap: 6 }}>
         <BarChart2 size={13} /> SQL 差异分析（多次运行不一致）
       </div>
       {diffs.map(d => (
@@ -698,15 +698,15 @@ const EditModal: React.FC<{
   };
 
   const fldStyle: React.CSSProperties = {
-    width: '100%', padding: '7px 10px', border: '1px solid #d1d5db', borderRadius: 6,
-    fontSize: 12, fontFamily: 'inherit', background: '#fff', boxSizing: 'border-box',
+    width: '100%', padding: '7px 10px', border: '1px solid #2d284e', borderRadius: 6,
+    fontSize: 12, fontFamily: 'inherit', background: '#12142a', boxSizing: 'border-box',
   };
   const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#6b7280', display: 'block', marginBottom: 4 };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div style={{ background: '#fff', borderRadius: 10, width: 580, maxHeight: '85vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ background: '#12142a', borderRadius: 10, width: 580, maxHeight: '85vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid #2d284e', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 14, fontWeight: 700 }}>{isNew ? '添加测试用例' : '编辑测试用例'}</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={16} /></button>
         </div>
@@ -729,8 +729,8 @@ const EditModal: React.FC<{
             <label style={lbl}>意图说明</label>
             <textarea value={item.intent} onChange={e => set('intent', e.target.value)} style={{ ...fldStyle, height: 56, resize: 'vertical' }} placeholder="按工艺站点分组，统计 WIP 批次数量" />
           </div>
-          <div style={{ background: '#f8fafc', borderRadius: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>断言规则（每行一个）</div>
+          <div style={{ background: '#0d0e1a', borderRadius: 8, padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#c4c9d6', textTransform: 'uppercase', letterSpacing: '0.5px' }}>断言规则（每行一个）</div>
             <div>
               <label style={lbl}>sql_contains — SQL 必须包含的关键字</label>
               <textarea
@@ -769,10 +769,10 @@ const EditModal: React.FC<{
             </div>
           </div>
         </div>
-        <div style={{ padding: '12px 20px', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={onClose} style={{ padding: '7px 16px', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', fontSize: 12, cursor: 'pointer', color: '#374151' }}>取消</button>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid #2d284e', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={onClose} style={{ padding: '7px 16px', border: '1px solid #2d284e', borderRadius: 6, background: '#12142a', fontSize: 12, cursor: 'pointer', color: '#c4c9d6' }}>取消</button>
           <button onClick={onSave} disabled={!item.id || !item.nl}
-            style={{ padding: '7px 16px', border: 'none', borderRadius: 6, background: (!item.id || !item.nl) ? '#e5e7eb' : '#7c3aed', color: (!item.id || !item.nl) ? '#9ca3af' : '#fff', fontSize: 12, cursor: (!item.id || !item.nl) ? 'default' : 'pointer', fontWeight: 600 }}>
+            style={{ padding: '7px 16px', border: 'none', borderRadius: 6, background: (!item.id || !item.nl) ? '#2d284e' : '#7c3aed', color: (!item.id || !item.nl) ? '#9ca3af' : '#fff', fontSize: 12, cursor: (!item.id || !item.nl) ? 'default' : 'pointer', fontWeight: 600 }}>
             {isNew ? '添加' : '保存'}
           </button>
         </div>
@@ -796,7 +796,7 @@ const Btn: React.FC<{ icon: any; variant?: 'primary' | 'danger' | 'default'; onC
   const colors = {
     primary: { bg: '#7c3aed', color: '#fff' },
     danger:  { bg: '#fee2e2', color: '#dc2626' },
-    default: { bg: '#f3f4f6', color: '#374151' },
+    default: { bg: '#f3f4f6', color: '#c4c9d6' },
   };
   const style = colors[variant];
   return (
