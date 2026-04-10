@@ -1,5 +1,6 @@
 // modules/mes/components/UnifiedChat/UnifiedChat.tsx
 import React, { useState, useRef, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import {
   Send,
   MessageSquare,
@@ -22,8 +23,9 @@ import {
   Radar,
   BoxSelect,
 } from 'lucide-react';
-import { nl2sqlApi } from "../../../../services/nl2sqlApi";
-import type { PlotlyChartSpec, AnalysisResultPayload } from "../../../../services/nl2sqlApi";
+import { nl2sqlApi, streamChat } from "../../../../services/nl2sqlApi";
+import type { PlotlyChartSpec, AnalysisResultPayload, StreamDonePayload, UnifiedQueryResponse } from "../../../../services/nl2sqlApi";
+import { formatStreamError, errorToMessageContent } from "../../../../utils/streamErrors";
 import { EChartsVisualization } from "../EChartsVisualization";
 import { FeedbackForm } from "../FeedbackForm";
 import { FeedbackStats } from "../FeedbackStats";
@@ -108,6 +110,19 @@ const CHART_TYPE_LABELS: Record<string, string> = {
   grouped_bar: '分组柱状图',
   pareto: '柏拉图',
 };
+
+const CHART_OPTIONS = [
+  { value: 'table' as const, label: '表格', Icon: Table },
+  { value: 'bar' as const, label: '柱状图', Icon: BarChart },
+  { value: 'line' as const, label: '折线图', Icon: LineChart },
+  { value: 'pie' as const, label: '饼图', Icon: PieChart },
+  { value: 'card' as const, label: '单值图', Icon: LayoutDashboard },
+  { value: 'radar' as const, label: '雷达图', Icon: Radar },
+  { value: 'boxplot' as const, label: '箱线图', Icon: BoxSelect },
+  { value: 'bar-line-combo' as const, label: '组合图', Icon: LineChart },
+  { value: 'grouped_bar' as const, label: '分组图', Icon: BarChart },
+  { value: 'pareto' as const, label: '柏拉图', Icon: BarChart3 },
+];
 
 // 包含这些关键字时视为「数据查询」，不拦截
 const DATA_QUERY_KEYWORDS = ['统计', '查询', '查找', '获取', '计算', 'select', '列出', '找出', '过滤', '排序', '分组'];
@@ -206,8 +221,23 @@ export function UnifiedChat({
   const [currentSQL, setCurrentSQL] = useState<string>('');
   
   const [activeChartTypeOverrides, setActiveChartTypeOverrides] = useState<Record<string, Message['visualizationType']>>({});
-  
+  const [dropdownOpenId, setDropdownOpenId] = useState<string | null>(null);
+  const [dropdownSearch, setDropdownSearch] = useState('');
+
+  // ── Phase 2: streaming trace ──────────────────────────────────────────
+  /** ID of the placeholder "thinking" message shown during streaming. */
+  const streamingMsgIdRef = useRef<string | null>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
+  // ──────────────────────────────────────────────────────────────────────
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!dropdownOpenId) return;
+    const close = () => { setDropdownOpenId(null); setDropdownSearch(''); };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [dropdownOpenId]);
 
   useEffect(() => {
     const checkConnection = async () => {
@@ -390,10 +420,59 @@ export function UnifiedChat({
       }
       // ── end 图表切换拦截 ──
 
-      const response = await nl2sqlApi.explainQuery(content, sessionId);
-      
+      // ── Phase 2: 流式调用 ─────────────────────────────────────────────
+      const pendingMsgId = (Date.now() + 1).toString();
+      streamingMsgIdRef.current = pendingMsgId;
+
+      // 插入占位消息（无文字内容，只携带动态 trace），trace 将实时填充
+      const thinkingMsg: Message = {
+        id: pendingMsgId,
+        type: 'assistant',
+        content: '',
+        timestamp: new Date(),
+        pipeline_trace: [],
+      };
+      setMessages((prev) => [...prev, thinkingMsg]);
+
+      const response: UnifiedQueryResponse = await new Promise((resolve, reject) => {
+        const controller = streamChat(
+          content,
+          sessionId,
+          [],  // conversation_history managed server-side
+          {
+            onStep(step) {
+              // flushSync 绕过 React 18 自动批处理，让每个 step 立刻触发独立渲染
+              flushSync(() => {
+                setMessages((msgs) =>
+                  msgs.map((m) =>
+                    m.id === pendingMsgId
+                      ? { ...m, pipeline_trace: [...(m.pipeline_trace ?? []), step] }
+                      : m
+                  )
+                );
+              });
+            },
+            onDone(payload: StreamDonePayload) {
+              streamAbortRef.current = null;
+              // Merge top-level pipeline_trace into data so downstream branches work
+              resolve({ ...payload.data, pipeline_trace: payload.pipeline_trace } as any);
+            },
+            onError(error) {
+              streamAbortRef.current = null;
+              reject(new Error(error));  // raw string preserved; catch block formats it
+            },
+          }
+        );
+        streamAbortRef.current = controller;
+      });
+
+      // Remove the "thinking" placeholder (branches below will add the real reply)
+      setMessages((prev) => prev.filter((m) => m.id !== pendingMsgId));
+      streamingMsgIdRef.current = null;
+      // ─────────────────────────────────────────────────────────────────
+
       if (!response.success) {
-        throw new Error(response.error || 'Failed to process query.');
+        throw new Error((response as any).error || 'Failed to process query.');
       }
 
 // ── Clarification 分支：后端意图模糊，需要向用户反问 ──
@@ -438,7 +517,7 @@ if (response.query_result?.success && Array.isArray(response.query_result.data))
   const resultMsg: Message = {
     id: (Date.now() + 1).toString(),
     type: 'assistant',
-    content: `✅ 查询返回 ${qr.rows_count ?? qr.data.length} 条数据`,
+    content: ``,  // 不展示冗余的行数文字，trace 已包含该信息
     timestamp: new Date(),
     queryResult: {
       success: true,
@@ -558,11 +637,16 @@ setCurrentIntent(queryPlan.query_intent || null);
       }
     } catch (error) {
       console.error('Processing error:', error);
+      // 移除思考占位，再插入友好错误气泡
+      setMessages((prev) => prev.filter((m) => m.id !== streamingMsgIdRef.current));
+      streamingMsgIdRef.current = null;
+      streamAbortRef.current = null;
       setStep('input');
+      const errInfo = formatStreamError(String((error as Error)?.message ?? error));
       const errorMessage: Message = {
         id: Date.now().toString(),
         type: 'assistant',
-        content: `抱歉，处理您的请求时出现错误：${error.message}`,
+        content: errorToMessageContent(errInfo),
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -816,12 +900,17 @@ setCurrentIntent(queryPlan.query_intent || null);
                     {message.type === 'user' ? '👤' : message.type === 'system' ? 'ℹ️' : '🤖'}
                   </div>
                   <div className="message-content">
-                    <p className="message-text">{message.content}</p>
+                    {message.content && <p className="message-text">{message.content}</p>}
                     <span className="message-time">
                       {message.timestamp.toLocaleTimeString('zh-CN', {
                         hour: '2-digit',
                         minute: '2-digit',
                       })}
+                      {message.id === streamingMsgIdRef.current && (
+                        <span className="loading-dots-inline">
+                          <span /><span /><span />
+                        </span>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -908,88 +997,65 @@ setCurrentIntent(queryPlan.query_intent || null);
                       <div className="visualization-controls-toolbar">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-semibold text-gray-700">数据可视化</span>
-                          <div className="chart-type-selector">
-                            <button
-                              className={`chart-type-btn ${currentChartType === 'table' ? 'active' : ''}`}
-                              onClick={() => handleChartTypeChange(message.id, 'table')}
-                              title="表格视图"
-                            >
-                              <Table size={16} />
-                              <span>表格</span>
-                            </button>
-                            <button
-                              className={`chart-type-btn ${currentChartType === 'bar' ? 'active' : ''}`}
-                              onClick={() => handleChartTypeChange(message.id, 'bar')}
-                              title="柱状图"
-                            >
-                              <BarChart size={16} />
-                              <span>柱状图</span>
-                            </button>
-                            <button
-                              className={`chart-type-btn ${currentChartType === 'line' ? 'active' : ''}`}
-                              onClick={() => handleChartTypeChange(message.id, 'line')}
-                              title="折线图"
-                            >
-                              <LineChart size={16} />
-                              <span>折线图</span>
-                            </button>
-                            <button
-                              className={`chart-type-btn ${currentChartType === 'pie' ? 'active' : ''}`}
-                              onClick={() => handleChartTypeChange(message.id, 'pie')}
-                              title="饼图"
-                            >
-                              <PieChart size={16} />
-                              <span>饼图</span>
-                            </button>
-                            {/* 新增图表类型按钮 */}
-                            <button
-                              className={`chart-type-btn ${currentChartType === 'card' ? 'active' : ''}`}
-                              onClick={() => handleChartTypeChange(message.id, 'card')}
-                              title="单值图"
-                            >
-                              <LayoutDashboard size={16} />
-                              <span>单值图</span>
-                            </button>
-                            <button
-                              className={`chart-type-btn ${currentChartType === 'radar' ? 'active' : ''}`}
-                              onClick={() => handleChartTypeChange(message.id, 'radar')}
-                              title="雷达图"
-                            >
-                              <Radar size={16} />
-                              <span>雷达图</span>
-                            </button>
-                            <button
-                              className={`chart-type-btn ${currentChartType === 'boxplot' ? 'active' : ''}`}
-                              onClick={() => handleChartTypeChange(message.id, 'boxplot')}
-                              title="箱线图"
-                            >
-                              <BoxSelect size={16} />
-                              <span>箱线图</span>
-                            </button>
-                            <button
-                              className={`chart-type-btn ${currentChartType === 'bar-line-combo' ? 'active' : ''}`}
-                              onClick={() => handleChartTypeChange(message.id, 'bar-line-combo')}
-                              title="柱状折线组合图"
-                            >
-                              <LineChart size={16} />
-                              <span>组合图</span>
-                            </button>
-                            <button
-                              className={`chart-type-btn ${currentChartType === 'grouped_bar' ? 'active' : ''}`}
-                              onClick={() => handleChartTypeChange(message.id, 'grouped_bar')}
-                              title="分组柱状图（二维）"
-                            >
-                              <BarChart size={16} />
-                              <span>分组图</span>
-                            </button>
-                            <button
-                              className={`chart-type-btn ${currentChartType === 'pareto' ? 'active' : ''}`}
-                              onClick={() => handleChartTypeChange(message.id, 'pareto')}
-                              title="柏拉图（不良分析）"
-                            >
-                              <BarChart3 size={16} />
-                              <span>柏拉图</span>
-                            </button>
+                          <div className="chart-type-dropdown" onClick={e => e.stopPropagation()}>
+                            {(() => {
+                              const currentOption = CHART_OPTIONS.find(o => o.value === currentChartType) ?? CHART_OPTIONS[0];
+                              const CurrentIcon = currentOption.Icon;
+                              const isOpen = dropdownOpenId === message.id;
+                              const filtered = CHART_OPTIONS.filter(o =>
+                                dropdownSearch === '' || o.label.includes(dropdownSearch)
+                              );
+                              return (
+                                <>
+                                  <button
+                                    className="chart-type-dropdown-trigger"
+                                    onClick={() => {
+                                      if (isOpen) {
+                                        setDropdownOpenId(null);
+                                        setDropdownSearch('');
+                                      } else {
+                                        setDropdownOpenId(message.id);
+                                        setDropdownSearch('');
+                                      }
+                                    }}
+                                  >
+                                    <CurrentIcon size={14} />
+                                    <span>{currentOption.label}</span>
+                                    <ChevronDown size={12} className={isOpen ? 'rotated' : ''} />
+                                  </button>
+                                  {isOpen && (
+                                    <div className="chart-type-dropdown-panel">
+                                      <input
+                                        className="chart-type-dropdown-search"
+                                        placeholder="搜索图表类型…"
+                                        value={dropdownSearch}
+                                        onChange={e => setDropdownSearch(e.target.value)}
+                                        autoFocus
+                                      />
+                                      <div className="chart-type-dropdown-list">
+                                        {filtered.map(opt => {
+                                          const OptIcon = opt.Icon;
+                                          return (
+                                            <button
+                                              key={opt.value}
+                                              className={`chart-type-dropdown-option${currentChartType === opt.value ? ' active' : ''}`}
+                                              onClick={() => {
+                                                handleChartTypeChange(message.id, opt.value);
+                                                setDropdownOpenId(null);
+                                                setDropdownSearch('');
+                                              }}
+                                            >
+                                              <OptIcon size={14} />
+                                              <span>{opt.label}</span>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
 
@@ -1105,7 +1171,7 @@ setCurrentIntent(queryPlan.query_intent || null);
             );
           })}
 
-          {isProcessing && (
+          {isProcessing && !streamingMsgIdRef.current && (
             <div className="message-group">
               <div className="message assistant loading">
                 <div className="message-avatar">🤖</div>

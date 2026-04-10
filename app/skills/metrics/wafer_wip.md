@@ -50,6 +50,7 @@ required_entities:
 - **status = 50**: 仅统计"在制"状态批次，status 其他值代表已完成或暂停
 - **禁止时间过滤**: 在制品是**实时快照**，SQL 中**绝对不能**加任何 `gmt_create`/`gmt_modified` 的时间范围条件（如 `BETWEEN ... AND ...`）；用户说"当前"不代表要加时间过滤，在制品本身就是当前状态
 - **JOIN 路径（重要）**: 必须走两级关联：wafer → **子批次**（`sub.id = w.sub_lot_id`）→ 主批次（`lot.id = sub.parent_id`）；工站信息必须取自**子批次**的 `sub.process_id`，不是主批次的字段
+- **时间过滤**：若需按时间范围过滤，所有时间字段必须带表别名（如 `sub.gmt_create` 或 `lot.gmt_modified`），禁止使用裸露的 `gmt_create`（多表 JOIN 时有歧义）；不得重复生成两个时间过滤条件
 
 ## 支持维度
 

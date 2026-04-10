@@ -5,6 +5,7 @@ Database Tools — 封装现有 QueryExecutor + SupabaseClient
 import logging
 import datetime
 import decimal
+import math
 from typing import Optional, Any
 from langchain_core.tools import tool
 from app.services.query_executor import QueryExecutor
@@ -23,6 +24,9 @@ def _make_json_safe(value: Any) -> Any:
         if value == value.to_integral_value():
             return int(value)
         return float(value)
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return None
     if isinstance(value, bytes):
         try:
             return value.decode("utf-8")

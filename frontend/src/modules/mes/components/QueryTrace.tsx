@@ -34,6 +34,9 @@ const STEP_LABELS: Record<string, string> = {
   chart_generator:            '📈 图表生成',
   response_builder:           '📦 响应构建',
   rag_chat:                   '💬 智能问答',
+  clarification_node:         '❓ 意图澄清',
+  action_executor:            '⚡ 写操作执行',
+  baseline_manager:           '🎯 基线管理',
   // analysis_agent 节点
   analysis_method_selector:   '🔍 分析方法识别',
   analysis_data_loader:       '🗄️ 数据加载 SQL',

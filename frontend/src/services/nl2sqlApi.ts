@@ -389,6 +389,115 @@ export async function executeRecommendedQuery(
   );
 }
 
+// ── Phase 2: SSE 流式对话 ──
+
+/** POST /api/v1/chat/stream 的 SSE 事件类型 */
+export type ChatStreamEvent =
+  | { type: 'trace_step'; step: import('../types/api').PipelineStep }
+  | { type: 'done'; payload: StreamDonePayload }
+  | { type: 'error'; error: string };
+
+export interface StreamDonePayload {
+  success: boolean;
+  session_id: string;
+  data: UnifiedQueryResponse;
+  pipeline_trace: import('../types/api').PipelineStep[];
+}
+
+const _getApiBase = (): string => {
+  if (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_API_BASE_URL) {
+    return (import.meta as any).env.VITE_API_BASE_URL;
+  }
+  return 'http://localhost:8000';
+};
+
+/**
+ * 调用 POST /api/v1/chat/stream（SSE）。
+ * 每个 trace_step 事件触发 onStep 回调；完成时触发 onDone；出错时触发 onError。
+ *
+ * 返回 AbortController，调用 abort() 可中断请求。
+ */
+export function streamChat(
+  message: string,
+  sessionId: string | undefined,
+  conversationHistory: Array<{ role: string; content: string }>,
+  callbacks: {
+    onStep: (step: import('../types/api').PipelineStep) => void;
+    onDone: (payload: StreamDonePayload) => void;
+    onError: (error: string) => void;
+  },
+): AbortController {
+  const controller = new AbortController();
+  const url = `${_getApiBase()}/api/v1/chat/stream`;
+
+  (async () => {
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message,
+          session_id: sessionId || undefined,
+          conversation_history: conversationHistory,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        callbacks.onError(`HTTP ${resp.status}: ${text}`);
+        return;
+      }
+
+      const reader = resp.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+
+        for (const part of parts) {
+          const lines = part.trim().split('\n');
+          let eventType = '';
+          let dataStr = '';
+          for (const line of lines) {
+            if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+            else if (line.startsWith('data: ')) dataStr = line.slice(6);
+          }
+          if (!dataStr) continue;
+          try {
+            // JSON spec doesn't allow NaN/Infinity; replace them with null before parsing
+            const safeStr = dataStr
+              .replace(/:\s*NaN\b/g, ': null')
+              .replace(/:\s*-?Infinity\b/g, ': null');
+            const parsed = JSON.parse(safeStr);
+            if (eventType === 'trace_step') {
+              callbacks.onStep(parsed);
+            } else if (eventType === 'done') {
+              callbacks.onDone(parsed);
+            } else if (eventType === 'error') {
+              callbacks.onError(parsed.error ?? 'Unknown stream error');
+            }
+          } catch {
+            // malformed SSE chunk — ignore
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        callbacks.onError(String(err));
+      }
+    }
+  })();
+
+  return controller;
+}
+
 /**
  * 检查后端连接状态
  */
@@ -419,6 +528,7 @@ export const nl2sqlApi = {
   executeQueryWithApproval,
   executeRecommendedQuery,
   checkConnection,
+  streamChat,
 };
 
 export default nl2sqlApi;
