@@ -589,25 +589,25 @@ function ObjectMappingsTab() {
             )}
             {items.map(item => (
               <tr key={item.logic_class} className="hover:bg-gray-50 transition-colors">
-                <td className="px-4 py-3 font-mono text-xs text-blue-700">{item.logic_class}</td>
+                <td className="px-4 py-3 font-mono text-xs" style={{ color: '#93c5fd' }}>{item.logic_class}</td>
                 <td className="px-4 py-3 font-mono text-xs text-gray-600">
                   {item.physical_table ? (
                     <>
                       {item.physical_table}
                       {item.filter_condition && (
-                        <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 rounded">
+                        <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium rounded" style={{ background: 'rgba(245,158,11,0.15)', color: '#fbbf24' }}>
                           WHERE {item.filter_condition}
                         </span>
                       )}
                       {item.view_query && (
-                        <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700 rounded">
+                        <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium rounded" style={{ background: 'rgba(124,58,237,0.2)', color: '#c084fc' }}>
                           view_query
                         </span>
                       )}
                     </>
                   ) : item.virtual_kind === 'EmbeddedJSON' ? (
                     <div className="space-y-0.5">
-                      <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-teal-100 text-teal-700 rounded">
+                      <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded" style={{ background: 'rgba(20,184,166,0.15)', color: '#2dd4bf' }}>
                         EmbeddedJSON
                       </span>
                       {item.embedded_in && (
@@ -628,12 +628,12 @@ function ObjectMappingsTab() {
                     <span className="text-gray-300 italic">virtual</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-gray-800">{item.label_cn}</td>
-                <td className="px-4 py-3 font-mono text-xs text-gray-500">{item.display_column || '—'}</td>
+                <td className="px-4 py-3" style={{ color: '#e2e8f0' }}>{item.label_cn}</td>
+                <td className="px-4 py-3 font-mono text-xs" style={{ color: '#94a3b8' }}>{item.display_column || '—'}</td>
                 <td className="px-4 py-3 text-xs">
                   <div className="flex items-center gap-2">
                     {Object.keys(item.properties || {}).length > 0 && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-medium">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{ background: 'rgba(59,130,246,0.15)', color: '#93c5fd' }}>
                         <Link2 size={10} />
                         {Object.keys(item.properties).length} 语义属性
                       </span>
@@ -2629,16 +2629,19 @@ export default function MappingManager() {
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
-                className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap transition-colors ${
-                  tab === t.key
-                    ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/30'
-                    : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-                }`}
+                style={tab === t.key
+                  ? { color: '#e0e7ff', borderBottom: '2px solid #818cf8', background: 'rgba(99,102,241,0.18)', marginBottom: -1 }
+                  : { color: '#8892a4', borderBottom: '2px solid transparent', marginBottom: -1 }
+                }
+                className="flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap transition-colors hover:text-slate-200"
               >
                 {t.icon}
                 {t.label}
                 {t.count !== undefined && (
-                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${tab === t.key ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                  <span style={tab === t.key
+                    ? { fontSize: 11, padding: '1px 7px', borderRadius: 9999, background: 'rgba(99,102,241,0.35)', color: '#c7d2fe' }
+                    : { fontSize: 11, padding: '1px 7px', borderRadius: 9999, background: 'rgba(255,255,255,0.08)', color: '#6b7280' }
+                  }>
                     {t.count}
                   </span>
                 )}
