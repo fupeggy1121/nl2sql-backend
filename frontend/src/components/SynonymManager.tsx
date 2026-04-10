@@ -109,9 +109,9 @@ function SceneBar({ active, counts, onChange }: {
         return (
           <button key={s.id} onClick={() => onChange(s.id)} style={{
             padding: '3px 10px', borderRadius: 16,
-            border: `1px solid ${isActive ? s.color : '#2d284e'}`,
-            background: isActive ? s.color : '#12142a',
-            color: isActive ? '#fff' : '#c4c9d6',
+            border: `1px solid ${isActive ? '#818cf8' : '#2d284e'}`,
+            background: isActive ? 'rgba(99,102,241,0.18)' : '#12142a',
+            color: isActive ? '#e0e7ff' : '#c4c9d6',
             fontSize: 11, fontWeight: isActive ? 600 : 400, cursor: 'pointer',
           }}>
             {s.label}{s.id !== 'all' && n > 0 ? ` (${n})` : s.id === 'all' ? ` (${n})` : ''}
@@ -144,15 +144,15 @@ function EntityCard({ group, active, searchTerm, onClick }: {
   return (
     <button onClick={onClick} style={{
       display: 'block', width: '100%', textAlign: 'left', padding: '11px 12px', borderRadius: 9,
-      border: active ? `2px solid ${scene.color}` : '2px solid #2d284e',
-      background: active ? `${scene.color}18` : '#12142a',
+      border: active ? '2px solid #818cf8' : '2px solid #2d284e',
+      background: active ? 'rgba(99,102,241,0.14)' : '#12142a',
       cursor: 'pointer', marginBottom: 7, transition: 'all .12s',
-      boxShadow: active ? `0 0 0 3px ${scene.color}20` : 'none',
+      boxShadow: active ? '0 0 0 3px rgba(99,102,241,0.15)' : 'none',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
         <span style={{
           padding: '1px 7px', borderRadius: 10, fontSize: 10, fontWeight: 600,
-          background: `${scene.color}18`, color: scene.color, border: `1px solid ${scene.color}30`,
+          background: 'rgba(99,102,241,0.14)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)',
           flexShrink: 0,
         }}>{scene.label}</span>
         <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
@@ -280,7 +280,7 @@ function DetailPanel({ group, allUris, onRefresh }: {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <span style={{
               padding: '2px 10px', borderRadius: 12, fontSize: 11, fontWeight: 600,
-              background: `${scene.color}18`, color: scene.color, border: `1px solid ${scene.color}30`,
+              background: 'rgba(99,102,241,0.14)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)',
             }}>{scene.label}</span>
             <h2 style={{ fontSize: 17, fontWeight: 700, color: '#f1f5f9', margin: 0 }}>{group.labelCn}</h2>
           </div>
@@ -522,9 +522,6 @@ export default function SynonymManager() {
               }}
               onClick={() => setTab(t)}>
               {t === 'synonyms' ? '同义词管理' : t === 'unmatched' ? '未匹配词审批' : '操作日志'}
-              {t === 'unmatched' && stats && stats.unmatched.pending > 0 && (
-                <span style={S.badge}>{stats.unmatched.pending}</span>
-              )}
             </div>
           ))}
         </div>

@@ -189,7 +189,7 @@ export default function BaselinesManager() {
                           </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full ${bl.direction === 'above' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
+                          <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,0.14)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.2)' }}>
                             {bl.direction === 'above' ? '超过预警' : '低于预警'}
                           </span>
                         </td>
@@ -202,8 +202,8 @@ export default function BaselinesManager() {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           {bl.enabled
-                            ? <span className="text-xs bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-full">启用</span>
-                            : <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">禁用</span>
+                            ? <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(52,211,153,0.12)', color: '#6ee7b7', border: '1px solid rgba(52,211,153,0.2)' }}>启用</span>
+                            : <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(107,114,128,0.15)', color: '#9ca3af', border: '1px solid rgba(107,114,128,0.2)' }}>禁用</span>
                           }
                         </td>
                         <td className="px-4 py-3">
