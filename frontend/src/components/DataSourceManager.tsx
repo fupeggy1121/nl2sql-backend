@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import {
   Database, Plus, Pencil, Trash2, CheckCircle, XCircle,
-  Loader2, Star, StarOff, Wifi, WifiOff, ChevronRight,
+  Loader2, Star, StarOff, Wifi, WifiOff, ChevronRight, HardDrive, Settings,
 } from 'lucide-react'
 import {
   listDataSources,
@@ -10,6 +10,7 @@ import {
   deleteDataSource,
   setDefaultDataSource,
   testDataSourceConnection,
+  updateRoleAliases,
   type DataSource,
   type DataSourcePayload,
 } from '../api/dataSourcesApi'
@@ -233,6 +234,9 @@ function DrawerForm({
 export default function DataSourceManager() {
   const [sources, setSources] = useState<DataSource[]>([])
   const [defaultId, setDefaultId] = useState('')
+  const [roleAliases, setRoleAliases] = useState<Record<string, string>>({})
+  const [pendingRoles, setPendingRoles] = useState<Record<string, string>>({})
+  const [roleSaving, setRoleSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -248,6 +252,9 @@ export default function DataSourceManager() {
       const res = await listDataSources()
       setSources(res.sources)
       setDefaultId(res.default_source_id)
+      const ra = res.role_aliases ?? {}
+      setRoleAliases(ra)
+      setPendingRoles(ra)
     } catch (e: any) {
       setErr(e.message)
     } finally {
@@ -256,6 +263,19 @@ export default function DataSourceManager() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Group sources by host (preserving insertion order)
+  const hostGroups = useMemo(() => {
+    const groups = new Map<string, DataSource[]>()
+    for (const s of sources) {
+      if (!groups.has(s.host)) groups.set(s.host, [])
+      groups.get(s.host)!.push(s)
+    }
+    return Array.from(groups.entries())
+  }, [sources])
+
+  const sourceIds = useMemo(() => sources.map(s => s.source_id), [sources])
+  const rolesDirty = JSON.stringify(pendingRoles) !== JSON.stringify(roleAliases)
 
   const openNew = () => { setEditTarget(null); setDrawerOpen(true) }
   const openEdit = (s: DataSource) => { setEditTarget(s); setDrawerOpen(true) }
@@ -290,8 +310,6 @@ export default function DataSourceManager() {
   }
 
   const handleDelete = async (s: DataSource) => {
-    if (s.is_default) return
-    if (!confirm(`确认删除数据源「${s.display_name || s.source_id}」？`)) return
     setActionLoading(prev => ({ ...prev, [s.source_id]: true }))
     try {
       await deleteDataSource(s.source_id)
@@ -313,6 +331,19 @@ export default function DataSourceManager() {
       alert(e.message)
     } finally {
       setActionLoading(prev => ({ ...prev, [s.source_id]: false }))
+    }
+  }
+
+  const handleSaveRoles = async () => {
+    setRoleSaving(true)
+    try {
+      const res = await updateRoleAliases(pendingRoles)
+      setRoleAliases(res.role_aliases)
+      setPendingRoles(res.role_aliases)
+    } catch (e: any) {
+      alert(e.message)
+    } finally {
+      setRoleSaving(false)
     }
   }
 
@@ -369,109 +400,129 @@ export default function DataSourceManager() {
         </div>
       )}
 
-      {/* Source list */}
-      {!loading && sources.map((s) => {
-        const ts = testStatuses[s.source_id] ?? 'idle'
-        const tm = testMsgs[s.source_id] ?? ''
-        const busy = actionLoading[s.source_id] ?? false
-        return (
-          <div key={s.source_id} style={{
-            ...card,
-            borderColor: s.is_default ? 'rgba(99,102,241,.4)' : '#1e1b4b',
-            boxShadow: s.is_default ? '0 0 0 1px rgba(99,102,241,.2)' : 'none',
+      {/* Source list — grouped by host (same machine) */}
+      {!loading && hostGroups.map(([host, groupSources]) => (
+        <div key={host} style={{ marginBottom: 24 }}>
+          {/* Host header */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '6px 4px 10px',
+            borderBottom: '1px solid #1e1b4b',
+            marginBottom: 10,
           }}>
-            {/* Left icon */}
-            <div style={{
-              width: 42, height: 42, borderRadius: 10, flexShrink: 0,
-              background: s.is_default ? 'rgba(99,102,241,.15)' : 'rgba(255,255,255,.05)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Database size={18} color={s.is_default ? '#818cf8' : '#6b7280'} />
-            </div>
-
-            {/* Info */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 15, fontWeight: 600, color: '#f1f5f9' }}>
-                  {s.display_name || s.source_id}
-                </span>
-                {s.is_default && (
-                  <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: 'rgba(99,102,241,.2)', color: '#a5b4fc', fontWeight: 600 }}>
-                    默认
-                  </span>
-                )}
-                <span style={{ fontSize: 11, color: '#8892a4', fontFamily: 'monospace' }}>
-                  {s.source_id}
-                </span>
-              </div>
-              <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <ChevronRight size={11} />
-                {s.host}:{s.port} / {s.db} &nbsp;·&nbsp; {s.user}
-                {s.description && <span style={{ marginLeft: 8 }}>— {s.description}</span>}
-              </div>
-              {/* Test result */}
-              {ts !== 'idle' && (
-                <div style={{
-                  marginTop: 4, fontSize: 12,
-                  color: ts === 'ok' ? '#34d399' : ts === 'error' ? '#f87171' : '#6b7280',
-                  display: 'flex', alignItems: 'center', gap: 4,
-                }}>
-                  {ts === 'testing' ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> :
-                   ts === 'ok' ? <CheckCircle size={12} /> : <XCircle size={12} />}
-                  {ts === 'testing' ? '连接测试中...' : tm}
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-              <button
-                onClick={() => handleTest(s)}
-                disabled={ts === 'testing'}
-                title="测试连接"
-                style={{ ...btn('transparent', '#6b7280'), padding: '6px' }}
-              >
-                {ts === 'testing' ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> :
-                 ts === 'ok' ? <Wifi size={15} color="#34d399" /> :
-                 ts === 'error' ? <WifiOff size={15} color="#f87171" /> :
-                 <Wifi size={15} />}
-              </button>
-              {!s.is_default && (
-                <button
-                  onClick={() => handleSetDefault(s)}
-                  disabled={busy}
-                  title="设为默认"
-                  style={{ ...btn('transparent', '#6b7280'), padding: '6px' }}
-                >
-                  <StarOff size={15} />
-                </button>
-              )}
-              {s.is_default && (
-                <button disabled title="当前默认" style={{ ...btn('transparent', '#818cf8'), padding: '6px', cursor: 'default' }}>
-                  <Star size={15} />
-                </button>
-              )}
-              <button
-                onClick={() => openEdit(s)}
-                title="编辑"
-                style={{ ...btn('transparent', '#6b7280'), padding: '6px' }}
-              >
-                <Pencil size={15} />
-              </button>
-              {!s.is_default && (
-                <button
-                  onClick={() => handleDelete(s)}
-                  disabled={busy}
-                  title="删除"
-                  style={{ ...btn('transparent', '#6b7280'), padding: '6px' }}
-                >
-                  <Trash2 size={15} />
-                </button>
-              )}
-            </div>
+            <HardDrive size={14} color="#6366f1" />
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#8892a4', fontFamily: 'monospace', letterSpacing: 0.3 }}>
+              {host}
+            </span>
+            <span style={{ fontSize: 11, color: '#4b5563' }}>
+              · {groupSources.length} 个数据库
+            </span>
           </div>
-        )
-      })}
+
+          {groupSources.map((s) => {
+            const ts = testStatuses[s.source_id] ?? 'idle'
+            const tm = testMsgs[s.source_id] ?? ''
+            const busy = actionLoading[s.source_id] ?? false
+            return (
+              <div key={s.source_id} style={{
+                ...card,
+                borderColor: s.is_default ? 'rgba(99,102,241,.4)' : '#1e1b4b',
+                boxShadow: s.is_default ? '0 0 0 1px rgba(99,102,241,.2)' : 'none',
+              }}>
+                {/* Left icon */}
+                <div style={{
+                  width: 42, height: 42, borderRadius: 10, flexShrink: 0,
+                  background: s.is_default ? 'rgba(99,102,241,.15)' : 'rgba(255,255,255,.05)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Database size={18} color={s.is_default ? '#818cf8' : '#6b7280'} />
+                </div>
+
+                {/* Info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 15, fontWeight: 600, color: '#f1f5f9' }}>
+                      {s.display_name || s.source_id}
+                    </span>
+                    {s.is_default && (
+                      <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 4, background: 'rgba(99,102,241,.2)', color: '#a5b4fc', fontWeight: 600 }}>
+                        默认
+                      </span>
+                    )}
+                    <span style={{ fontSize: 11, color: '#8892a4', fontFamily: 'monospace' }}>
+                      {s.source_id}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <ChevronRight size={11} />
+                    :{s.port} / {s.db} &nbsp;·&nbsp; {s.user}
+                    {s.description && <span style={{ marginLeft: 8 }}>— {s.description}</span>}
+                  </div>
+                  {/* Test result */}
+                  {ts !== 'idle' && (
+                    <div style={{
+                      marginTop: 4, fontSize: 12,
+                      color: ts === 'ok' ? '#34d399' : ts === 'error' ? '#f87171' : '#6b7280',
+                      display: 'flex', alignItems: 'center', gap: 4,
+                    }}>
+                      {ts === 'testing' ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> :
+                       ts === 'ok' ? <CheckCircle size={12} /> : <XCircle size={12} />}
+                      {ts === 'testing' ? '连接测试中...' : tm}
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  <button
+                    onClick={() => handleTest(s)}
+                    disabled={ts === 'testing'}
+                    title="测试连接"
+                    style={{ ...btn('transparent', '#6b7280'), padding: '6px' }}
+                  >
+                    {ts === 'testing' ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> :
+                     ts === 'ok' ? <Wifi size={15} color="#34d399" /> :
+                     ts === 'error' ? <WifiOff size={15} color="#f87171" /> :
+                     <Wifi size={15} />}
+                  </button>
+                  {!s.is_default && (
+                    <button
+                      onClick={() => handleSetDefault(s)}
+                      disabled={busy}
+                      title="设为默认"
+                      style={{ ...btn('transparent', '#6b7280'), padding: '6px' }}
+                    >
+                      <StarOff size={15} />
+                    </button>
+                  )}
+                  {s.is_default && (
+                    <button disabled title="当前默认" style={{ ...btn('transparent', '#818cf8'), padding: '6px', cursor: 'default' }}>
+                      <Star size={15} />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => openEdit(s)}
+                    title="编辑"
+                    style={{ ...btn('transparent', '#6b7280'), padding: '6px' }}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  {!s.is_default && (
+                    <button
+                      onClick={() => handleDelete(s)}
+                      disabled={busy}
+                      title="删除"
+                      style={{ ...btn('transparent', '#6b7280'), padding: '6px' }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ))}
 
       {!loading && sources.length === 0 && !err && (
         <div style={{ textAlign: 'center', padding: '48px 0', color: '#8892a4', fontSize: 14 }}>

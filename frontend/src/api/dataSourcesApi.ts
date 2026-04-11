@@ -29,6 +29,7 @@ export interface DataSource {
 export interface DataSourcesResponse {
   success: boolean
   default_source_id: string
+  role_aliases: Record<string, string>
   sources: DataSource[]
 }
 
@@ -72,4 +73,11 @@ export function setDefaultDataSource(source_id: string): Promise<{ success: bool
 
 export function testDataSourceConnection(source_id: string): Promise<{ success: boolean; message: string }> {
   return apiFetch(`/api/v1/data-sources/${encodeURIComponent(source_id)}/test`, { method: 'POST' })
+}
+
+export function updateRoleAliases(aliases: Record<string, string>): Promise<{ success: boolean; role_aliases: Record<string, string> }> {
+  return apiFetch('/api/v1/data-sources/roles', {
+    method: 'PUT',
+    body: JSON.stringify(aliases),
+  })
 }

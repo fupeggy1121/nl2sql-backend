@@ -4,10 +4,10 @@
 路由前缀: /api/v1/data-sources
 """
 import logging
-from typing import Optional
+from typing import Dict, Optional
 
 import pymysql
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config.data_sources import DataSourceRegistry
@@ -54,6 +54,7 @@ def list_data_sources():
     return {
         "success": True,
         "default_source_id": registry.default_id,
+        "role_aliases": registry.role_aliases,
         "sources": registry.list_all(mask_password=True),
     }
 
@@ -141,3 +142,29 @@ def test_data_source_connection(source_id: str):
             "source_id": source_id,
             "message": str(e),
         }
+
+
+@router.get("/roles")
+def get_role_aliases():
+    """获取当前全部角色分配。"""
+    registry = DataSourceRegistry.get_instance()
+    return {"success": True, "role_aliases": registry.role_aliases}
+
+
+@router.put("/roles")
+def update_role_aliases(aliases: Dict[str, str] = Body(...)):
+    """批量更新角色分配（加法更新，不删除已有条目）。"""
+    registry = DataSourceRegistry.get_instance()
+    try:
+        registry.set_role_aliases(aliases)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"success": True, "role_aliases": registry.role_aliases}
+
+
+@router.delete("/roles/{role}")
+def delete_role_alias(role: str):
+    """删除单个角色分配。"""
+    registry = DataSourceRegistry.get_instance()
+    registry.delete_role_alias(role)
+    return {"success": True, "role_aliases": registry.role_aliases}

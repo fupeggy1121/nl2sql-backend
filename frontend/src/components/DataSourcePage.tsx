@@ -1,13 +1,15 @@
 import { useState } from 'react'
-import { Database, Target } from 'lucide-react'
+import { Database, Target, Settings } from 'lucide-react'
 import DataSourceManager from './DataSourceManager'
 import BaselinesManager from './BaselinesManager'
+import RoleAliasManager from './RoleAliasManager'
 
-type Tab = 'connections' | 'baselines'
+type Tab = 'connections' | 'roles' | 'baselines'
 
 const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'connections', label: '数据源连接配置', icon: Database },
-  { id: 'baselines',  label: '指标项 Target 配置', icon: Target },
+  { id: 'roles',       label: '角色映射配置',   icon: Settings },
+  { id: 'baselines',   label: '指标项 Target 配置', icon: Target },
 ]
 
 export default function DataSourcePage() {
@@ -55,6 +57,7 @@ export default function DataSourcePage() {
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', background: '#0d0e1a' }}>
         {activeTab === 'connections' && <DataSourceManager />}
+        {activeTab === 'roles'       && <RoleAliasManager />}
         {activeTab === 'baselines'   && <BaselinesManager />}
       </div>
     </div>

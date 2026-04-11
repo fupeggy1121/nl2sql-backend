@@ -171,6 +171,7 @@ class DataSourceRegistry:
     def __init__(self):
         self._configs: Dict[str, DataSourceConfig] = {}
         self._default_id: str = DEFAULT_SOURCE_ID
+        self._role_aliases: Dict[str, str] = {}  # logical role → concrete source_id
         self._load_all()
 
     @classmethod
@@ -230,6 +231,7 @@ class DataSourceRegistry:
         try:
             data = json.loads(_STORE_PATH.read_text(encoding="utf-8"))
             self._default_id = data.get("default_source_id", DEFAULT_SOURCE_ID)
+            self._role_aliases = {k: v for k, v in data.get("role_aliases", {}).items() if k and v}
             self._configs.clear()  # JSON 为权威，清除 env 阶段加载的条目
             for item in data.get("sources", []):
                 sid = item.get("source_id", "").strip()
@@ -256,6 +258,7 @@ class DataSourceRegistry:
         """将当前配置持久化到 JSON 文件。"""
         data = {
             "default_source_id": self._default_id,
+            "role_aliases": self._role_aliases,
             "sources": [],
         }
         for cfg in self._configs.values():
@@ -285,18 +288,27 @@ class DataSourceRegistry:
 
     # ── 查询 ──────────────────────────────────────────────────────────────
 
+    def resolve(self, source_id: str) -> str:
+        """将逻辑角色名解析为实际 source_id（无匹配时透传原值）。"""
+        return self._role_aliases.get(source_id, source_id)
+
     def get(self, source_id: str) -> DataSourceConfig:
-        """获取数据源配置，不存在时抛出 KeyError。"""
-        if source_id not in self._configs:
+        """获取数据源配置，支持逻辑角色名解析，不存在时抛出 KeyError。"""
+        resolved = self.resolve(source_id)
+        if resolved not in self._configs:
             raise KeyError(
-                f"数据源 '{source_id}' 未配置。已知数据源: {list(self._configs.keys())}"
+                f"数据源 '{source_id}'"
+                + (f" (→ '{resolved}')" if resolved != source_id else "")
+                + f" 未配置。已知数据源: {list(self._configs.keys())}"
             )
-        return self._configs[source_id]
+        return self._configs[resolved]
 
     def get_or_default(self, source_id: Optional[str]) -> DataSourceConfig:
-        """若 source_id 为 None 或未配置，返回默认数据源配置。"""
-        if source_id and source_id in self._configs:
-            return self._configs[source_id]
+        """若 source_id 为 None 或未配置，返回默认数据源配置。支持角色名解析。"""
+        if source_id:
+            resolved = self.resolve(source_id)
+            if resolved in self._configs:
+                return self._configs[resolved]
         return self._configs[self._default_id]
 
     def has(self, source_id: str) -> bool:
@@ -313,6 +325,25 @@ class DataSourceRegistry:
     @property
     def default_id(self) -> str:
         return self._default_id
+
+    @property
+    def role_aliases(self) -> Dict[str, str]:
+        """当前角色分配（逻辑名 → 实际 source_id）。"""
+        return dict(self._role_aliases)
+
+    def set_role_aliases(self, aliases: Dict[str, str]) -> None:
+        """批量更新角色分配并持久化。"""
+        for role, target in aliases.items():
+            if target and target not in self._configs:
+                raise KeyError(f"数据源 '{target}' 不存在，无法分配给角色 '{role}'")
+        self._role_aliases.update(aliases)
+        self._save_to_store()
+        logger.info("[DataSourceRegistry] 角色分配已更新: %s", self._role_aliases)
+
+    def delete_role_alias(self, role: str) -> None:
+        """删除角色分配并持久化。"""
+        self._role_aliases.pop(role, None)
+        self._save_to_store()
 
     # ── 变更 ──────────────────────────────────────────────────────────────
 

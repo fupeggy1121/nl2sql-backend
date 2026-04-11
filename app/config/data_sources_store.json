@@ -1,5 +1,9 @@
 {
   "default_source_id": "epi",
+  "role_aliases": {
+    "mes": "epi",
+    "pms": "pms"
+  },
   "sources": [
     {
       "source_id": "test",
